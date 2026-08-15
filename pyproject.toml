@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "otter"
+name = "otter-hed"
 version = "0.2.1"
 description = "Average-atom, pseudoatom, and ionic-structure calculations for dense plasmas."
 readme = "README.md"
@@ -44,6 +44,9 @@ libxc = ["pylibxc7==7.0.0"]
 build = ">=1.2"
 pytest = ">=8"
 twine = ">=5"
+
+[tool.poetry]
+packages = [{ include = "otter", from = "src" }]
 
 [tool.poetry.group.docs.dependencies]
 sphinx = "==8.2.3"

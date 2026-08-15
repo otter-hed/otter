@@ -7,8 +7,20 @@ Requirements
 Otter requires CPython 3.12 or newer.  Core dependencies are NumPy, SciPy,
 Numba, and Matplotlib.
 
-Install Python and Poetry
--------------------------
+Install the released package
+----------------------------
+
+Install Otter from PyPI:
+
+.. code-block:: console
+
+   $ python -m pip install otter-hed
+
+The distribution name is ``otter-hed``; the Python package is imported as
+``otter``.
+
+Reproducible source installation
+--------------------------------
 
 Install `Python <https://www.python.org/downloads/>`_ and
 `Git <https://git-scm.com/downloads/>`_, then install Poetry 2.1.3.

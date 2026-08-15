@@ -12,15 +12,25 @@ Otter is based primarily on the pseudoatom model of
 ## Capabilities
 
 - finite-temperature quantum(KS-DFT, QM) and Thomas–Fermi (TF) electronic structure; the
-  quantum model provides orbital levels, occupations, and density components;
-- pseudoatom densities `n_ion(r)` and `n_scr(r)`, with form factors
+  QM model provides orbital levels, occupations, and density components;
+- pseudoatom densities `n_pa(r)` and screening densities `n_scr(r)`, with form factors
   `f(k)=n_ion(k)` and `q(k)=n_scr(k)`;
 - effective ion–ion potentials `V_ij(r)` and `V_ij(k)`;
 - one- and multicomponent QOZ/HNC results `g_ij(r)` and `S_ij(k)`.
 
 ## Install
 
-Otter requires CPython 3.12 or newer, Git, and Poetry 2.1.3.
+Install the released package from PyPI:
+
+```bash
+python -m pip install otter-hed
+```
+
+The distribution name is `otter-hed`; the Python package is imported as
+`otter`.
+
+For a reproducible editable installation from source, Otter requires CPython
+3.12 or newer, Git, and Poetry 2.1.3.
 
 macOS, Linux, or WSL:
 
