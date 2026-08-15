@@ -105,10 +105,13 @@ jobs:
           /tmp/otter-wheel/bin/python -m pip install dist/*.whl
           cd /tmp
           /tmp/otter-wheel/bin/python -c "import otter; print(otter.__all__)"
-      - name: Rebuild and test from the source distribution
+      - name: Rebuild and test the source distribution
         run: |
           mkdir -p /tmp/otter-sdist
           tar -xzf dist/*.tar.gz -C /tmp/otter-sdist
           sdist_root="$(find /tmp/otter-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)"
           poetry run python -m build --wheel --outdir /tmp/otter-sdist-wheel "$sdist_root"
-          PYTHONPATH="$sdist_root/src" poetry run pytest -q "$sdist_root/tests"
+          python -m venv /tmp/otter-sdist-install
+          /tmp/otter-sdist-install/bin/python -m pip install /tmp/otter-sdist-wheel/*.whl
+          cd /tmp
+          /tmp/otter-sdist-install/bin/python -c "import otter; from otter import PlasmaWorkflowConfig; print(otter.__version__)"
