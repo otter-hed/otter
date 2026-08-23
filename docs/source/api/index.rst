@@ -16,6 +16,8 @@ below.
    PlasmaWorkflowConfig
    solve_plasma_workflow
    continue_plasma_workflow_from_electronic_result
+   PreparedMulticomponentIonStructure
+   prepare_multicomponent_ion_structure_from_electronic_result
    run_formula_workflow
    parse_formula_composition
    resolve_plasma_composition

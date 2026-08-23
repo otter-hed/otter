@@ -28,10 +28,11 @@ software conventions.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
+import hashlib
 import re
 import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -256,9 +257,15 @@ def _qoz_electron_channels(
     ion_temperature_ha: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Read public QOZ electron channels, reconstructing legacy test doubles."""
-    required = ("v_ie_k", "v_ee_k", "c_ie_k", "c_ee_k")
-    if all(hasattr(qoz, key) for key in required):
-        return tuple(np.asarray(getattr(qoz, key), dtype=float) for key in required)  # type: ignore[return-value]
+    if all(hasattr(qoz, key) for key in ("v_ie_k", "v_ee_k")):
+        v_ie_k = np.asarray(qoz.v_ie_k, dtype=float)
+        v_ee_k = np.asarray(qoz.v_ee_k, dtype=float)
+        te_ha = max(float(electron_temperature_ha), 1.0e-12)
+        ti_ha = max(float(ion_temperature_ha), 1.0e-12)
+        # V_Ie, V_ee and V_ij depend on the electronic state, not on T_i.
+        # Rebuild only the beta-scaled direct correlations so one prepared QOZ
+        # state can safely serve a scan over multiple ion temperatures.
+        return v_ie_k, v_ee_k, -v_ie_k / ti_ha, -v_ee_k / te_ha
     return electron_interaction_channels_k(
         k=np.asarray(k, dtype=float),
         n_scr_k=np.asarray(qoz.n_scr_k, dtype=float),
@@ -1221,13 +1228,99 @@ def _one_component_ion_structure(
     }
 
 
-def _multicomponent_ion_structure(
+@dataclass(frozen=True)
+class PreparedMulticomponentIonStructure:
+    """Reusable, ion-temperature-independent input to mixture HNC solves.
+
+    The electronic response, screening transforms, and effective pair
+    potential are fixed by the electronic state at ``T_e``.  Only the HNC
+    coupling ``V_ij / T_i`` and the electron-ion direct correlation change
+    across an ion-temperature scan.  Keeping this intermediate object out of
+    the exported state format avoids duplicating large arrays on disk.
+    """
+
+    qoz_signature: tuple[Any, ...]
+    electronic_signature: tuple[Any, ...]
+    species: tuple[str, ...]
+    r: np.ndarray
+    k: np.ndarray
+    transform: Any
+    n_scr_r: np.ndarray
+    n_ion_r: np.ndarray
+    n_ion_k: np.ndarray
+    screening_density_source: tuple[str, ...]
+    zbar: np.ndarray
+    zbar_partition: np.ndarray
+    q_scr_native_raw: np.ndarray
+    zbar_electronic: np.ndarray
+    n_i: np.ndarray
+    charge_fix: Any
+    qoz: Any
+    v_ie_r: np.ndarray
+    v_ee_r: np.ndarray
+    preparation_s: float
+
+
+def _multicomponent_qoz_signature(cfg: PlasmaWorkflowConfig) -> tuple[Any, ...]:
+    """Return the controls that determine a prepared mixture QOZ state."""
+    return (
+        float(cfg.temperature_ev),
+        float(cfg.rho_g_cc),
+        int(cfg.qoz_linear_n_points),
+        float(cfg.qoz_pad_factor),
+        str(cfg.qoz_zbar_mode),
+        bool(cfg.qoz_renormalize_nscr_to_zbar),
+        str(cfg.qoz_response_chi0_model),
+        str(cfg.qoz_response_lfc_model),
+        None
+        if cfg.qoz_high_k_taper_start_frac is None
+        else float(cfg.qoz_high_k_taper_start_frac),
+    )
+
+
+def _multicomponent_electronic_signature(
+    species_entries: list[dict[str, Any]],
+) -> tuple[Any, ...]:
+    """Identify the converged species states used to prepare QOZ arrays."""
+    def _digest(values: np.ndarray) -> str:
+        canonical = np.ascontiguousarray(np.asarray(values, dtype="<f8"))
+        return hashlib.sha256(canonical.tobytes()).hexdigest()
+
+    signature: list[tuple[Any, ...]] = []
+    for entry in species_entries:
+        result = dict(entry["result"])
+        r_native = np.asarray(result["r"], dtype=float)
+        n_scr_native, screening_source = _screening_density_for_qoz(result)
+        n_ion_native = np.asarray(result["n_ion"], dtype=float)
+        signature.append(
+            (
+                str(entry["element"]),
+                float(entry["x"]),
+                float(entry["volume_bohr3"]),
+                float(entry["r_ws_bohr"]),
+                float(result["mu"]),
+                int(r_native.size),
+                float(r_native[-1]),
+                str(screening_source),
+                _digest(r_native),
+                _digest(n_scr_native),
+                _digest(n_ion_native),
+            )
+        )
+    return tuple(signature)
+
+
+def _prepare_multicomponent_ion_structure(
     cfg: PlasmaWorkflowConfig,
     *,
     species_entries: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Run multicomponent QOZ/HNC from one mixture full+ext result."""
-    common_rmax = max(float(np.asarray(sp["result"]["r"], dtype=float)[-1]) for sp in species_entries)
+) -> PreparedMulticomponentIonStructure:
+    """Build the part of mixture QOZ/HNC that is invariant under ``T_i``."""
+    started = time.perf_counter()
+    common_rmax = max(
+        float(np.asarray(sp["result"]["r"], dtype=float)[-1])
+        for sp in species_entries
+    )
     r_work = _build_qoz_linear_grid(
         r_max=float(common_rmax),
         n_linear=int(cfg.qoz_linear_n_points),
@@ -1247,11 +1340,12 @@ def _multicomponent_ion_structure(
     zbar_electronic = np.zeros(n_species, dtype=float)
     n_i = np.zeros(n_species, dtype=float)
     x = np.asarray([float(sp["x"]) for sp in species_entries], dtype=float)
-    vbar_bohr3 = float(
-        np.sum(x * np.asarray([float(sp["volume_bohr3"]) for sp in species_entries], dtype=float))
+    volumes = np.asarray(
+        [float(sp["volume_bohr3"]) for sp in species_entries], dtype=float
     )
-    n_mix = 1.0 / max(float(vbar_bohr3), 1.0e-300)
-    symbols = [str(sp["element"]) for sp in species_entries]
+    n_mix = 1.0 / max(float(np.sum(x * volumes)), 1.0e-300)
+    symbols = tuple(str(sp["element"]) for sp in species_entries)
+
     for idx, sp in enumerate(species_entries):
         final = dict(sp["result"])
         r_native = np.asarray(final["r"], dtype=float)
@@ -1270,9 +1364,7 @@ def _multicomponent_ion_structure(
             right_value=0.0,
         )
         zbar_electronic[idx] = float(final["zbar"])
-        q_scr_native_raw[idx] = float(
-            radial_charge_trapezoid(r_native, n_scr_native)
-        )
+        q_scr_native_raw[idx] = float(radial_charge_trapezoid(r_native, n_scr_native))
         if "zbar_partition" in final and np.isfinite(float(final["zbar_partition"])):
             zbar_partition[idx] = float(final["zbar_partition"])
         elif "n_ion" in final and "Z" in sp:
@@ -1285,7 +1377,10 @@ def _multicomponent_ion_structure(
         else:
             mode_key = str(cfg.qoz_zbar_mode).strip().lower().replace("-", "_")
             if mode_key in {
-                "pseudoatom_partition", "partition", "pa_partition", "z_minus_qion_all"
+                "pseudoatom_partition",
+                "partition",
+                "pa_partition",
+                "z_minus_qion_all",
             }:
                 raise ValueError(
                     "The pseudoatom_partition QOZ convention requires zbar_partition "
@@ -1311,38 +1406,117 @@ def _multicomponent_ion_structure(
         transform=transform,
     )
     n_ion_k = np.asarray(radial_forward(n_ion_r, transform), dtype=float)
-    ion_temperature_ha = float(cfg.ion_temperature_ev) * EV_TO_HA
-    t_qoz = time.perf_counter()
+    electron_temperature_ha = float(cfg.temperature_ev) * EV_TO_HA
     qoz = build_effective_vij_from_nscr(
         r=r,
         n_scr=charge_fix.n_scr_r,
         zbar=zbar,
         n_i=n_i,
-        ion_temperature_ha=ion_temperature_ha,
+        # V_ij is independent of this beta.  T_e supplies a deterministic
+        # placeholder for the compatibility c_ie field in the result object.
+        ion_temperature_ha=electron_temperature_ha,
         k=k,
         transform=transform,
         options=QOZPotentialOptions(
             response=QOZResponseOptions(
                 chi0_model=str(cfg.qoz_response_chi0_model),
                 lfc_model=str(cfg.qoz_response_lfc_model),
-                electron_temperature_ha=float(cfg.temperature_ev) * EV_TO_HA,
+                electron_temperature_ha=electron_temperature_ha,
             ),
             high_k_taper_start_frac=(
-                None if cfg.qoz_high_k_taper_start_frac is None else float(cfg.qoz_high_k_taper_start_frac)
+                None
+                if cfg.qoz_high_k_taper_start_frac is None
+                else float(cfg.qoz_high_k_taper_start_frac)
             ),
         ),
     )
+    v_ie_k, v_ee_k, _, _ = _qoz_electron_channels(
+        qoz,
+        k=k,
+        electron_temperature_ha=electron_temperature_ha,
+        ion_temperature_ha=electron_temperature_ha,
+    )
+    v_ie_r = np.asarray(radial_inverse(v_ie_k, transform), dtype=float)
+    v_ee_r = np.asarray(radial_inverse(v_ee_k, transform), dtype=float)
+    return PreparedMulticomponentIonStructure(
+        qoz_signature=_multicomponent_qoz_signature(cfg),
+        electronic_signature=_multicomponent_electronic_signature(species_entries),
+        species=symbols,
+        r=r,
+        k=k,
+        transform=transform,
+        n_scr_r=np.asarray(charge_fix.n_scr_r, dtype=float),
+        n_ion_r=n_ion_r,
+        n_ion_k=n_ion_k,
+        screening_density_source=tuple(screening_density_source),
+        zbar=zbar,
+        zbar_partition=zbar_partition,
+        q_scr_native_raw=q_scr_native_raw,
+        zbar_electronic=zbar_electronic,
+        n_i=n_i,
+        charge_fix=charge_fix,
+        qoz=qoz,
+        v_ie_r=v_ie_r,
+        v_ee_r=v_ee_r,
+        preparation_s=float(time.perf_counter() - started),
+    )
+
+
+def _multicomponent_ion_structure(
+    cfg: PlasmaWorkflowConfig,
+    *,
+    species_entries: list[dict[str, Any]],
+    preparation: PreparedMulticomponentIonStructure | None = None,
+) -> dict[str, Any]:
+    """Run multicomponent QOZ/HNC from one mixture full+ext result."""
+    reused_preparation = preparation is not None
+    prepared = (
+        _prepare_multicomponent_ion_structure(
+            cfg,
+            species_entries=species_entries,
+        )
+        if preparation is None
+        else preparation
+    )
+    if prepared.qoz_signature != _multicomponent_qoz_signature(cfg):
+        raise ValueError(
+            "Prepared multicomponent QOZ controls do not match the requested workflow."
+        )
+    if prepared.electronic_signature != _multicomponent_electronic_signature(
+        species_entries
+    ):
+        raise ValueError(
+            "Prepared multicomponent QOZ state does not match the supplied electronic result."
+        )
+
+    r = prepared.r
+    k = prepared.k
+    transform = prepared.transform
+    n_species = len(species_entries)
+    symbols = list(prepared.species)
+    n_ion_r = prepared.n_ion_r
+    n_ion_k = prepared.n_ion_k
+    zbar = prepared.zbar
+    zbar_partition = prepared.zbar_partition
+    q_scr_native_raw = prepared.q_scr_native_raw
+    screening_density_source = prepared.screening_density_source
+    zbar_electronic = prepared.zbar_electronic
+    n_i = prepared.n_i
+    charge_fix = prepared.charge_fix
+    qoz = prepared.qoz
+
+    ion_temperature_ha = float(cfg.ion_temperature_ev) * EV_TO_HA
     v_ie_k, v_ee_k, c_ie_k, c_ee_k = _qoz_electron_channels(
         qoz,
         k=k,
         electron_temperature_ha=float(cfg.temperature_ev) * EV_TO_HA,
         ion_temperature_ha=ion_temperature_ha,
     )
-    v_ie_r = np.asarray(radial_inverse(v_ie_k, transform), dtype=float)
-    v_ee_r = np.asarray(radial_inverse(v_ee_k, transform), dtype=float)
-    c_ie_r = np.asarray(radial_inverse(c_ie_k, transform), dtype=float)
-    c_ee_r = np.asarray(radial_inverse(c_ee_k, transform), dtype=float)
-    qoz_build_s = time.perf_counter() - t_qoz
+    v_ie_r = prepared.v_ie_r
+    v_ee_r = prepared.v_ee_r
+    c_ie_r = -v_ie_r / max(ion_temperature_ha, 1.0e-12)
+    c_ee_r = -v_ee_r / max(float(cfg.temperature_ev) * EV_TO_HA, 1.0e-12)
+    qoz_build_s = 0.0 if reused_preparation else float(prepared.preparation_s)
     t_hnc = time.perf_counter()
     g_r, s_k, h_r, c_r, residual_history, stage_meta = hnc_solver_multicomponent_continuation(
         r,
@@ -1457,6 +1631,8 @@ def _multicomponent_ion_structure(
         "gee_k": np.asarray(qoz.gee_k, dtype=float),
         "g_ee_k": np.asarray(qoz.gee_k, dtype=float),
         "qoz_build_s": float(qoz_build_s),
+        "qoz_preparation_s": float(prepared.preparation_s),
+        "qoz_preparation_reused": bool(reused_preparation),
         "hnc_solve_s": float(hnc_solve_s),
         "hnc_iters": int(len(residual_history)),
         "hnc_converged": bool(hnc_converged),
@@ -1590,11 +1766,109 @@ def solve_plasma_workflow(cfg: PlasmaWorkflowConfig) -> dict[str, Any]:
     return result
 
 
+def _validate_electronic_for_ion_structure(
+    cfg: PlasmaWorkflowConfig,
+    *,
+    electronic_kind: str,
+    electronic_result: dict[str, Any],
+    species_entries: list[dict[str, Any]],
+) -> None:
+    """Apply the production common-mu and AA gates before QOZ preparation."""
+    if str(electronic_kind) == "mixture":
+        mixture_meta = dict(electronic_result.get("meta", {}))
+        if not bool(mixture_meta.get("root_success", True)) and not bool(
+            cfg.allow_unconverged_root
+        ):
+            raise RuntimeError(
+                "Refusing to continue an unconverged mixture common-mu state into QOZ/HNC: "
+                f"max|dmu|={float(mixture_meta.get('mu_residual_max_ha', np.nan)):.6e} Ha. "
+                "Recompute the electronic state, or set allow_unconverged_root=True only "
+                "for an explicit diagnostic best-effort continuation."
+            )
+        final_mu_success = mixture_meta.get("final_mu_root_success", None)
+        final_mu_residual = mixture_meta.get("final_mu_residual_max_ha", None)
+        if final_mu_success is None and final_mu_residual is not None:
+            try:
+                final_mu_value = float(final_mu_residual)
+            except (TypeError, ValueError):
+                final_mu_value = np.inf
+            final_mu_success = bool(
+                np.isfinite(final_mu_value)
+                and final_mu_value <= float(cfg.mu_e_tol)
+            )
+        if (
+            final_mu_success is not None
+            and not bool(final_mu_success)
+            and not bool(cfg.allow_unconverged_root)
+        ):
+            raise RuntimeError(
+                "Refusing to continue a mixture whose final full+external rerun "
+                "lost common-mu closure into QOZ/HNC: "
+                f"max|dmu_final|="
+                f"{float(mixture_meta.get('final_mu_residual_max_ha', np.nan)):.6e} Ha. "
+                "Recompute the electronic state, or set allow_unconverged_root=True only "
+                "for an explicit diagnostic best-effort continuation."
+            )
+
+    convergence_issues = _electronic_convergence_issues(
+        species_entries,
+        require_external=True,
+        screening_charge_rel_tol=float(cfg.qoz_screening_charge_rel_tol),
+    )
+    if convergence_issues and not bool(cfg.allow_unconverged_aa):
+        raise RuntimeError(
+            "Refusing to continue unconverged electronic structure into QOZ/HNC: "
+            + "; ".join(convergence_issues)
+            + ". Set allow_unconverged_aa=True only for an explicit diagnostic continuation."
+        )
+
+
+def prepare_multicomponent_ion_structure_from_electronic_result(
+    cfg: PlasmaWorkflowConfig,
+    *,
+    electronic_kind: str,
+    electronic_result: dict[str, Any],
+) -> PreparedMulticomponentIonStructure:
+    """Prepare one mixture QOZ state for reuse across several ion temperatures.
+
+    ``cfg.ion_temperature_ev`` is intentionally not part of the preparation.
+    Each subsequent workflow continuation rebuilds the beta-scaled channels
+    and solves HNC at its requested ``T_i``.
+    """
+    symbols, counts = resolve_plasma_composition(
+        formula=cfg.formula,
+        elements=cfg.elements,
+        counts=cfg.counts,
+        number_fraction=cfg.number_fraction,
+    )
+    species_entries = _species_entries_from_electronic(
+        symbols=symbols,
+        counts=counts,
+        electronic_kind=electronic_kind,
+        electronic_result=electronic_result,
+    )
+    if str(electronic_kind) != "mixture" or len(species_entries) < 2:
+        raise ValueError(
+            "Multicomponent QOZ preparation requires a mixture with at least two species."
+        )
+    _validate_electronic_for_ion_structure(
+        cfg,
+        electronic_kind=electronic_kind,
+        electronic_result=electronic_result,
+        species_entries=species_entries,
+    )
+    return _prepare_multicomponent_ion_structure(
+        cfg,
+        species_entries=[dict(sp) for sp in species_entries],
+    )
+
+
 def continue_plasma_workflow_from_electronic_result(
     cfg: PlasmaWorkflowConfig,
     *,
     electronic_kind: str,
     electronic_result: dict[str, Any],
+    multicomponent_preparation: PreparedMulticomponentIonStructure | None = None,
 ) -> dict[str, Any]:
     """
     Continue the unified workflow from an already available electronic result.
@@ -1609,6 +1883,11 @@ def continue_plasma_workflow_from_electronic_result(
     electronic_result
         Previously solved electronic payload in the same shape returned by the
         workflow electronic stage.
+    multicomponent_preparation
+        Optional reusable QOZ preparation returned by
+        :func:`prepare_multicomponent_ion_structure_from_electronic_result`.
+        It skips all ion-temperature-independent QOZ work; HNC is still solved
+        independently at the requested ``T_i``.
 
     Returns
     -------
@@ -1633,51 +1912,25 @@ def continue_plasma_workflow_from_electronic_result(
         electronic_result=electronic_result,
     )
 
-    if str(electronic_kind) == "mixture" and cfg.ion_temperature_ev is not None:
-        mixture_meta = dict(electronic_result.get("meta", {}))
-        if not bool(mixture_meta.get("root_success", True)) and not bool(cfg.allow_unconverged_root):
-            raise RuntimeError(
-                "Refusing to continue an unconverged mixture common-mu state into QOZ/HNC: "
-                f"max|dmu|={float(mixture_meta.get('mu_residual_max_ha', np.nan)):.6e} Ha. "
-                "Recompute the electronic state, or set allow_unconverged_root=True only "
-                "for an explicit diagnostic best-effort continuation."
-            )
-        final_mu_success = mixture_meta.get("final_mu_root_success", None)
-        final_mu_residual = mixture_meta.get("final_mu_residual_max_ha", None)
-        if final_mu_success is None and final_mu_residual is not None:
-            try:
-                final_mu_value = float(final_mu_residual)
-            except (TypeError, ValueError):
-                final_mu_value = np.inf
-            final_mu_success = bool(
-                np.isfinite(final_mu_value)
-                and final_mu_value <= float(cfg.mu_e_tol)
-            )
-        if final_mu_success is not None and not bool(final_mu_success) and not bool(cfg.allow_unconverged_root):
-            raise RuntimeError(
-                "Refusing to continue a mixture whose final full+external rerun "
-                "lost common-mu closure into QOZ/HNC: "
-                f"max|dmu_final|={float(mixture_meta.get('final_mu_residual_max_ha', np.nan)):.6e} Ha. "
-                "Recompute the electronic state, or set allow_unconverged_root=True only "
-                "for an explicit diagnostic best-effort continuation."
-            )
-
     if cfg.ion_temperature_ev is not None:
-        convergence_issues = _electronic_convergence_issues(
-            species_entries,
-            require_external=True,
-            screening_charge_rel_tol=float(cfg.qoz_screening_charge_rel_tol),
+        _validate_electronic_for_ion_structure(
+            cfg,
+            electronic_kind=electronic_kind,
+            electronic_result=electronic_result,
+            species_entries=species_entries,
         )
-        if convergence_issues and not bool(cfg.allow_unconverged_aa):
-            raise RuntimeError(
-                "Refusing to continue unconverged electronic structure into QOZ/HNC: "
-                + "; ".join(convergence_issues)
-                + ". Set allow_unconverged_aa=True only for an explicit diagnostic continuation."
-            )
+    elif multicomponent_preparation is not None:
+        raise ValueError(
+            "multicomponent_preparation requires cfg.ion_temperature_ev."
+        )
 
     ion_result: dict[str, Any] | None = None
     if cfg.ion_temperature_ev is not None:
         if len(species_entries) == 1:
+            if multicomponent_preparation is not None:
+                raise ValueError(
+                    "multicomponent_preparation cannot be used for a single species."
+                )
             ion_result = _one_component_ion_structure(
                 cfg,
                 species_entry=dict(species_entries[0]),
@@ -1686,6 +1939,7 @@ def continue_plasma_workflow_from_electronic_result(
             ion_result = _multicomponent_ion_structure(
                 cfg,
                 species_entries=[dict(sp) for sp in species_entries],
+                preparation=multicomponent_preparation,
             )
 
     result = {
@@ -1758,8 +2012,10 @@ def run_formula_workflow(
 
 __all__ = [
     "PlasmaWorkflowConfig",
+    "PreparedMulticomponentIonStructure",
     "continue_plasma_workflow_from_electronic_result",
     "parse_formula_composition",
+    "prepare_multicomponent_ion_structure_from_electronic_result",
     "resolve_plasma_composition",
     "run_formula_workflow",
     "solve_plasma_workflow",

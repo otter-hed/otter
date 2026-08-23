@@ -5,8 +5,10 @@ from __future__ import annotations
 from otter._version import __version__
 from otter.workflows import (
     PlasmaWorkflowConfig,
+    PreparedMulticomponentIonStructure,
     continue_plasma_workflow_from_electronic_result,
     parse_formula_composition,
+    prepare_multicomponent_ion_structure_from_electronic_result,
     resolve_plasma_composition,
     run_formula_workflow,
     solve_plasma_workflow,
@@ -29,6 +31,7 @@ __all__ = [
     "__version__",
     "CitationMixin",
     "PlasmaWorkflowConfig",
+    "PreparedMulticomponentIonStructure",
     "StateExportOptions",
     "continue_plasma_workflow_from_electronic_result",
     "bibliography_entries",
@@ -36,6 +39,7 @@ __all__ = [
     "get_cite_ref_string",
     "get_formatted_ref_string",
     "parse_formula_composition",
+    "prepare_multicomponent_ion_structure_from_electronic_result",
     "load_plasma_state",
     "resolve_plasma_composition",
     "run_formula_workflow",

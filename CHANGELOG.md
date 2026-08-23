@@ -5,6 +5,28 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+## 0.2.2 - 2026-08-23
+
+### Added
+
+- Added reusable preparation for multicomponent QOZ/HNC ion-temperature
+  scans while retaining the general solver for larger mixtures.
+
+### Changed
+
+- Reused converged species-resolved average-atom states and chemical
+  potentials when constructing external electronic states.
+- Reduced repeated QOZ/HNC transforms and matrix work without changing the
+  requested numerical tolerances.
+- Focused the public installation guide on the locked Poetry workflow.
+
+### Fixed
+
+- Strengthened shallow-bound-state, continuum-tail, and charge-partition
+  handling near pressure ionization.
+- Prevented failed continuation states and invalid average-atom intervals
+  from corrupting common-chemical-potential root searches.
+
 ## 0.2.1 - 2026-08-14
 
 ### Added

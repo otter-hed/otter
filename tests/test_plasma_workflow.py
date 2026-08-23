@@ -749,6 +749,139 @@ def test_continue_plasma_workflow_from_electronic_result_reuses_saved_electronic
     assert seen["hnc_tail_shift"] is False
 
 
+def test_prepared_multicomponent_qoz_is_reused_across_ion_temperatures() -> None:
+    """A Ti scan should build electronic response and V_ij only once."""
+    old_build = wf.build_effective_vij_from_nscr
+    old_hnc = wf.hnc_solver_multicomponent_continuation
+    calls = {"qoz": 0, "hnc": 0}
+    r_native = np.linspace(0.1, 4.0, 32)
+    electronic_result = {
+        "meta": {"root_success": True, "mu_residual_max_ha": 1.0e-8},
+        "species": [
+            {
+                "element": "C",
+                "Z": 6,
+                "x": 1.0 / 3.0,
+                "volume_bohr3": 18.0,
+                "r_ws_bohr": 1.62,
+                "result": {
+                    "r": r_native,
+                    "n_ion": np.zeros_like(r_native),
+                    "n_scr": np.exp(-r_native),
+                    "zbar": 4.0,
+                    "zbar_partition": 4.0,
+                    "mu": 0.5,
+                },
+            },
+            {
+                "element": "H",
+                "Z": 1,
+                "x": 2.0 / 3.0,
+                "volume_bohr3": 9.0,
+                "r_ws_bohr": 1.29,
+                "result": {
+                    "r": r_native,
+                    "n_ion": np.zeros_like(r_native),
+                    "n_scr": 0.5 * np.exp(-r_native),
+                    "zbar": 1.0,
+                    "zbar_partition": 1.0,
+                    "mu": 0.5,
+                },
+            },
+        ],
+    }
+
+    def _config(ti_ev):
+        return wf.PlasmaWorkflowConfig(
+            elements=["C", "H"],
+            counts=[1.0, 2.0],
+            temperature_ev=10.0,
+            rho_g_cc=5.0,
+            ion_temperature_ev=ti_ev,
+            qoz_linear_n_points=64,
+            qoz_pad_factor=1.0,
+            allow_unconverged_aa=True,
+        )
+
+    def _fake_build(**kwargs):
+        calls["qoz"] += 1
+        r = np.asarray(kwargs["r"], dtype=float)
+        k = np.asarray(kwargs["k"], dtype=float)
+        v_ie_k = np.vstack((np.exp(-k), 0.5 * np.exp(-k)))
+        v_ee_k = np.exp(-0.5 * k)
+        return SimpleNamespace(
+            vij_r=np.zeros((2, 2, r.size), dtype=float),
+            vij_k=np.zeros((2, 2, k.size), dtype=float),
+            v_ie_k=v_ie_k,
+            v_ee_k=v_ee_k,
+            c_ie_k=-v_ie_k,
+            c_ee_k=-v_ee_k,
+            n_scr_k=np.zeros((2, k.size), dtype=float),
+            chi_ee_k=-np.ones_like(k),
+            chi0_k=-np.ones_like(k),
+            gee_k=np.zeros_like(k),
+        )
+
+    def _fake_hnc(r, k, v_ij_r, transform, n_i, temperature_ha, **kwargs):
+        calls["hnc"] += 1
+        g_r = np.ones_like(v_ij_r)
+        h_r = np.zeros_like(v_ij_r)
+        c_r = np.zeros_like(v_ij_r)
+        s_k = np.repeat(np.eye(2)[:, :, np.newaxis], k.size, axis=2)
+        return (
+            g_r,
+            s_k,
+            h_r,
+            c_r,
+            [1.0e-6],
+            [{"potential_scale": 1.0, "res_final": 1.0e-6, "converged": True}],
+        )
+
+    try:
+        wf.build_effective_vij_from_nscr = _fake_build
+        wf.hnc_solver_multicomponent_continuation = _fake_hnc
+        preparation = (
+            wf.prepare_multicomponent_ion_structure_from_electronic_result(
+                _config(None),
+                electronic_kind="mixture",
+                electronic_result=electronic_result,
+            )
+        )
+        low_ti = wf.continue_plasma_workflow_from_electronic_result(
+            _config(5.0),
+            electronic_kind="mixture",
+            electronic_result=electronic_result,
+            multicomponent_preparation=preparation,
+        )
+        high_ti = wf.continue_plasma_workflow_from_electronic_result(
+            _config(10.0),
+            electronic_kind="mixture",
+            electronic_result=electronic_result,
+            multicomponent_preparation=preparation,
+        )
+    finally:
+        wf.build_effective_vij_from_nscr = old_build
+        wf.hnc_solver_multicomponent_continuation = old_hnc
+
+    assert calls == {"qoz": 1, "hnc": 2}
+    assert low_ti["ion"]["qoz_preparation_reused"] is True
+    assert high_ti["ion"]["qoz_preparation_reused"] is True
+    assert low_ti["ion"]["qoz_build_s"] == 0.0
+    np.testing.assert_array_equal(low_ti["ion"]["vij_k"], high_ti["ion"]["vij_k"])
+    np.testing.assert_allclose(
+        low_ti["ion"]["c_ie_k"],
+        2.0 * high_ti["ion"]["c_ie_k"],
+    )
+    electronic_result["species"][0]["result"]["n_scr"][0] *= 1.01
+    with pytest.raises(ValueError, match="does not match the supplied electronic"):
+        wf.continue_plasma_workflow_from_electronic_result(
+            _config(7.0),
+            electronic_kind="mixture",
+            electronic_result=electronic_result,
+            multicomponent_preparation=preparation,
+        )
+
+
 if __name__ == "__main__":
     test_parse_formula_composition_aggregates_repeated_symbols()
     test_parse_formula_composition_supports_single_and_multi_digit_counts()

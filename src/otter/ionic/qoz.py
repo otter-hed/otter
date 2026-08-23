@@ -1072,9 +1072,10 @@ def build_effective_vij_from_nscr(
     )
 
     n_species = n_scr_arr.shape[0]
-    n_scr_k = np.zeros((n_species, k_arr.size), dtype=float)
-    for idx in range(n_species):
-        n_scr_k[idx] = radial_forward(n_scr_arr[idx], transform)
+    # The DST implementation accepts leading batch dimensions.  Transforming
+    # all species together avoids repeated Python dispatch without changing
+    # the per-species transform or the QOZ equations.
+    n_scr_k = np.asarray(radial_forward(n_scr_arr, transform), dtype=float)
 
     v_ie_k, v_ee_k, c_ie_k, c_ee_k = electron_interaction_channels_k(
         k=k_arr,
@@ -1092,7 +1093,6 @@ def build_effective_vij_from_nscr(
         chi0_k=chi0_k,
         gee_k=gee_k,
     )
-    vij_r = np.zeros((n_species, n_species, r_arr.size), dtype=float)
     vij_k = 0.5 * (vij_k + np.swapaxes(vij_k, 0, 1))
     if opts.high_k_taper_start_frac is not None:
         taper_start = float(opts.high_k_taper_start_frac)
@@ -1100,10 +1100,8 @@ def build_effective_vij_from_nscr(
             raise ValueError("high_k_taper_start_frac must lie in (0, 1) when provided.")
         taper = _high_k_cosine_taper_numba(k_arr, taper_start)
         vij_k = vij_k * taper[np.newaxis, np.newaxis, :]
-    for i in range(n_species):
-        for j in range(n_species):
-            vij_r[i, j] = radial_inverse(vij_k[i, j], transform)
-            vij_r[i, j] = vij_r[i, j] - float(vij_r[i, j, -1])
+    vij_r = np.asarray(radial_inverse(vij_k, transform), dtype=float)
+    vij_r = vij_r - vij_r[..., -1, np.newaxis]
     vij_r = 0.5 * (vij_r + np.swapaxes(vij_r, 0, 1))
     return MultiComponentEffectivePotentialResult(
         vij_r=vij_r,
@@ -1121,6 +1119,52 @@ def build_effective_vij_from_nscr(
         n_i_species=n_i_arr.copy(),
         zbar_species=zbar_arr.copy(),
     )
+
+
+def _invert_symmetric_oz_batch(a_batch: np.ndarray) -> np.ndarray:
+    """Invert a batch of symmetric OZ matrices, specializing 1x1 and 2x2 cases.
+
+    Binary mixtures dominate current production use.  Their closed-form 2x2
+    inverse avoids thousands of tiny LAPACK calls per HNC map.  Modes close
+    enough to singularity for determinant cancellation use ``numpy.solve``;
+    this preserves the generic path precisely where robustness matters most.
+    """
+    matrices = np.asarray(a_batch, dtype=float)
+    if matrices.ndim != 3 or matrices.shape[1] != matrices.shape[2]:
+        raise ValueError("a_batch must have shape (n_k, n_species, n_species).")
+    n_species = int(matrices.shape[1])
+    eye_batch = np.broadcast_to(
+        np.eye(n_species, dtype=float), matrices.shape
+    )
+    if n_species == 1:
+        denominator = matrices[:, 0, 0]
+        if np.any(denominator == 0.0) or not np.all(np.isfinite(denominator)):
+            return np.linalg.solve(matrices, eye_batch)
+        return (1.0 / denominator)[:, np.newaxis, np.newaxis]
+    if n_species != 2:
+        return np.linalg.solve(matrices, eye_batch)
+
+    aa = matrices[:, 0, 0]
+    bb = matrices[:, 0, 1]
+    dd = matrices[:, 1, 1]
+    determinant = aa * dd - bb * bb
+    cancellation_scale = np.abs(aa * dd) + bb * bb
+    unsafe = (
+        ~np.isfinite(determinant)
+        | (
+            np.abs(determinant)
+            <= np.finfo(float).eps * np.maximum(cancellation_scale, 1.0)
+        )
+    )
+    if np.any(unsafe):
+        return np.linalg.solve(matrices, eye_batch)
+
+    inverse = np.empty_like(matrices)
+    inverse[:, 0, 0] = dd / determinant
+    inverse[:, 1, 1] = aa / determinant
+    inverse[:, 0, 1] = -bb / determinant
+    inverse[:, 1, 0] = inverse[:, 0, 1]
+    return inverse
 
 
 def hnc_solver(
@@ -1491,6 +1535,7 @@ def hnc_solver_multicomponent(
     alpha = float(mix)
     res_hist: list[float] = []
     n_species = v_arr.shape[0]
+    tri_i, tri_j = np.triu_indices(n_species)
     scheme = str(mixing_scheme).lower().strip()
     if scheme not in ("picard", "anderson", "newton_krylov"):
         raise ValueError(
@@ -1519,11 +1564,23 @@ def hnc_solver_multicomponent(
     def _symmetrize_pair(arr: np.ndarray) -> np.ndarray:
         return 0.5 * (arr + np.swapaxes(arr, 0, 1))
 
+    def _expand_pair_channels(packed: np.ndarray) -> np.ndarray:
+        """Expand independent symmetric pair channels to the full matrix."""
+        packed_arr = np.asarray(packed, dtype=float)
+        arr = np.empty((n_species, n_species, packed_arr.shape[-1]), dtype=float)
+        arr[tri_i, tri_j, :] = packed_arr
+        arr[tri_j, tri_i, :] = packed_arr
+        return arr
+
     def _pair_forward(arr_r: np.ndarray) -> np.ndarray:
-        return _symmetrize_pair(radial_forward(arr_r, transform))
+        # Only N(N+1)/2 pair channels are independent.  In particular, this
+        # avoids transforming both CH and HC in every HNC residual evaluation.
+        packed_k = radial_forward(np.asarray(arr_r)[tri_i, tri_j, :], transform)
+        return _expand_pair_channels(packed_k)
 
     def _pair_inverse(arr_k: np.ndarray) -> np.ndarray:
-        return _symmetrize_pair(radial_inverse(arr_k, transform))
+        packed_r = radial_inverse(np.asarray(arr_k)[tri_i, tri_j, :], transform)
+        return _expand_pair_channels(packed_r)
 
     def _matrix_oz(c_k: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -1543,14 +1600,15 @@ def hnc_solver_multicomponent(
         to the unweighted pair-correlation basis.
         """
         eye = np.eye(n_species, dtype=float)
-        eye_batch = np.broadcast_to(eye, (k_arr.size, n_species, n_species))
         c_batch = np.moveaxis(_symmetrize_pair(c_k), -1, 0)
         c_tilde_batch = c_batch * sqrt_n[np.newaxis, :, :]
-        a_batch = eye_batch - c_tilde_batch
+        a_batch = eye[np.newaxis, :, :] - c_tilde_batch
         try:
-            s_batch = np.linalg.solve(a_batch, eye_batch)
+            s_batch = _invert_symmetric_oz_batch(a_batch)
         except np.linalg.LinAlgError:
-            s_batch = np.linalg.solve(a_batch + 1.0e-10 * eye_batch, eye_batch)
+            s_batch = _invert_symmetric_oz_batch(
+                a_batch + 1.0e-10 * eye[np.newaxis, :, :]
+            )
         s_batch = 0.5 * (s_batch + np.swapaxes(s_batch, -1, -2))
         s_k_raw = _symmetrize_pair(np.moveaxis(s_batch, 0, -1))
         s_k = _project_s_matrix(s_k_raw) if use_s_projection else s_k_raw
@@ -1604,10 +1662,13 @@ def hnc_solver_multicomponent(
 
     def _candidate_physical(
         cand_n: np.ndarray,
+        mapped: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        | None = None,
     ) -> tuple[bool, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None]:
         if not np.all(np.isfinite(cand_n)):
             return False, None
-        mapped = _map_n(cand_n)
+        if mapped is None:
+            mapped = _map_n(cand_n)
         _, h_k_loc, _, g_loc, _ = mapped
         if not np.all(np.isfinite(h_k_loc)) or not np.all(np.isfinite(g_loc)):
             return False, None
@@ -1651,35 +1712,60 @@ def hnc_solver_multicomponent(
         # forming the dense Jacobian would scale as (N_r N_pair)^2.
         from scipy.optimize import NoConvergence, newton_krylov
 
-        tri_i, tri_j = np.triu_indices(n_species)
-
         def _pack_pair(arr: np.ndarray) -> np.ndarray:
             return np.asarray(arr[tri_i, tri_j, :], dtype=float).reshape(-1)
 
         def _unpack_pair(vec: np.ndarray) -> np.ndarray:
             packed = np.asarray(vec, dtype=float).reshape(tri_i.size, r_arr.size)
-            arr = np.empty_like(beta_v_r)
-            arr[tri_i, tri_j, :] = packed
-            arr[tri_j, tri_i, :] = packed
-            return arr
+            return _expand_pair_channels(packed)
 
         best_vec = _pack_pair(n_cur)
+        best_mapped: tuple[
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+        ] | None = None
+        cached_vec: np.ndarray | None = None
+        cached_mapped: tuple[
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+        ] | None = None
+
+        def _mapped_for_vec(vec: np.ndarray):
+            """Reuse the map that SciPy just evaluated at the same iterate."""
+            nonlocal cached_vec, cached_mapped
+            vec_arr = np.asarray(vec, dtype=float)
+            if (
+                cached_vec is None
+                or cached_mapped is None
+                or not np.array_equal(vec_arr, cached_vec)
+            ):
+                cached_vec = vec_arr.copy()
+                cached_mapped = _map_n(_unpack_pair(vec_arr))
+            return cached_mapped
 
         def _raw_residual(vec: np.ndarray) -> np.ndarray:
             n_trial = _unpack_pair(vec)
-            n_map_trial = _map_n(n_trial)[0]
+            n_map_trial = _mapped_for_vec(vec)[0]
             return _pack_pair(n_trial - n_map_trial)
 
         def _newton_callback(vec: np.ndarray, residual: np.ndarray) -> None:
-            nonlocal best_res, best_vec, best_ok
+            nonlocal best_res, best_vec, best_mapped, best_ok
             vec_norm = max(float(np.linalg.norm(vec)), 1.0e-14)
             res_rel = float(np.linalg.norm(residual) / vec_norm)
             res_hist.append(res_rel)
             candidate = _unpack_pair(vec)
-            ok, _ = _candidate_physical(candidate)
+            mapped = _mapped_for_vec(vec)
+            ok, _ = _candidate_physical(candidate, mapped=mapped)
             if ok and np.isfinite(res_rel) and res_rel < best_res:
                 best_res = res_rel
                 best_vec = np.asarray(vec, dtype=float).copy()
+                best_mapped = mapped
                 best_ok = True
 
         x0 = _pack_pair(n_cur)
@@ -1712,13 +1798,20 @@ def hnc_solver_multicomponent(
         )
         if not res_hist or solved_rel != res_hist[-1]:
             res_hist.append(solved_rel)
-        solved_ok, _ = _candidate_physical(solved_n)
+        solved_mapped = _mapped_for_vec(solved_vec)
+        solved_ok, _ = _candidate_physical(solved_n, mapped=solved_mapped)
         if solved_ok and solved_rel < best_res:
             best_res = solved_rel
             best_vec = solved_vec.copy()
+            best_mapped = solved_mapped
             best_ok = True
-        n_cur = _unpack_pair(best_vec if best_ok else solved_vec)
-        _, h_k, h_r, g_r, c_k = _map_n(n_cur)
+        final_vec = best_vec if best_ok else solved_vec
+        n_cur = _unpack_pair(final_vec)
+        if best_ok and np.array_equal(final_vec, best_vec) and best_mapped is not None:
+            final_mapped = best_mapped
+        else:
+            final_mapped = _mapped_for_vec(final_vec)
+        _, h_k, h_r, g_r, c_k = final_mapped
         c_r = _pair_inverse(c_k)
         s_ij_k = np.eye(n_species)[:, :, np.newaxis] + sqrt_n[:, :, np.newaxis] * h_k
         return g_r, s_ij_k, h_r, c_r, res_hist

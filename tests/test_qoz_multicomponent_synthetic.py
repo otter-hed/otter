@@ -25,10 +25,26 @@ from otter.ionic import (
     precompute_dst_lattice_transform_like,
 )
 from otter.ionic.qoz import (
+    _invert_symmetric_oz_batch,
     _stable_effective_pair_potential_k,
     decompose_effective_pair_potential_k,
 )
-from otter.numerics.transforms import radial_forward
+from otter.numerics.transforms import radial_forward, radial_inverse
+
+
+@pytest.mark.parametrize("n_species", [1, 2, 3])
+def test_specialized_oz_batch_inverse_matches_generic_solve(n_species: int) -> None:
+    """Fast one- and two-species inverses must preserve the generic OZ solve."""
+    rng = np.random.default_rng(17 + n_species)
+    matrices = rng.normal(scale=0.04, size=(37, n_species, n_species))
+    matrices = 0.5 * (matrices + np.swapaxes(matrices, 1, 2))
+    matrices += 1.5 * np.eye(n_species)[np.newaxis, :, :]
+    expected = np.linalg.solve(
+        matrices,
+        np.broadcast_to(np.eye(n_species), matrices.shape),
+    )
+    actual = _invert_symmetric_oz_batch(matrices)
+    np.testing.assert_allclose(actual, expected, atol=5.0e-16, rtol=5.0e-15)
 
 
 def test_qoz_multicomponent_synthetic_pipeline() -> None:
@@ -96,6 +112,17 @@ def test_qoz_multicomponent_synthetic_pipeline() -> None:
     np.testing.assert_allclose(qoz.c_ie_k, -qoz.v_ie_k / te_ha)
     np.testing.assert_allclose(qoz.c_ee_k, -qoz.v_ee_k / te_ha)
     np.testing.assert_allclose(qoz.v_ie_k, qoz.n_scr_k / qoz.chi_ee_k)
+    np.testing.assert_allclose(
+        qoz.n_scr_k,
+        np.stack(
+            [radial_forward(profile, transform) for profile in charge_fix.n_scr_r]
+        ),
+        atol=0.0,
+        rtol=0.0,
+    )
+    inverse_pairs = radial_inverse(qoz.vij_k, transform)
+    inverse_pairs = inverse_pairs - inverse_pairs[..., -1, np.newaxis]
+    np.testing.assert_allclose(qoz.vij_r, inverse_pairs, atol=1.0e-13, rtol=1.0e-13)
 
     multi_single = build_effective_vij_from_nscr(
         r=transform.r,
@@ -229,6 +256,113 @@ def test_qoz_multicomponent_synthetic_pipeline() -> None:
         * radial_forward(np.asarray(g_n) - 1.0, transform)
     )
     assert float(np.max(np.abs(s_n - s_from_g))) < 1.0e-8
+
+
+def test_multicomponent_hnc_transforms_only_independent_pair_channels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The HNC loop should not separately transform symmetric ij and ji channels."""
+    import otter.ionic.qoz as qoz_module
+
+    transform = precompute_dst_lattice_transform_like(
+        create_linear_grid(rmax=12.0, N=64).r
+    )
+    n_i = np.asarray([1.0e-3, 2.0e-3], dtype=float)
+    v_r = np.zeros((2, 2, transform.r.size), dtype=float)
+    observed_channel_counts: list[int] = []
+    original_forward = qoz_module.radial_forward
+    original_inverse = qoz_module.radial_inverse
+
+    def _record_forward(values, transform_arg):
+        arr = np.asarray(values)
+        if arr.ndim == 2:
+            observed_channel_counts.append(int(arr.shape[0]))
+        return original_forward(values, transform_arg)
+
+    def _record_inverse(values, transform_arg):
+        arr = np.asarray(values)
+        if arr.ndim == 2:
+            observed_channel_counts.append(int(arr.shape[0]))
+        return original_inverse(values, transform_arg)
+
+    monkeypatch.setattr(qoz_module, "radial_forward", _record_forward)
+    monkeypatch.setattr(qoz_module, "radial_inverse", _record_inverse)
+    qoz_module.hnc_solver_multicomponent(
+        transform.r,
+        transform.k,
+        v_r,
+        transform,
+        n_i,
+        1.0,
+        tol=1.0e-4,
+        max_iter=4,
+        mixing_scheme="picard",
+    )
+
+    assert observed_channel_counts
+    assert set(observed_channel_counts) == {3}
+
+
+def test_binary_hnc_fast_oz_inverse_matches_generic_solver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The optimized binary OZ path should preserve the final HNC solution."""
+    import otter.ionic.qoz as qoz_module
+
+    transform = precompute_dst_lattice_transform_like(
+        create_linear_grid(rmax=20.0, N=192).r
+    )
+    r = transform.r
+    n_i = np.asarray([1.0e-3, 2.0e-3], dtype=float)
+    shape = np.exp(-0.5 * r)
+    v_r = np.empty((2, 2, r.size), dtype=float)
+    v_r[0, 0] = 2.0e-3 * shape
+    v_r[1, 1] = 1.5e-3 * shape
+    v_r[0, 1] = v_r[1, 0] = 1.0e-3 * shape
+    kwargs = {
+        "tol": 5.0e-5,
+        "max_iter": 20,
+        "mixing_scheme": "newton_krylov",
+        "s_projection_mode": "none",
+        "c_map_clip": 0.0,
+        "enforce_h_tail_zero": False,
+    }
+    optimized = qoz_module.hnc_solver_multicomponent(
+        r,
+        transform.k,
+        v_r,
+        transform,
+        n_i,
+        1.0,
+        **kwargs,
+    )
+
+    def _generic_inverse(matrices):
+        matrices = np.asarray(matrices, dtype=float)
+        eye = np.broadcast_to(np.eye(matrices.shape[1]), matrices.shape)
+        return np.linalg.solve(matrices, eye)
+
+    monkeypatch.setattr(
+        qoz_module,
+        "_invert_symmetric_oz_batch",
+        _generic_inverse,
+    )
+    generic = qoz_module.hnc_solver_multicomponent(
+        r,
+        transform.k,
+        v_r,
+        transform,
+        n_i,
+        1.0,
+        **kwargs,
+    )
+    for optimized_array, generic_array in zip(optimized[:4], generic[:4]):
+        np.testing.assert_allclose(
+            optimized_array,
+            generic_array,
+            atol=2.0e-10,
+            rtol=2.0e-10,
+        )
 
 
 def test_strict_continuation_rejects_a_projected_false_root(monkeypatch: pytest.MonkeyPatch) -> None:
