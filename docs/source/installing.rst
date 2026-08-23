@@ -82,6 +82,18 @@ Run commands inside the managed environment with ``poetry run``:
 
    $ poetry run python -c "import otter; print(otter.__version__)"
 
+Run the included single-species aluminium example from the repository root:
+
+.. code-block:: console
+
+   $ poetry run python examples/single_species_workflow.py
+
+The calculation prints its convergence progress and saves its portable state
+and figures under :file:`outputs/`.  Edit the user-input block at the top of
+:download:`examples/single_species_workflow.py
+<../../examples/single_species_workflow.py>` to change the element, density,
+or temperatures.
+
 Run the tests
 -------------
 

@@ -70,6 +70,15 @@ requires CMake and a C compiler. See the
 poetry run python -c "import otter; print(otter.__version__)"
 ```
 
+Run the included single-species aluminium example from the repository root:
+
+```bash
+poetry run python examples/single_species_workflow.py
+```
+
+The calculation prints its convergence progress and saves its state and
+figures under `outputs/`.
+
 ## Quick start
 
 Run an introductory calculation in Google Colab:

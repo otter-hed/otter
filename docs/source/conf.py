@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import sys
 
@@ -16,16 +15,13 @@ PACKAGE_ROOT = SOURCE_ROOT / "otter"
 # active in the Sphinx environment.
 sys.path.insert(0, str(SOURCE_ROOT))
 
+from otter import __version__ as otter_version  # noqa: E402
+
 project = "Otter"
 author = "Chongbing Qu and Dominik Kraus"
 copyright = "2026, Chongbing Qu"
 
-try:
-    release = version("otter")
-except PackageNotFoundError:
-    # This fallback keeps source-tree documentation introspection useful before
-    # the first editable install. CI and release builds install the package.
-    release = "0+unknown"
+release = otter_version
 version = release
 
 extensions = [
