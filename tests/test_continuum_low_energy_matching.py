@@ -214,6 +214,30 @@ def test_low_energy_free_production_path_is_stable_for_high_partial_waves() -> N
     assert np.max(np.abs(n_energy / expected - 1.0)) < 2.0e-3
 
 
+def test_match_l_cap_retains_low_partial_waves_at_threshold() -> None:
+    """The match cap must not erase a p resonance before it can be scouted."""
+    grid = create_sqrt_grid(rmax=30.0, N=500)
+    r = np.asarray(grid.r, dtype=float)
+    cap = qmod._compute_l_cap(
+        1.0e-8,
+        8,
+        r,
+        2,
+        None,
+        0.6 * float(r[-1]),
+        0.4,
+        "r",
+        None,
+        16,
+        3.0,
+        1.0e-8,
+        np.zeros_like(r),
+        "match",
+    )
+
+    assert cap == 2
+
+
 def test_failed_production_match_never_uses_raw_origin_normalization() -> None:
     """A bad match may fall back to free, but not to an arbitrary raw scale."""
     grid = create_sqrt_grid(rmax=10.0, N=200)

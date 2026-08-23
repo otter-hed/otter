@@ -17,6 +17,7 @@ from otter.workflows import (
 def _fake_species_result(cfg_species, *, mu: float, converged: bool) -> dict:
     r = np.linspace(1.0e-3, 4.0, 32)
     return {
+        "Z": float(mixmod.element_info(cfg_species.element).z),
         "mu": float(mu),
         "r": r,
         "r_ws": float(cfg_species.r_ws_override_bohr),
@@ -158,6 +159,79 @@ def test_unresolved_threshold_warm_start_is_retried_cold(
     assert evaluator._species_threshold_cold_retries == 1
 
 
+def test_latched_threshold_continuation_failure_is_retried_cold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A path failure is safe to retry after the threshold branch is fixed."""
+    calls: dict[str, list[bool]] = {"H": [], "C": []}
+
+    def _fake_full(cfg_species):
+        symbol = str(mixmod.element_info(cfg_species.element).symbol)
+        used_warm_start = cfg_species.v_full_init is not None
+        calls[symbol].append(bool(used_warm_start))
+        result = _fake_species_result(
+            cfg_species,
+            mu=float(np.log(1.0 / cfg_species.n_i_override_bohr3)),
+            converged=not (symbol == "H" and used_warm_start),
+        )
+        result["threshold_state_status"] = "none"
+        return result
+
+    monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
+    cfg = MixtureConfig(
+        species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
+        rho_g_cc=1.0, species_parallel_jobs=1, save_data=False,
+    )
+    evaluator = mixmod._MixtureEvaluator(cfg)
+    try:
+        evaluator.evaluate(np.asarray([0.0], dtype=float))
+        evaluator._species_threshold_refine_latched["H"] = 3
+        second = evaluator.evaluate(np.asarray([0.1], dtype=float))
+    finally:
+        evaluator.close()
+
+    assert mixmod._record_species_results_are_converged(second)
+    assert calls["H"] == [False, True, False]
+    assert calls["C"] == [False, True]
+    assert evaluator._species_threshold_cold_retries == 1
+
+
+def test_unlatched_continuation_failure_preserves_invalid_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Do not splice a cold shallow-state branch into a Brent bracket."""
+    calls: dict[str, list[bool]] = {"H": [], "C": []}
+
+    def _fake_full(cfg_species):
+        symbol = str(mixmod.element_info(cfg_species.element).symbol)
+        used_warm_start = cfg_species.v_full_init is not None
+        calls[symbol].append(bool(used_warm_start))
+        result = _fake_species_result(
+            cfg_species,
+            mu=float(np.log(1.0 / cfg_species.n_i_override_bohr3)),
+            converged=not (symbol == "H" and used_warm_start),
+        )
+        result["threshold_state_status"] = "none"
+        return result
+
+    monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
+    cfg = MixtureConfig(
+        species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
+        rho_g_cc=1.0, species_parallel_jobs=1, save_data=False,
+    )
+    evaluator = mixmod._MixtureEvaluator(cfg)
+    try:
+        evaluator.evaluate(np.asarray([0.0], dtype=float))
+        second = evaluator.evaluate(np.asarray([0.1], dtype=float))
+    finally:
+        evaluator.close()
+
+    assert not mixmod._record_species_results_are_converged(second)
+    assert calls["H"] == [False, True]
+    assert calls["C"] == [False, True]
+    assert evaluator._species_threshold_cold_retries == 0
+
+
 def test_threshold_failure_is_retried_with_physical_matching(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -168,8 +242,11 @@ def test_threshold_failure_is_retried_with_physical_matching(
         symbol = str(mixmod.element_info(cfg_species.element).symbol)
         calls[symbol].append({
             "refine": bool(cfg_species.bound_zero_tail_refine),
+            "energy_cut_mode": str(cfg_species.bound_energy_cut_mode),
             "max_binding": float(cfg_species.bound_zero_tail_max_binding_ha),
             "scan_points": int(cfg_species.bound_zero_tail_scan_points),
+            "l_max": int(cfg_species.bound_zero_tail_l_max),
+            "adaptive_mode": str(cfg_species.cont_adaptive_mode_stage2),
             "edge_tol": float(cfg_species.bound_zero_tail_edge_rel_tol),
             "mix": float(cfg_species.scf_mix),
             "w0": float(cfg_species.scf_mixing_w0),
@@ -183,6 +260,8 @@ def test_threshold_failure_is_retried_with_physical_matching(
         result = _fake_species_result(cfg_species, mu=0.0, converged=recovered)
         result["threshold_state_status"] = "resolved" if recovered else "unresolved"
         result["shallowest_bound_energy_ha"] = -2.0e-3
+        result["bound_basis_l_list"] = np.asarray([0, 1, 2])
+        result["bound_state_diagnostics"] = {"shallowest": {"l": 0}}
         return result
 
     monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
@@ -207,8 +286,11 @@ def test_threshold_failure_is_retried_with_physical_matching(
     assert len(calls["H"]) == 2
     retry = calls["H"][1]
     assert retry["refine"] is True
+    assert retry["energy_cut_mode"] == "zero"
     assert retry["max_binding"] >= 1.0e-2
     assert retry["scan_points"] == 24
+    assert retry["l_max"] == 0
+    assert retry["adaptive_mode"] == "simpson"
     assert retry["edge_tol"] == pytest.approx(0.25)
     assert retry["mix"] == pytest.approx(0.15)
     assert retry["w0"] == pytest.approx(5.0e-4)
@@ -218,6 +300,25 @@ def test_threshold_failure_is_retried_with_physical_matching(
     assert retry["dv_tol"] <= 1.0e-6
     assert retry["warm"] is False
     assert evaluator._species_threshold_refine_retries == 1
+
+
+def test_heavy_threshold_retry_scouts_a_missing_p_channel() -> None:
+    """A vanished C p state need not appear as the final shallowest level."""
+    cfg = mixmod.FullExternalConfig(
+        element="C", temperature_ev=23.0, rho_g_cc=0.946,
+    )
+    refined = mixmod._threshold_refine_config(
+        cfg,
+        threshold_result={
+            "Z": 6,
+            "bound_basis_l_list": np.asarray([0, 1, 2]),
+            "bound_state_diagnostics": {"shallowest": {"l": 0}},
+        },
+    )
+
+    assert refined.bound_zero_tail_l_max == 2
+    assert refined.bound_energy_cut_mode == "zero"
+    assert refined.cont_adaptive_mode_stage2 == "phase-root"
 
 
 def test_nonthreshold_scf_failure_does_not_use_threshold_retry(
@@ -234,6 +335,7 @@ def test_nonthreshold_scf_failure_does_not_use_threshold_retry(
         )
         result["threshold_state_status"] = "resolved"
         result["shallowest_bound_energy_ha"] = -1.0
+        result["bound_state_diagnostics"] = {"shallowest": {"l": 1}}
         return result
 
     monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
@@ -266,7 +368,24 @@ def test_bound_charge_branch_flips_trigger_threshold_retry(
         result["threshold_state_status"] = "resolved"
         result["shallowest_bound_energy_ha"] = -1.0
         if symbol == "H" and not recovered:
-            charges = [2.0, 2.24, 2.0, 2.24, 2.0, 2.24, 2.0, 2.24]
+            # Reproduce the Te=9 failure shape: early pressure-ionization
+            # crossings poison the mixer, followed by more than 80 iterations
+            # on the all-continuum branch.  The occupied revisits also sit
+            # below half of the largest transient often enough that one
+            # midpoint split is insufficient.
+            charges = [
+                0.0,
+                0.24,
+                0.0,
+                0.08,
+                0.0,
+                0.11,
+                0.0,
+                0.09,
+                0.0,
+                0.12,
+                0.0,
+            ] + [0.0] * 90
             result["history"] = [
                 {"err": 1.0e-2, "charge_bound": value}
                 for value in charges
@@ -288,6 +407,65 @@ def test_bound_charge_branch_flips_trigger_threshold_retry(
     assert calls == {"H": 2, "C": 1}
     h_result = dict(record["results"][0])
     assert h_result["mixture_threshold_refine_retry_selected"] is True
+
+
+def test_threshold_refine_representation_is_latched_across_root_points(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a diagnosed branch flip, later root points start on that representation."""
+    h_calls: list[tuple[bool, bool, str]] = []
+
+    def _fake_full(cfg_species):
+        symbol = str(mixmod.element_info(cfg_species.element).symbol)
+        refined = bool(cfg_species.bound_zero_tail_refine)
+        if symbol == "H":
+            h_calls.append(
+                (
+                    refined,
+                    cfg_species.v_full_init is not None,
+                    str(cfg_species.bound_energy_cut_mode),
+                )
+            )
+        result = _fake_species_result(
+            cfg_species,
+            mu=float(cfg_species.r_ws_override_bohr),
+            converged=symbol != "H" or refined,
+        )
+        result["threshold_state_status"] = "resolved"
+        result["shallowest_bound_energy_ha"] = -1.0
+        result["bound_state_diagnostics"] = {"shallowest": {"l": 1}}
+        if symbol == "H" and not refined:
+            result["history"] = [
+                {"err": 1.0e-2, "charge_bound": value}
+                for value in (0.0, 0.2, 0.0, 0.1, 0.0, 0.15, 0.0, 0.1)
+            ]
+        return result
+
+    monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
+    cfg = MixtureConfig(
+        species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
+        rho_g_cc=1.0, species_parallel_jobs=1, save_data=False,
+    )
+    evaluator = mixmod._MixtureEvaluator(cfg)
+    try:
+        first = evaluator.evaluate(np.asarray([0.0], dtype=float))
+        second = evaluator.evaluate(np.asarray([0.1], dtype=float))
+    finally:
+        evaluator.close()
+
+    assert mixmod._record_species_results_are_converged(first)
+    assert mixmod._record_species_results_are_converged(second)
+    # The first diagnosed retry must be cold, while the latched representation
+    # at the next root point reuses the previous converged potential.
+    assert h_calls == [
+        (False, False, "v_frac"),
+        (True, False, "zero"),
+        (True, True, "zero"),
+    ]
+    h_second = dict(second["results"][0])
+    assert h_second["mixture_threshold_refine_latched"] is True
+    assert h_second["mixture_threshold_refine_l_max"] == 1
+    assert h_second["mixture_threshold_refine_retry_attempted"] is False
 
 
 def test_common_mu_evaluator_uses_full_aa_only(
@@ -663,7 +841,47 @@ def test_final_species_config_preserves_selected_a_only_threshold_retry() -> Non
     assert species_cfg.v_full_init is not None
 
 
-def test_final_species_config_preserves_selected_threshold_refinement() -> None:
+def test_final_species_config_continues_from_accepted_root_state() -> None:
+    """The external rerun must retain the finite-tolerance root state."""
+    cfg = MixtureConfig(
+        species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
+        rho_g_cc=1.0, final_run_mode="full+ext", save_data=False,
+    )
+    full_result = {
+        "r": np.asarray([0.1, 1.0, 2.0]),
+        "v_full": np.asarray([-1.0, -0.1, 0.0]),
+        "mu": 0.15,
+        "stage2_converged": True,
+    }
+
+    species_cfg = mixmod._final_species_config(
+        cfg,
+        element_key="H",
+        r_ws_bohr=2.0,
+        n_i_bohr3=3.0 / (4.0 * np.pi * 2.0**3),
+        extra_overrides={},
+        full_result_init=full_result,
+        root_mu_ha=0.15,
+    )
+
+    assert species_cfg.stage1_max_iter == 0
+    assert species_cfg.continuation_stage2_from_init is True
+    assert species_cfg.continuation_mu_init == pytest.approx(0.15)
+    assert species_cfg.full_fixed_mu_ha == pytest.approx(0.15)
+    assert species_cfg.full_result_init is not full_result
+    assert species_cfg.full_result_init["mu"] == pytest.approx(0.15)
+
+
+@pytest.mark.parametrize(
+    "marker",
+    (
+        "mixture_threshold_refine_retry_selected",
+        "mixture_threshold_refine_latched",
+    ),
+)
+def test_final_species_config_preserves_selected_threshold_refinement(
+    marker: str,
+) -> None:
     """The post-root full+external solve must retain the resolved shallow pole."""
     cfg = MixtureConfig(
         species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
@@ -673,7 +891,8 @@ def test_final_species_config_preserves_selected_threshold_refinement() -> None:
         "r": np.asarray([0.1, 1.0, 2.0]),
         "v_full": np.asarray([-1.0, -0.1, 0.0]),
         "mu": 0.25,
-        "mixture_threshold_refine_retry_selected": True,
+        marker: True,
+        "mixture_threshold_refine_l_max": 1,
     }
 
     species_cfg = mixmod._final_species_config(
@@ -686,7 +905,10 @@ def test_final_species_config_preserves_selected_threshold_refinement() -> None:
     )
 
     assert species_cfg.bound_zero_tail_refine is True
+    assert species_cfg.bound_energy_cut_mode == "zero"
     assert species_cfg.bound_zero_tail_max_binding_ha >= 1.0e-2
+    assert species_cfg.bound_zero_tail_l_max == 1
+    assert species_cfg.cont_adaptive_mode_stage2 == "phase-root"
     assert species_cfg.stage2_max_iter >= 300
     assert species_cfg.scf_dn_tol <= 1.0e-6
     assert species_cfg.scf_dv_tol <= 1.0e-6
@@ -938,7 +1160,7 @@ def test_binary_brent_has_a_separate_budget_after_last_primary_seed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A bracket found on root_maxfev must still receive Brent iterations."""
-    root_theta = -0.4
+    root_theta = -2.0
 
     def _fake_full(cfg_species):
         symbol = str(mixmod.element_info(cfg_species.element).symbol)
@@ -1063,6 +1285,27 @@ def test_unresolved_threshold_state_is_identified_before_qoz() -> None:
     assert issues == ["H: unresolved threshold bound state"]
 
 
+def test_raw_screening_charge_mismatch_is_identified_before_qoz() -> None:
+    issues = _electronic_convergence_issues(
+        [{
+            "element": "H",
+            "result": {
+                "stage2_converged": True,
+                "mu": 0.0,
+                "threshold_state_status": "none",
+                "ext_status": {"converged": True},
+                "q_scr_all": 1.2246369664,
+                "zbar_partition": 0.9989254380,
+            },
+        }],
+        require_external=True,
+        screening_charge_rel_tol=5.0e-2,
+    )
+    assert len(issues) == 1
+    assert issues[0].startswith("H: raw screening charge relative error")
+    assert "exceeds 5.000000e-02" in issues[0]
+
+
 def test_final_rerun_mu_residual_is_rejected_before_qoz() -> None:
     cfg = PlasmaWorkflowConfig(
         elements=["C", "H"],
@@ -1134,6 +1377,53 @@ def test_final_unresolved_threshold_state_is_rejected_before_qoz() -> None:
         )
 
 
+def test_raw_screening_charge_mismatch_is_rejected_before_qoz() -> None:
+    cfg = PlasmaWorkflowConfig(
+        elements=["C", "H"],
+        counts=[1.0, 1.0],
+        temperature_ev=10.0,
+        rho_g_cc=1.0,
+        ion_temperature_ev=10.0,
+    )
+    electronic = {
+        "meta": {
+            "root_success": True,
+            "final_mu_root_success": True,
+            "final_mu_residual_max_ha": 1.0e-8,
+        },
+        "species": [
+            {
+                "element": "C",
+                "result": {
+                    "stage2_converged": True,
+                    "mu": 0.0,
+                    "threshold_state_status": "resolved",
+                    "ext_status": {"converged": True},
+                    "q_scr_all": 4.0,
+                    "zbar_partition": 4.0,
+                },
+            },
+            {
+                "element": "H",
+                "result": {
+                    "stage2_converged": True,
+                    "mu": 0.0,
+                    "threshold_state_status": "none",
+                    "ext_status": {"converged": True},
+                    "q_scr_all": 1.2246369664,
+                    "zbar_partition": 0.9989254380,
+                },
+            },
+        ],
+    }
+    with pytest.raises(RuntimeError, match="raw screening charge relative error"):
+        continue_plasma_workflow_from_electronic_result(
+            cfg,
+            electronic_kind="mixture",
+            electronic_result=electronic,
+        )
+
+
 def test_mixture_final_rerun_records_electronic_eligibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1145,7 +1435,7 @@ def test_mixture_final_rerun_records_electronic_eligibility(
         "threshold_state_status": "resolved",
     }
     mixture_full = {
-        "mu_common_ha": 0.0,
+        "mu_common_ha": 1.0e-5,
         "theta": np.asarray([0.0]),
         "volume_weights": np.asarray([0.5, 0.5]),
         "history": [],
@@ -1153,7 +1443,8 @@ def test_mixture_final_rerun_records_electronic_eligibility(
             {
                 "element": "H", "Z": 1, "atomic_mass": 1.0,
                 "count": 1.0, "x": 0.5, "volume_bohr3": 1.0,
-                "r_ws_bohr": 1.0, "mu_ha": 0.0, "result": dict(base_result),
+                "r_ws_bohr": 1.0, "mu_ha": 2.0e-5,
+                "result": {**base_result, "mu": 2.0e-5},
             },
             {
                 "element": "C", "Z": 6, "atomic_mass": 12.0,
@@ -1165,11 +1456,14 @@ def test_mixture_final_rerun_records_electronic_eligibility(
     }
 
     monkeypatch.setattr(mixmod, "_mixture_full_only_payload", lambda cfg: mixture_full)
-    monkeypatch.setattr(
-        mixmod,
-        "_final_species_config",
-        lambda cfg, **kwargs: int(kwargs["element_key"]),
-    )
+    root_mu_by_z: dict[int, float] = {}
+
+    def _fake_final_config(cfg, **kwargs):
+        z = int(kwargs["element_key"])
+        root_mu_by_z[z] = float(kwargs["root_mu_ha"])
+        return z
+
+    monkeypatch.setattr(mixmod, "_final_species_config", _fake_final_config)
 
     def _fake_final(z):
         return {
@@ -1187,6 +1481,8 @@ def test_mixture_final_rerun_records_electronic_eligibility(
     )
     result = mixmod.solve_mixture_full_then_ext(cfg)
 
+    assert root_mu_by_z[1] == pytest.approx(2.0e-5)
+    assert root_mu_by_z[6] == pytest.approx(0.0)
     assert not bool(result["meta"]["final_mu_root_success"])
     assert not bool(result["meta"]["final_electronic_eligible"])
     assert "H:threshold_state_unresolved" in result["meta"]["final_electronic_issues"]

@@ -342,6 +342,100 @@ _ROOT_THRESHOLD_RETRY_MAX_ITER = 300
 _ROOT_THRESHOLD_RETRY_CHANGE_TOL = 1.0e-6
 
 
+def _threshold_refine_config(
+    cfg_species: FullExternalConfig,
+    *,
+    threshold_result: dict[str, Any] | None = None,
+    l_max: int | None = None,
+    cold_start: bool = True,
+) -> FullExternalConfig:
+    """Return the exterior-matched AA setup for one threshold window.
+
+    The asymptotic electronic potential is gauged to zero.  A shallow level
+    must therefore be partitioned at that physical continuum edge, not at the
+    small, SCF-dependent value of ``V_eff`` at an interior grid fraction.
+    Away from pressure ionization the two choices are immaterial; in the
+    diagnosed window their difference is the same size as the binding energy.
+    """
+    refine_l_max = int(cfg_species.bound_zero_tail_l_max)
+    if l_max is not None:
+        refine_l_max = max(refine_l_max, int(l_max))
+    elif isinstance(threshold_result, dict):
+        # A pressure-ionized orbital can be completely absent from the final
+        # SCF frame.  In that case ``shallowest`` only reports the next deeper
+        # surviving shell and cannot reveal the angular momentum of the state
+        # that was flipping earlier in the history (Te=23 C is the concrete
+        # example).  The retry is already guarded by a diagnosed threshold
+        # failure, so scout every low-l channel in the element's configured
+        # bound basis.  Channels without a negative-energy pole are unchanged.
+        try:
+            configured_l = np.asarray(
+                threshold_result.get("bound_basis_l_list", []), dtype=float
+            )
+            configured_l = configured_l[np.isfinite(configured_l)]
+            if configured_l.size:
+                refine_l_max = max(refine_l_max, int(np.max(configured_l)))
+        except (TypeError, ValueError):
+            pass
+        diagnostics = threshold_result.get("bound_state_diagnostics", {})
+        diagnostics = dict(diagnostics) if isinstance(diagnostics, dict) else {}
+        shallow = diagnostics.get("shallowest", {})
+        shallow = dict(shallow) if isinstance(shallow, dict) else {}
+        try:
+            shallow_l = int(shallow.get("l", -1))
+        except (TypeError, ValueError):
+            shallow_l = -1
+        if shallow_l >= 0:
+            refine_l_max = max(refine_l_max, shallow_l)
+        # H/He pressure ionize through their occupied s shell.  Their auto
+        # basis also contains an empty p channel for numerical completeness;
+        # treating that slot as a suspected missing resonance turns the cheap
+        # s-threshold retry into an unnecessary phase-root calculation.  The
+        # broader all-low-l scout remains essential for heavier elements,
+        # where a disappearing p state may be absent from the final frame.
+        try:
+            nuclear_charge = int(round(float(threshold_result.get("Z", np.nan))))
+        except (TypeError, ValueError, OverflowError):
+            nuclear_charge = -1
+        if 0 < nuclear_charge <= 2:
+            refine_l_max = max(int(cfg_species.bound_zero_tail_l_max), shallow_l, 0)
+    return replace(
+        cfg_species,
+        v_full_init=(None if cold_start else cfg_species.v_full_init),
+        continuation_stage2_from_init=bool(
+            not cold_start and cfg_species.v_full_init is not None
+        ),
+        stage1_max_iter=0,
+        bound_energy_cut_mode="zero",
+        bound_zero_tail_refine=True,
+        bound_zero_tail_l_max=int(refine_l_max),
+        # An s state transfers through the ordinary threshold mesh.  For
+        # l>=1 the centrifugal barrier produces a shape resonance, so locate
+        # its invariant phase root explicitly while it crosses E=0.
+        cont_adaptive_mode_stage2=(
+            "phase-root"
+            if int(refine_l_max) >= 1
+            else cfg_species.cont_adaptive_mode_stage2
+        ),
+        bound_zero_tail_max_binding_ha=max(
+            float(cfg_species.bound_zero_tail_max_binding_ha),
+            _ROOT_THRESHOLD_RETRY_MAX_BINDING_HA,
+        ),
+        stage2_max_iter=max(
+            int(cfg_species.stage2_max_iter),
+            _ROOT_THRESHOLD_RETRY_MAX_ITER,
+        ),
+        scf_dn_tol=min(
+            float(cfg_species.scf_dn_tol),
+            _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
+        ),
+        scf_dv_tol=min(
+            float(cfg_species.scf_dv_tol),
+            _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
+        ),
+    )
+
+
 def _is_threshold_sensitive_failure(
     result: dict[str, Any],
     reasons: tuple[str, ...],
@@ -355,7 +449,12 @@ def _is_threshold_sensitive_failure(
     bound_charge = np.asarray(
         [
             float(row.get("charge_bound", np.nan))
-            for row in history[-80:]
+            # The ordinary production stage has 107 iterations.  A threshold
+            # branch switch can happen during the first few dozen iterations,
+            # poison the mixer history, and then leave a long all-continuum
+            # tail.  Looking at only the last 80 frames missed exactly that
+            # Te=9 H failure, so retain the complete bounded production trace.
+            for row in history
             if isinstance(row, dict)
         ],
         dtype=float,
@@ -365,14 +464,24 @@ def _is_threshold_sensitive_failure(
         charge_min = float(np.min(bound_charge))
         charge_max = float(np.max(bound_charge))
         if charge_max - charge_min >= 5.0e-2:
-            high_branch = bound_charge > 0.5 * (charge_min + charge_max)
-            branch_flips = int(np.count_nonzero(high_branch[1:] != high_branch[:-1]))
-            if (
-                branch_flips >= 4
-                and np.count_nonzero(high_branch) >= 3
-                and np.count_nonzero(~high_branch) >= 3
-            ):
-                return True
+            # Near complete pressure ionization the occupied branch need not
+            # reach the midpoint of its largest transient on every revisit.
+            # Test a few interior cuts and require repeated crossings with at
+            # least three samples on both sides.  A monotone relaxation cannot
+            # satisfy the four-flip guard.
+            charge_span = charge_max - charge_min
+            for fraction in (0.5, 0.25, 0.75):
+                split = charge_min + float(fraction) * charge_span
+                high_branch = bound_charge > split
+                branch_flips = int(
+                    np.count_nonzero(high_branch[1:] != high_branch[:-1])
+                )
+                if (
+                    branch_flips >= 4
+                    and np.count_nonzero(high_branch) >= 3
+                    and np.count_nonzero(~high_branch) >= 3
+                ):
+                    return True
     try:
         energy = float(result.get("shallowest_bound_energy_ha", np.nan))
     except (TypeError, ValueError):
@@ -948,10 +1057,10 @@ def _initial_weight_guesses(
     guesses_raw.extend(
         [
             np.asarray(fractions, dtype=float) * z_arr,
-            np.asarray(fractions, dtype=float) * z_arr * z_arr,
             np.asarray(fractions, dtype=float) * np.sqrt(z_arr),
             np.asarray(fractions, dtype=float),
             np.ones_like(fractions, dtype=float),
+            np.asarray(fractions, dtype=float) * z_arr * z_arr,
             np.asarray(fractions, dtype=float) / np.maximum(z_arr, 1.0),
         ]
     )
@@ -1217,6 +1326,7 @@ class _MixtureEvaluator:
         self._species_result_cache_misses: int = 0
         self._species_threshold_cold_retries: int = 0
         self._species_threshold_refine_retries: int = 0
+        self._species_threshold_refine_latched: dict[str, int] = {}
         self._species_threshold_b3_a_only_retries: int = 0
         self._species_threshold_b3_root_surrogates: int = 0
         if species_init_cache is not None:
@@ -1386,14 +1496,26 @@ class _MixtureEvaluator:
 
         species_cfgs: list[FullExternalConfig] = []
         for idx, elem in enumerate(self.elements):
+            symbol = str(elem.symbol)
             cfg_species = self._species_config(
                 element_key=elem.z,
                 r_ws_bohr=float(r_ws_species[idx]),
                 n_i_bohr3=float(n_i_species[idx]),
-                extra_overrides=self._species_overrides(str(elem.symbol)),
+                extra_overrides=self._species_overrides(symbol),
                 run_mode="full",
                 ext_enabled=False,
             )
+            # Once a real AA point proves that this species lies in a
+            # pressure-ionization window, keep the same all-space shallow-state
+            # representation for the remaining root samples.  Otherwise a
+            # later, nominally converged warm start can jump back to the finite
+            # box branch and reintroduce a discontinuous mu(V).
+            if symbol in self._species_threshold_refine_latched:
+                cfg_species = _threshold_refine_config(
+                    cfg_species,
+                    l_max=self._species_threshold_refine_latched[symbol],
+                    cold_start=False,
+                )
             species_cfgs.append(cfg_species)
 
         full_results: list[dict[str, Any] | None] = [None] * len(self.elements)
@@ -1421,20 +1543,24 @@ class _MixtureEvaluator:
         self._species_result_cache_misses += len(miss_results)
         for idx, result_species in zip(miss_indices, miss_results, strict=True):
             cfg_species = species_cfgs[idx]
+            symbol = self.symbols[idx]
+            refine_latched = symbol in self._species_threshold_refine_latched
             initial_eligible, initial_reasons = _species_result_eligibility(
                 dict(result_species)
             )
-            # Near pressure ionization, a nearby converged potential can seed a
-            # different shallow-pole branch even when a cold solve at the same
-            # physical R_ws converges to a valid continuum representation.  Do
-            # not pass the unresolved branch to the common-mu root, but also do
-            # not abort Brent before checking whether the failure is specific
-            # to that warm start.  A cold retry is deliberately restricted to
-            # this diagnosed case; ordinary unconverged AA points retain the
-            # existing fail-safe behavior.
+            # A continuation potential from another R_ws can occasionally fail
+            # although a fresh solve at the same point is regular.  An ordinary
+            # failure before the shallow-state representation is latched must,
+            # however, remain an invalid gap: accepting its cold solution can
+            # splice two pressure-ionization branches into one Brent function.
+            # Once refinement has latched the representation, the cold retry is
+            # branch-compatible and is safe to use.
             cold_retry_attempted = bool(
                 not initial_eligible
-                and "threshold_state_unresolved" in initial_reasons
+                and (
+                    "threshold_state_unresolved" in initial_reasons
+                    or refine_latched
+                )
                 and cfg_species.v_full_init is not None
             )
             cold_retry_selected = False
@@ -1469,6 +1595,7 @@ class _MixtureEvaluator:
             )
             refine_retry_attempted = bool(
                 self.cfg.root_threshold_refine_retry
+                and not refine_latched
                 and not refine_probe_eligible
                 and _is_threshold_sensitive_failure(
                     dict(refine_probe), tuple(refine_probe_reasons)
@@ -1478,27 +1605,9 @@ class _MixtureEvaluator:
             refine_retry_reasons: tuple[str, ...] = ()
             refine_result: dict[str, Any] | None = None
             if refine_retry_attempted:
-                cfg_refine = replace(
+                cfg_refine = _threshold_refine_config(
                     cfg_species,
-                    v_full_init=None,
-                    stage1_max_iter=0,
-                    bound_zero_tail_refine=True,
-                    bound_zero_tail_max_binding_ha=max(
-                        float(cfg_species.bound_zero_tail_max_binding_ha),
-                        _ROOT_THRESHOLD_RETRY_MAX_BINDING_HA,
-                    ),
-                    stage2_max_iter=max(
-                        int(cfg_species.stage2_max_iter),
-                        _ROOT_THRESHOLD_RETRY_MAX_ITER,
-                    ),
-                    scf_dn_tol=min(
-                        float(cfg_species.scf_dn_tol),
-                        _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
-                    ),
-                    scf_dv_tol=min(
-                        float(cfg_species.scf_dv_tol),
-                        _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
-                    ),
+                    threshold_result=dict(refine_probe),
                 )
                 refine_result = _solve_species_from_config(cfg_refine)
                 self._species_result_cache_misses += 1
@@ -1509,6 +1618,9 @@ class _MixtureEvaluator:
                 if refine_eligible:
                     result_species = refine_result
                     refine_retry_selected = True
+                    self._species_threshold_refine_latched[symbol] = int(
+                        cfg_refine.bound_zero_tail_l_max
+                    )
 
             # Starrett & Saumon (2014), Appendix B, require convergence with
             # respect to the B3 handoff radius.  In a pressure-ionization
@@ -1597,6 +1709,14 @@ class _MixtureEvaluator:
             )
             result_species["mixture_threshold_refine_retry_reasons"] = tuple(
                 refine_retry_reasons
+            )
+            result_species["mixture_threshold_refine_latched"] = bool(
+                refine_latched or refine_retry_selected
+            )
+            result_species["mixture_threshold_refine_l_max"] = int(
+                self._species_threshold_refine_latched.get(
+                    symbol, cfg_species.bound_zero_tail_l_max
+                )
             )
             result_species["mixture_threshold_b3_a_only_retry_attempted"] = bool(
                 tail_retry_attempted
@@ -2088,7 +2208,13 @@ def solve_mixture_full_only(
                         )
                     )
 
-                attempts_left = max(4, min(int(bracket_budget), 12))
+                # Give both sides of the invalid interval enough probes.  Four
+                # valid-side bisections left the Te=23 CH2 root one sample
+                # short: the last accepted point had |dmu|=1.45e-4 Ha, while
+                # the next safe midpoint reaches the 1e-4 Ha target.  The
+                # allowance is still bounded and is used only after an inner
+                # AA failure inside an already observed sign bracket.
+                attempts_left = max(8, min(2 * int(bracket_budget), 24))
                 for endpoint, endpoint_value in endpoint_values:
                     if attempts_left <= 0:
                         break
@@ -2129,7 +2255,7 @@ def solve_mixture_full_only(
                     # Approach the last invalid point from the valid side.
                     # Consecutive valid samples with opposite signs define a
                     # Brent bracket without ever using the invalid residual.
-                    for _ in range(4):
+                    for _ in range(8):
                         if attempts_left <= 0:
                             break
                         trial = 0.5 * (float(invalid_edge) + float(valid_edge))
@@ -2887,6 +3013,7 @@ def _final_species_config(
     n_i_bohr3: float,
     extra_overrides: dict[str, Any],
     full_result_init: dict[str, Any] | None = None,
+    root_mu_ha: float | None = None,
 ) -> FullExternalConfig:
     """Build one post-root `FullExternalConfig` for a mixture species."""
     run_mode = str(cfg.final_run_mode).strip().lower()
@@ -2923,12 +3050,20 @@ def _final_species_config(
     if (
         isinstance(full_result_init, dict)
         and bool(
-            full_result_init.get(
-                "mixture_threshold_refine_retry_selected", False
+            full_result_init.get("mixture_threshold_refine_retry_selected", False)
+            or full_result_init.get(
+                "mixture_threshold_refine_latched", False
             )
         )
     ):
+        species_kwargs["bound_energy_cut_mode"] = "zero"
         species_kwargs["bound_zero_tail_refine"] = True
+        species_kwargs["bound_zero_tail_l_max"] = max(
+            int(species_kwargs.get("bound_zero_tail_l_max", 0)),
+            int(full_result_init.get("mixture_threshold_refine_l_max", 0)),
+        )
+        if int(species_kwargs["bound_zero_tail_l_max"]) >= 1:
+            species_kwargs["cont_adaptive_mode_stage2"] = "phase-root"
         species_kwargs["bound_zero_tail_max_binding_ha"] = max(
             float(species_kwargs.get("bound_zero_tail_max_binding_ha", 1.0e-3)),
             _ROOT_THRESHOLD_RETRY_MAX_BINDING_HA,
@@ -2959,12 +3094,51 @@ def _final_species_config(
     )
     if v_full_init is not None:
         cfg_species.v_full_init = np.asarray(v_full_init, dtype=float)
+        # The common-mu root has already produced a converged full-AA state at
+        # exactly this ion-sphere radius.  Continue stage 2 from that state
+        # when adding the external branch; restarting through stage 1 can
+        # drift different species onto slightly different numerical branches
+        # and destroy the common-mu closure that was just established.
+        if isinstance(full_result_init, dict) and bool(
+            full_result_init.get(
+                "stage2_converged", full_result_init.get("converged", False)
+            )
+        ):
+            try:
+                continuation_mu = float(full_result_init["mu"])
+            except (KeyError, TypeError, ValueError):
+                continuation_mu = np.nan
+            if np.isfinite(continuation_mu):
+                cfg_species.stage1_max_iter = 0
+                cfg_species.continuation_stage2_from_init = True
+                cfg_species.continuation_mu_init = continuation_mu
+    if root_mu_ha is not None and np.isfinite(float(root_mu_ha)):
+        # Keep the state that the finite-tolerance mixture root actually
+        # accepted.  Re-solving neutrality can make the species drift apart,
+        # while replacing both accepted values by their mean can cross a
+        # pressure-ionisation threshold even when the root residual is small.
+        cfg_species.full_fixed_mu_ha = float(root_mu_ha)
+        if cfg_species.continuation_stage2_from_init:
+            cfg_species.continuation_mu_init = float(root_mu_ha)
+    if (
+        run_mode != "full"
+        and isinstance(full_result_init, dict)
+        and bool(
+            full_result_init.get(
+                "stage2_converged", full_result_init.get("converged", False)
+            )
+        )
+    ):
+        # The root result is already the audited full-AA answer.  Only the
+        # external reference is missing; rerunning full SCF can switch a
+        # pressure-ionisation threshold branch for no physical reason.
+        cfg_species.full_result_init = dict(full_result_init)
     return cfg_species
 
 
 def solve_mixture_full_then_ext(cfg: MixtureConfig) -> dict[str, Any]:
     """
-    Solve the multicomponent common-`mu_e` problem, then rerun each species.
+    Solve the common-`mu_e` problem, then add each external reference branch.
 
     Parameters
     ----------
@@ -2974,8 +3148,8 @@ def solve_mixture_full_then_ext(cfg: MixtureConfig) -> dict[str, Any]:
     Returns
     -------
     dict
-        Mixture result with per-species final AA branches and optional saved
-        dataset paths.
+        Mixture result with accepted per-species full-AA states, their optional
+        external branches, and optional saved dataset paths.
     """
     mixture_full = _mixture_full_only_payload(cfg)
 
@@ -2994,6 +3168,7 @@ def solve_mixture_full_then_ext(cfg: MixtureConfig) -> dict[str, Any]:
                     n_i_bohr3=float(1.0 / float(sp["volume_bohr3"])),
                     extra_overrides=dict(cfg.species_overrides.get(symbol, {})),
                     full_result_init=dict(sp["result"]),
+                    root_mu_ha=float(sp["mu_ha"]),
                 )
             )
 

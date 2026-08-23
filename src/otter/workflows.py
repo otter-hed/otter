@@ -317,6 +317,7 @@ def _electronic_convergence_issues(
     species_entries: list[dict[str, Any]],
     *,
     require_external: bool = False,
+    screening_charge_rel_tol: float | None = None,
 ) -> list[str]:
     """Describe unsafe final AA/full+external stages before ion structure."""
     issues: list[str] = []
@@ -357,6 +358,39 @@ def _electronic_convergence_issues(
                 ext_active = bool(ext_status.get("enabled", True))
                 if ext_active and "converged" in ext_status and not bool(ext_status["converged"]):
                     issues.append(f"{symbol}: external fixed-mu SCF unconverged")
+
+        # QOZ renormalizes the finite-box screening charge to the pseudoatom
+        # partition, but that scalar correction cannot repair a badly shaped
+        # screening cloud.  Reject a large raw mismatch before it can create a
+        # spurious low-k concentration instability in a mixture.  Missing
+        # diagnostics remain accepted for compatibility with older payloads
+        # and lightweight analytic test fixtures.
+        if (
+            require_external
+            and screening_charge_rel_tol is not None
+            and "q_scr_all" in result
+            and "zbar_partition" in result
+        ):
+            try:
+                q_scr = float(result["q_scr_all"])
+                zbar_partition = float(result["zbar_partition"])
+            except (TypeError, ValueError):
+                q_scr = np.nan
+                zbar_partition = np.nan
+            if not np.isfinite(q_scr) or not np.isfinite(zbar_partition):
+                issues.append(
+                    f"{symbol}: non-finite raw screening charge diagnostic"
+                )
+            else:
+                relative_error = abs(q_scr - zbar_partition) / max(
+                    abs(zbar_partition), 1.0e-12
+                )
+                if relative_error > float(screening_charge_rel_tol):
+                    issues.append(
+                        f"{symbol}: raw screening charge relative error "
+                        f"{relative_error:.6e} exceeds "
+                        f"{float(screening_charge_rel_tol):.6e}"
+                    )
     return issues
 
 
@@ -398,6 +432,10 @@ class PlasmaWorkflowConfig(CitationMixin):
     allow_unconverged_aa
         Permit explicit diagnostic ion-structure continuation from a failed
         final full or external AA stage. The production default rejects it.
+    qoz_screening_charge_rel_tol
+        Maximum relative mismatch between the raw finite-box screening charge
+        and the pseudoatom partition before QOZ/HNC. Scalar QOZ
+        renormalization cannot repair a badly shaped screening cloud.
     show_progress
         Print the compact workflow report and SCF ``d_n``/``d_v`` trace.
     debug
@@ -461,6 +499,10 @@ class PlasmaWorkflowConfig(CitationMixin):
     qoz_linear_n_points: int = 4096
     qoz_pad_factor: float = 2.0
     qoz_renormalize_nscr_to_zbar: bool = True
+    qoz_screening_charge_rel_tol: float = 5.0e-2
+    # Reject a raw finite-box screening charge this far from the pseudoatom
+    # partition before scalar renormalization and QOZ/HNC.  The default matches
+    # the electronic screening-tail diagnostic threshold.
     # Enforce the neutral-pseudoatom identities of Starrett & Saumon before
     # closing Eq. (15) on the actual DST lattice.  "screening_integral" keeps
     # the raw finite-box integral for diagnostics; "electronic" is legacy WS.
@@ -570,6 +612,13 @@ class PlasmaWorkflowConfig(CitationMixin):
             raise ValueError("qoz_linear_n_points must be at least 32.")
         if float(self.qoz_pad_factor) < 1.0:
             raise ValueError("qoz_pad_factor must be >= 1.")
+        if (
+            not np.isfinite(float(self.qoz_screening_charge_rel_tol))
+            or float(self.qoz_screening_charge_rel_tol) <= 0.0
+        ):
+            raise ValueError(
+                "qoz_screening_charge_rel_tol must be finite and positive."
+            )
         qoz_zbar_mode_key = str(self.qoz_zbar_mode).strip().lower().replace("-", "_")
         if qoz_zbar_mode_key not in {
             "pseudoatom_partition",
@@ -1617,6 +1666,7 @@ def continue_plasma_workflow_from_electronic_result(
         convergence_issues = _electronic_convergence_issues(
             species_entries,
             require_external=True,
+            screening_charge_rel_tol=float(cfg.qoz_screening_charge_rel_tol),
         )
         if convergence_issues and not bool(cfg.allow_unconverged_aa):
             raise RuntimeError(

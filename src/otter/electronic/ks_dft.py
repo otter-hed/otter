@@ -1647,7 +1647,16 @@ def _refine_shallow_bound_states_zero_tail(
                 max_binding=float(max_binding),
                 n_scan=int(scan_points),
                 tail_fraction=0.1,
-                tail_v_rel_tol=matching_tail_tolerance,
+                # The inward Numerov solution includes the complete sampled
+                # potential, including a repulsive Friedel hump in the outer
+                # 10% of the AA sphere.  Only the actual handoff at the last
+                # radial samples must be compatible with the analytic V=0
+                # exterior.  The explicit edge guard below checks exactly
+                # that region after the pole has been located.  Reusing the
+                # low-level scout's broad-tail precheck here incorrectly
+                # rejected shallow s states whenever a harmless positive
+                # hump preceded an already-small boundary value.
+                tail_v_rel_tol=None,
             )
         except (FloatingPointError, ValueError):
             matched = None

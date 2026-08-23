@@ -684,6 +684,10 @@ class FullExternalConfig(CitationMixin):
     # Optional initial guess for the full effective potential on the target
     # radial grid. This is mainly used by higher-level continuation workflows
     # such as mixture AA polishing.
+    full_result_init: dict[str, Any] | None = None
+    # Optional already-converged full-AA result on the target geometry.  In
+    # full+ext mode this skips a redundant full solve and computes only the
+    # external branch.  Mixture roots use this after accepting each species.
     v_full_init_r: np.ndarray | None = None
     # Optional source radial grid for v_full_init. When supplied, v_full_init is
     # interpolated onto the target grid, which is the safe path for density or
@@ -1061,6 +1065,15 @@ class FullExternalConfig(CitationMixin):
     # disable this acceptance check.
     # Finite/non-negative density and post-Hermite charge closure are always
     # required even when both optional quality guards are disabled.
+    b3_pseudoatom_charge_closure: bool = True
+    # After a converged full+external solve, rebuild both canonical continuum
+    # tails from their saved pre-B3 profiles when their difference violates
+    # the pseudoatom sum rule integral(n_full-n_ext)=Z.  The two constrained
+    # fits enforce full-source charge Z and external-source charge zero, so all
+    # pseudoatom identities remain exact; this is not an n_scr-only repair.
+    b3_pseudoatom_charge_rel_tol: float = 5.0e-2
+    # Trigger the paired final-tail rebuild only above this relative charge
+    # mismatch.  Smaller differences retain the self-consistent B3 profiles.
     full_b3_use_source_closure: bool | None = None
     # Full-branch source-closure policy while B3 is used in-SCF:
     #   None/auto -> disable it for b3_tail_target="full"/"both", because B3
@@ -1508,6 +1521,11 @@ class FullExternalConfig(CitationMixin):
                     "b3_charge_constraint_profile_delta_rel_max must be finite "
                     "and positive when set."
                 )
+        pseudoatom_rel_tol = float(self.b3_pseudoatom_charge_rel_tol)
+        if not np.isfinite(pseudoatom_rel_tol) or pseudoatom_rel_tol <= 0.0:
+            raise ValueError(
+                "b3_pseudoatom_charge_rel_tol must be finite and positive."
+            )
 
     def _use_manual_bound_basis(self) -> bool:
         """
@@ -1887,6 +1905,229 @@ def _resolve_b3_tail_controls(
         "auto_rel_improve_tol": float(cfg.b3_tail_auto_rel_improve_tol),
         "auto_signal_rel_tol": float(cfg.b3_tail_auto_signal_rel_tol),
         "fallback_on_error": bool(cfg.b3_fallback_on_error and cfg.cont_tail_fallback_on_error),
+    }
+
+
+def _apply_paired_pseudoatom_b3_charge_closure(
+    result: dict[str, Any],
+    cfg: FullExternalConfig,
+    *,
+    r_ws: float,
+    rmax: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Close a large pseudoatom charge mismatch through both B3 tails.
+
+    Starrett--Saumon's pseudoatom definition requires
+    ``integral(n_full - n_ext) = Z``.  Independent short-window B3 fits can
+    reproduce the local A3 density while accumulating different finite-box
+    charges.  When that mismatch is large, refit the saved full-continuum and
+    external-continuum pre-tail profiles over the physical B3 window, with
+    their respective source-charge equalities.  Applying the pair atomically
+    preserves every canonical density identity.
+    """
+    out = dict(result)
+    meta: dict[str, Any] = {
+        "enabled": bool(cfg.b3_pseudoatom_charge_closure),
+        "applied": False,
+        "canonical_profiles_preserved": True,
+    }
+    if not bool(cfg.b3_pseudoatom_charge_closure) or "n_ext" not in out:
+        return out, meta
+    if not bool(out.get("stage2_converged", out.get("converged", False))):
+        return out, {**meta, "reason": "full branch is unconverged"}
+    if not bool(out.get("ext_status", {}).get("converged", False)):
+        return out, {**meta, "reason": "external branch is unconverged"}
+
+    r = np.asarray(out["r"], dtype=float)
+    n_full_raw = np.asarray(out["n_full"], dtype=float)
+    n_ext_raw = np.asarray(out["n_ext"], dtype=float)
+    n_ion = np.asarray(out["n_ion"], dtype=float)
+    q_scr_raw = float(
+        4.0 * np.pi * trapz_integral((r**2) * (n_full_raw - n_ext_raw - n_ion), r)
+    )
+    q_ion = float(4.0 * np.pi * trapz_integral((r**2) * n_ion, r))
+    zbar_partition = float(out["Z"]) - q_ion
+    relative_raw = abs(q_scr_raw - zbar_partition) / max(
+        abs(zbar_partition), 1.0e-12
+    )
+    meta.update(
+        {
+            "q_scr_raw": q_scr_raw,
+            "q_scr_target": zbar_partition,
+            "q_scr_rel_raw": relative_raw,
+            "trigger_rel_tol": float(cfg.b3_pseudoatom_charge_rel_tol),
+        }
+    )
+    if relative_raw <= float(cfg.b3_pseudoatom_charge_rel_tol):
+        return out, {**meta, "reason": "raw charge mismatch is within tolerance"}
+
+    full_controls = _resolve_b3_tail_controls(
+        cfg,
+        r_ws=float(r_ws),
+        rmax=float(rmax),
+        stage_mode=str(cfg.b3_tail_stage2_mode),
+    )
+    ext_controls = _resolve_b3_tail_controls(
+        cfg,
+        r_ws=float(r_ws),
+        rmax=float(rmax),
+        stage_mode=str(cfg.ext_b3_tail_mode),
+    )
+    if str(full_controls["target"]) not in ("cont", "both"):
+        return out, {**meta, "reason": "full B3 target does not include n_cont"}
+    if str(full_controls["mode"]) == "off" or str(ext_controls["mode"]) == "off":
+        return out, {**meta, "reason": "B3 is disabled on a required branch"}
+    if (
+        full_controls["r_cut"] is None
+        or full_controls["r_fit_max"] is None
+        or ext_controls["r_cut"] is None
+        or ext_controls["r_fit_max"] is None
+    ):
+        return out, {**meta, "reason": "physical B3 fit window is unavailable"}
+
+    n_cont_pre_tail = np.asarray(
+        out.get("n_cont_pre_tail", out["n_cont"]), dtype=float
+    )
+    n_ext_pre_tail = np.asarray(
+        out.get("n_ext_pre_tail", out["n_ext"]), dtype=float
+    )
+    n_bound = np.asarray(out["n_bound"], dtype=float)
+    n0 = float(out["n0"])
+    mu = float(out["mu"])
+    temperature_ha = float(cfg.temperature_ev) * EV_TO_HA
+    g_ii = np.asarray(out["g_ii"], dtype=float)
+    analytic_radius = (
+        float(r_ws)
+        if _uses_analytic_ion_sphere_background(
+            cfg, r_ws=float(r_ws), rmax=float(rmax)
+        )
+        else None
+    )
+    full_electron_target = _source_electron_charge_target(
+        r,
+        n0,
+        g_ii,
+        float(out["Z"]),
+        ion_sphere_radius=analytic_radius,
+    )
+    ext_electron_target = _source_electron_charge_target(
+        r,
+        n0,
+        g_ii,
+        0.0,
+        ion_sphere_radius=analytic_radius,
+    )
+    bound_charge = float(
+        4.0 * np.pi * trapz_integral((r**2) * n_bound, r)
+    )
+
+    def constrained_tail(
+        density: np.ndarray,
+        controls: dict[str, Any],
+        *,
+        target: float,
+        model: str,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        idx_cut = int(np.searchsorted(r, float(controls["r_cut"])))
+        fitted, tail_meta = apply_tail_match(
+            r,
+            density,
+            n0,
+            mu,
+            temperature_ha,
+            idx_cut,
+            fit_points=int(controls["fit_points"]),
+            r_fit_max=float(controls["r_fit_max"]),
+            fit_window_mode="physical",
+            blend_points=int(controls["blend_points"]),
+            model=str(model),
+            auto_rel_improve_tol=float(controls["auto_rel_improve_tol"]),
+            auto_signal_rel_tol=float(controls["auto_signal_rel_tol"]),
+            charge_target=float(target),
+            charge_constraint_fit_rms_ratio_max=(
+                cfg.b3_charge_constraint_fit_rms_ratio_max
+            ),
+            charge_constraint_profile_delta_rel_max=(
+                cfg.b3_charge_constraint_profile_delta_rel_max
+            ),
+        )
+        return np.asarray(fitted, dtype=float), {
+            **dict(tail_meta),
+            "post_scf_pseudoatom_charge_closure": True,
+            "fit_window_mode_forced": "physical",
+        }
+
+    try:
+        n_cont_closed, full_tail_meta = constrained_tail(
+            n_cont_pre_tail,
+            full_controls,
+            target=float(full_electron_target - bound_charge),
+            model=str(full_controls["model"]),
+        )
+        ext_model = (
+            str(cfg.ext_b3_tail_model)
+            if cfg.ext_b3_tail_model is not None
+            else str(ext_controls["model"])
+        )
+        n_ext_closed, ext_tail_meta = constrained_tail(
+            n_ext_pre_tail,
+            ext_controls,
+            target=float(ext_electron_target),
+            model=ext_model,
+        )
+    except Exception as exc:
+        return out, {
+            **meta,
+            "reason": "paired constrained fit rejected",
+            "error": str(exc),
+        }
+
+    n_full_closed = n_bound + n_cont_closed
+    n_pa_closed = n_full_closed - n_ext_closed
+    n_scr_closed = n_pa_closed - n_ion
+    q_scr_closed = float(
+        4.0 * np.pi * trapz_integral((r**2) * n_scr_closed, r)
+    )
+    relative_closed = abs(q_scr_closed - zbar_partition) / max(
+        abs(zbar_partition), 1.0e-12
+    )
+    if not np.isfinite(relative_closed) or relative_closed > 1.0e-8:
+        return out, {
+            **meta,
+            "reason": "paired constrained fit did not close pseudoatom charge",
+            "q_scr_closed": q_scr_closed,
+            "q_scr_rel_closed": relative_closed,
+        }
+
+    out["n_cont_before_pseudoatom_charge_closure"] = np.asarray(
+        out["n_cont"], dtype=float
+    ).copy()
+    out["n_full_before_pseudoatom_charge_closure"] = n_full_raw.copy()
+    out["n_ext_before_pseudoatom_charge_closure"] = n_ext_raw.copy()
+    out["n_cont_tail_meta_before_pseudoatom_charge_closure"] = dict(
+        out.get("n_cont_tail_meta", {})
+    )
+    out["n_ext_tail_meta_before_pseudoatom_charge_closure"] = dict(
+        out.get("n_ext_tail_meta", out.get("ext_status", {}).get("tail_meta", {}))
+    )
+    out["n_cont"] = n_cont_closed
+    out["n_full"] = n_full_closed
+    out["n_ext"] = n_ext_closed
+    out["n_pa"] = n_pa_closed
+    out["n_scr"] = n_scr_closed
+    out["n_cont_tail_meta"] = full_tail_meta
+    out["n_ext_tail_meta"] = ext_tail_meta
+    ext_status = dict(out.get("ext_status", {}))
+    ext_status["tail_meta"] = ext_tail_meta
+    out["ext_status"] = ext_status
+    return out, {
+        **meta,
+        "applied": True,
+        "reason": "paired constrained B3 tails accepted",
+        "q_scr_closed": q_scr_closed,
+        "q_scr_rel_closed": relative_closed,
+        "full_tail_meta": full_tail_meta,
+        "ext_tail_meta": ext_tail_meta,
     }
 
 
@@ -3522,6 +3763,58 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         e_max_mode=str(cfg.cont_stage2_e_max_mode),
     )
 
+    run_mode = str(cfg.run_mode).strip().lower()
+    if run_mode not in ("full", "full+ext", "full_ext"):
+        raise ValueError("run_mode must be 'full' or 'full+ext'.")
+    do_external = (run_mode != "full") and bool(cfg.ext_scf_enabled)
+    reusable_full: dict[str, Any] | None = None
+    if do_external and cfg.full_result_init is not None:
+        candidate = dict(cfg.full_result_init)
+        required = ("r", "r_ws", "mu", "n0", "g_ii", "n_full", "n_ion", "v_full")
+        missing = [key for key in required if key not in candidate]
+        if missing:
+            raise ValueError(
+                "full_result_init is missing required fields: " + ", ".join(missing)
+            )
+        if not bool(candidate.get("converged", False)) or not bool(
+            candidate.get("stage2_converged", candidate.get("converged", False))
+        ):
+            raise ValueError("full_result_init must be a converged full-AA result.")
+        candidate_r = np.asarray(candidate["r"], dtype=float)
+        if (
+            candidate_r.ndim != 1
+            or candidate_r.size != int(cfg.n_points)
+            or np.any(~np.isfinite(candidate_r))
+            or np.any(np.diff(candidate_r) <= 0.0)
+            or not np.isclose(
+                float(candidate_r[-1]), float(rmax), rtol=1.0e-10, atol=1.0e-12
+            )
+        ):
+            raise ValueError("full_result_init has an incompatible radial grid.")
+        bad_arrays = [
+            key
+            for key in ("g_ii", "n_full", "n_ion", "v_full")
+            if np.asarray(candidate[key]).shape != candidate_r.shape
+        ]
+        if bad_arrays:
+            raise ValueError(
+                "full_result_init has incompatible arrays: " + ", ".join(bad_arrays)
+            )
+        if "Z" in candidate and int(round(float(candidate["Z"]))) != int(z_nuc):
+            raise ValueError("full_result_init belongs to a different element.")
+        if not np.isclose(
+            float(candidate["r_ws"]), float(r_ws), rtol=1.0e-10, atol=1.0e-12
+        ):
+            raise ValueError("full_result_init has a different ion-sphere radius.")
+        if cfg.full_fixed_mu_ha is not None and not np.isclose(
+            float(candidate["mu"]),
+            float(cfg.full_fixed_mu_ha),
+            rtol=0.0,
+            atol=1.0e-12,
+        ):
+            raise ValueError("full_result_init has a different fixed chemical potential.")
+        reusable_full = candidate
+
     def _run_stage1_once(
         *,
         cont_params_stage1: dict[str, Any],
@@ -3565,7 +3858,14 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
 
     use_stage2_continuation_init = bool(cfg.continuation_stage2_from_init) and v_full_init is not None
     skip_stage1 = bool(use_stage2_continuation_init and int(cfg.stage1_max_iter) <= 0)
-    if skip_stage1:
+    if reusable_full is not None:
+        stage1 = {
+            "history": list(reusable_full.get("stage1_history", [])),
+            "mu": float(reusable_full.get("stage1_mu", reusable_full["mu"])),
+            "converged": bool(reusable_full.get("stage1_converged", True)),
+            "v_full": np.asarray(reusable_full["v_full"], dtype=float),
+        }
+    elif skip_stage1:
         if scf_report:
             print("[AA/full SCF: stage 1] skipped; using the continuation potential")
         stage1 = {
@@ -3673,21 +3973,48 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         )
         return full_local
 
-    full = _run_stage2_once(
-        mu_bounds_stage2=mu_bounds2,
-        cont_params_stage2=cont_stage2,
+    full = (
+        dict(reusable_full)
+        if reusable_full is not None
+        else _run_stage2_once(
+            mu_bounds_stage2=mu_bounds2,
+            cont_params_stage2=cont_stage2,
+        )
     )
 
     result = dict(full)
-    result["stage1_history"] = list(stage1.get("history", []))
-    result["stage1_mu"] = mu_stage1
-    result["stage1_skipped"] = bool(skip_stage1)
-    result["stage1_converged"] = bool(stage1.get("converged", False))
-    result["stage1_iters"] = int(len(stage1.get("history", [])))
-    result["stage2_converged"] = bool(full.get("converged", False))
-    result["stage2_iters"] = int(len(full.get("history", [])))
-    result["perf_summary_stage1"] = _summarize_history_perf(stage1.get("history", []))
-    result["perf_summary_stage2"] = _summarize_history_perf(full.get("history", []))
+    result["stage1_history"] = list(
+        full.get("stage1_history", stage1.get("history", []))
+    )
+    result["stage1_mu"] = float(full.get("stage1_mu", mu_stage1))
+    result["stage1_skipped"] = bool(
+        reusable_full is not None or full.get("stage1_skipped", skip_stage1)
+    )
+    result["stage1_converged"] = bool(
+        full.get("stage1_converged", stage1.get("converged", False))
+    )
+    result["stage1_iters"] = int(
+        full.get("stage1_iters", len(result["stage1_history"]))
+    )
+    result["stage2_converged"] = bool(
+        full.get("stage2_converged", full.get("converged", False))
+    )
+    result["stage2_iters"] = int(
+        full.get("stage2_iters", len(full.get("history", [])))
+    )
+    result["full_result_reused"] = bool(reusable_full is not None)
+    result["perf_summary_stage1"] = dict(
+        full.get(
+            "perf_summary_stage1",
+            _summarize_history_perf(result["stage1_history"]),
+        )
+    )
+    result["perf_summary_stage2"] = dict(
+        full.get(
+            "perf_summary_stage2",
+            _summarize_history_perf(full.get("history", [])),
+        )
+    )
     result["perf_summary_full"] = dict(result["perf_summary_stage2"])
     result["workflow"] = "full_then_ext"
 
@@ -3705,11 +4032,6 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
                 print(f"  [perf-summary:{stage_label}] max[s]: {max_line}")
             if basis_line:
                 print(f"  [perf-summary:{stage_label}] mean[basis]: {basis_line}")
-
-    run_mode = str(cfg.run_mode).strip().lower()
-    if run_mode not in ("full", "full+ext", "full_ext"):
-        raise ValueError("run_mode must be 'full' or 'full+ext'.")
-    do_external = (run_mode != "full") and bool(cfg.ext_scf_enabled)
 
     if do_external:
         # External-only SCF with fixed (mu,n0) from converged full solve.
@@ -3806,6 +4128,14 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         result["ext_history"] = []
         result["perf_summary_ext"] = {"n_iter": 0, "n_perf": 0}
         result["stage2_cont_e_max_final"] = float(cfg.cont_e_max)
+
+    result, pseudoatom_charge_closure = _apply_paired_pseudoatom_b3_charge_closure(
+        result,
+        cfg,
+        r_ws=float(r_ws),
+        rmax=float(rmax),
+    )
+    result["b3_pseudoatom_charge_closure"] = dict(pseudoatom_charge_closure)
 
     if cfg.perf_diag and debug and do_external:
         summary = result.get("perf_summary_ext", {})
@@ -4478,6 +4808,25 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "source_r_trust_frac": float(cfg.source_r_trust_frac),
         "source_blend_frac": float(cfg.source_blend_frac),
         "source_charge_closure": bool(cfg.source_charge_closure),
+        "b3_pseudoatom_charge_closure_enabled": bool(
+            cfg.b3_pseudoatom_charge_closure
+        ),
+        "b3_pseudoatom_charge_rel_tol": float(
+            cfg.b3_pseudoatom_charge_rel_tol
+        ),
+        "b3_pseudoatom_charge_closure_applied": bool(
+            result.get("b3_pseudoatom_charge_closure", {}).get("applied", False)
+        ),
+        "b3_pseudoatom_charge_rel_raw": float(
+            result.get("b3_pseudoatom_charge_closure", {}).get(
+                "q_scr_rel_raw", np.nan
+            )
+        ),
+        "b3_pseudoatom_charge_rel_closed": float(
+            result.get("b3_pseudoatom_charge_closure", {}).get(
+                "q_scr_rel_closed", np.nan
+            )
+        ),
         "full_b3_use_source_closure": (
             "auto"
             if cfg.full_b3_use_source_closure is None
@@ -4574,6 +4923,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "stage1_skipped": bool(result.get("stage1_skipped", False)),
         "stage1_converged": bool(result.get("stage1_converged", False)),
         "stage2_converged": bool(result.get("stage2_converged", False)),
+        "full_result_reused": bool(result.get("full_result_reused", False)),
         "threshold_state_status": str(result.get("threshold_state_status", "none")),
         "threshold_state_localization": str(
             result.get("threshold_state_localization", "none")

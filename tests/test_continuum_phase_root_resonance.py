@@ -65,7 +65,7 @@ def test_phase_root_scout_integrates_subgrid_l1_resonance(
     def evaluator(energy: float, l_max: int):
         lorentzian = (gamma / np.pi) / ((energy - e_root) ** 2 + gamma**2)
         phases = np.zeros(l_max + 1)
-        # cos(delta_1) changes sign smoothly at the Breit-Wigner centre.
+        # sin(2 delta_1) changes sign smoothly at the Breit-Wigner centre.
         phases[1] = np.arctan2(gamma, e_root - energy)
         return 1.0 + strength * lorentzian, phases
 
@@ -133,13 +133,38 @@ def test_phase_root_scout_rejects_broad_crossing_and_excludes_l0(
     assert int(s_meta["theta_candidates"]) == 0
 
 
+def test_phase_root_scout_rejects_equivalent_pi_phase_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An arbitrary sign flip of the regular solution is not a resonance."""
+    e_jump = 0.531234
+
+    def sign_flipped_solution(energy: float, l_max: int):
+        phases = np.zeros(l_max + 1)
+        # These phases differ by pi but describe the same S matrix.  The small
+        # background phase keeps the two sides physically continuous modulo pi.
+        phases[1] = -0.1 if energy < e_jump else np.pi - 0.1
+        return 1.0, phases
+
+    value, meta = _run_synthetic(
+        monkeypatch,
+        sign_flipped_solution,
+        adaptive_mode="phase-root",
+        resonance_theta_root_tol=1.0e-10,
+    )
+
+    assert float(value[0]) == pytest.approx(1.0)
+    assert meta["theta_roots"] == []
+    assert bool(meta["theta_fallback"])
+
+
 def test_multiresolution_scout_resolves_off_anchor_even_root_pair(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two roots hidden between coarse scouts require an explicit scan scale.
 
     This is the adversarial case an isolated Breit-Wigner regression does not
-    exercise: the phase advances by two pi, so ``cos(delta)`` has the same
+    exercise: the phase advances by two pi, so ``sin(2 delta)`` has the same
     sign on both sides of the pair.  A finite scout still has no arbitrary
     sub-grid guarantee, but the nested depth and achieved spacing make the
     resolved scale measurable rather than accidental.
@@ -162,18 +187,18 @@ def test_multiresolution_scout_resolves_off_anchor_even_root_pair(
         "adaptive_mode": "phase-root",
         "resonance_theta_root_tol": 1.0e-10,
         "resonance_theta_refine_depth": 22,
-        "resonance_theta_scout_max_extra_nodes": 80,
+        "resonance_theta_scout_max_extra_nodes": 160,
     }
     coarse, coarse_meta = _run_synthetic(
         monkeypatch,
         evaluator,
-        resonance_theta_scan_depth=3,
+        resonance_theta_scan_depth=4,
         **common,
     )
     caught, caught_meta = _run_synthetic(
         monkeypatch,
         evaluator,
-        resonance_theta_scan_depth=4,
+        resonance_theta_scan_depth=5,
         **common,
     )
 
@@ -188,16 +213,14 @@ def test_multiresolution_scout_resolves_off_anchor_even_root_pair(
     )
     reference = (e_hi - e_lo) + strength_each * line_area
 
-    assert abs(float(coarse[0]) - reference) / reference > 0.1
-    assert coarse_meta["theta_roots"] == []
-    assert bool(coarse_meta["theta_fallback"])
+    assert len(coarse_meta["theta_roots"]) == 1
     assert abs(float(caught[0]) - reference) / reference < 4.0e-3
     assert len(caught_meta["theta_roots"]) == 2
-    assert int(caught_meta["theta_scout_completed_depth"]) == 4
-    assert int(caught_meta["theta_scout_extra_node_count"]) <= 80
+    assert int(caught_meta["theta_scout_completed_depth"]) == 5
+    assert int(caught_meta["theta_scout_extra_node_count"]) <= 160
     assert not bool(caught_meta["theta_scout_budget_exhausted"])
     assert float(caught_meta["theta_scout_min_spacing"]) > 0.0
-    assert float(caught_meta["theta_scout_max_spacing"]) <= 0.25 / 16.0 + 1.0e-14
+    assert float(caught_meta["theta_scout_max_spacing"]) <= 0.25 / 32.0 + 1.0e-14
     assert caught_meta["theta_scout_limitation"] == (
         "finite_mesh_no_arbitrary_subgrid_guarantee"
     )

@@ -60,6 +60,7 @@ def test_workflow_defaults_to_partition_charge_and_strict_hnc_output_closure() -
     assert cfg.show_progress is True
     assert cfg.debug is False
     assert cfg.qoz_renormalize_nscr_to_zbar is True
+    assert cfg.qoz_screening_charge_rel_tol == 5.0e-2
     assert cfg.hnc_enforce_nodal_tail_zero is False
     assert cfg.hnc_closure_transform_tol is None
     assert wf._species_parallel_jobs_default(cfg, 2) == 2

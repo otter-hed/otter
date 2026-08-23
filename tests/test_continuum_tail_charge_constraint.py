@@ -23,6 +23,7 @@ from otter.electronic.continuum.tail import (
 from otter.data.helpers import trapz_integral
 from otter.electronic.full_external import (
     FullExternalConfig,
+    _apply_paired_pseudoatom_b3_charge_closure,
     _build_continuum_params,
     solve_full_then_external,
 )
@@ -77,6 +78,93 @@ def test_b3_charge_constraint_includes_hermite_bridge() -> None:
     assert np.isfinite(float(meta["charge_constraint_profile_delta_rel"]))
     assert bool(meta["charge_constraint_accepted"])
     assert float(meta["charge_constraint_tail_min"]) >= 0.0
+
+
+def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles() -> None:
+    r_ws = 1.5
+    r = np.linspace(0.02, 15.0 * r_ws, 2400)
+    n0 = 0.02
+    g_ii = np.asarray(r >= r_ws, dtype=float)
+
+    def normalized_profile(values: np.ndarray, charge: float) -> np.ndarray:
+        return np.asarray(values, dtype=float) * float(charge) / _charge(r, values)
+
+    n_bound = normalized_profile(np.exp(-(r / 0.45) ** 2), 0.8)
+    n_ion = normalized_profile(np.exp(-(r / 0.35) ** 2), 0.2)
+    free_inside = normalized_profile(
+        np.where(r < r_ws, np.exp(-(r / 0.65) ** 4), 0.0), 0.2
+    )
+    r_cut = 4.0 * r_ws
+    b3_response = linear_response_tail(
+        r, n0, 0.4, 5.0 / 27.211386245988, 1.0e-3, 5.0e-4, 0.3
+    ) - n0
+    b3_response[r < r_cut] = 0.0
+    compensation_shell = np.asarray((r >= r_ws) & (r < r_cut), dtype=float)
+    n_ext_pre_tail = (
+        n0 * g_ii
+        + b3_response
+        + normalized_profile(compensation_shell, -_charge(r, b3_response))
+    )
+    n_cont_pre_tail = n_ext_pre_tail + free_inside
+
+    # Mimic two independently extrapolated B3 tails whose difference carries
+    # a spurious 0.1 electron even though both saved pre-tail profiles are
+    # individually compatible with their physical source charges.
+    tail_artifact = normalized_profile(
+        np.exp(-((r - 8.0 * r_ws) / (1.5 * r_ws)) ** 2), 0.1
+    )
+    n_ext_raw = n_ext_pre_tail + tail_artifact
+    n_full_raw = n_bound + n_cont_pre_tail
+    result = {
+        "r": r,
+        "r_ws": r_ws,
+        "Z": 1,
+        "mu": 0.4,
+        "n0": n0,
+        "g_ii": g_ii,
+        "n_bound": n_bound,
+        "n_ion": n_ion,
+        "n_cont_pre_tail": n_cont_pre_tail,
+        "n_ext_pre_tail": n_ext_pre_tail,
+        "n_cont": n_cont_pre_tail.copy(),
+        "n_full": n_full_raw,
+        "n_ext": n_ext_raw,
+        "n_pa": n_full_raw - n_ext_raw,
+        "n_scr": n_full_raw - n_ext_raw - n_ion,
+        "stage2_converged": True,
+        "ext_status": {"converged": True},
+    }
+    cfg = FullExternalConfig(
+        element="H",
+        temperature_ev=5.0,
+        rho_g_cc=1.0,
+        r_ws_override_bohr=r_ws,
+    )
+
+    closed, meta = _apply_paired_pseudoatom_b3_charge_closure(
+        result,
+        cfg,
+        r_ws=r_ws,
+        rmax=float(r[-1]),
+    )
+
+    assert bool(meta["applied"]), meta
+    assert float(meta["q_scr_rel_raw"]) > cfg.b3_pseudoatom_charge_rel_tol
+    assert float(meta["q_scr_rel_closed"]) < 1.0e-9
+    assert (
+        float(meta["full_tail_meta"]["charge_constraint_fit_rms_ratio"]) <= 10.0
+    )
+    assert float(meta["ext_tail_meta"]["charge_constraint_fit_rms_ratio"]) <= 10.0
+    np.testing.assert_allclose(
+        closed["n_full"], closed["n_bound"] + closed["n_cont"]
+    )
+    np.testing.assert_allclose(
+        closed["n_pa"], closed["n_full"] - closed["n_ext"]
+    )
+    np.testing.assert_allclose(
+        closed["n_scr"], closed["n_pa"] - closed["n_ion"]
+    )
+    assert abs(_charge(r, closed["n_full"] - closed["n_ext"]) - 1.0) < 1.0e-9
 
 
 def test_b3_charge_row_survives_tiny_yukawa_basis_without_cancellation() -> None:
@@ -866,3 +954,67 @@ def test_high_level_external_constraint_state_replaces_full_only_placeholder(
     assert result["n_ext_tail_meta"] == ext_tail_meta
     assert bool(result["b3_charge_constraint_ext_applied"])
     assert bool(result["meta"]["ext_b3_charge_constraint_applied"])
+
+
+def test_full_external_can_reuse_a_converged_full_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adding the external branch must not rerun an accepted full-AA state."""
+    full_calls = 0
+
+    def fake_full(cfg):
+        nonlocal full_calls
+        full_calls += 1
+        return _synthetic_full_result(cfg)
+
+    def fake_external(**kwargs):
+        r = np.asarray(kwargs["r"], dtype=float)
+        n0 = float(kwargs["n0"])
+        return (
+            np.full_like(r, n0),
+            np.zeros_like(r),
+            {
+                "iters": 1,
+                "err": 0.0,
+                "converged": True,
+                "history": [],
+                "final_ph_kappa": 0.0,
+                "tail_meta": {},
+            },
+        )
+
+    monkeypatch.setattr(full_external, "solve_ks_dft_is", fake_full)
+    monkeypatch.setattr(full_external, "_external_fixed_mu_scf", fake_external)
+    monkeypatch.setattr(
+        full_external, "_build_bound_tables_and_dos", lambda **kwargs: {}
+    )
+    monkeypatch.setattr(
+        full_external, "_build_scattering_continuum_dos", lambda **kwargs: {}
+    )
+
+    common = {
+        "element": "H",
+        "temperature_ev": 10.0,
+        "rho_g_cc": 1.0,
+        "n_points": 48,
+        "rmax_mult": 4.0,
+        "save_data": False,
+    }
+    full = solve_full_then_external(
+        FullExternalConfig(**common, run_mode="full", ext_scf_enabled=False)
+    )
+    calls_after_root = full_calls
+    result = solve_full_then_external(
+        FullExternalConfig(
+            **common,
+            run_mode="full+ext",
+            ext_scf_enabled=True,
+            full_fixed_mu_ha=float(full["mu"]),
+            full_result_init=full,
+        )
+    )
+
+    assert full_calls == calls_after_root
+    assert result["full_result_reused"] is True
+    assert result["stage2_converged"] is True
+    assert result["ext_status"]["converged"] is True

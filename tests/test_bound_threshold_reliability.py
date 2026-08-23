@@ -389,6 +389,37 @@ def test_ks_zero_tail_refinement_matches_at_physical_scf_boundary() -> None:
     assert 0.0 < np.trapezoid(vectors[0, :, 0] ** 2 * r, r) < 1.0
 
 
+def test_ks_zero_tail_refinement_keeps_outer_repulsive_hump() -> None:
+    """A sampled positive hump before a small edge is part of the solve."""
+    grid = create_sqrt_grid(rmax=20.0, N=2000)
+    r = np.asarray(grid.r, dtype=float)
+    potential = np.where(r < 2.0, -0.36, 0.0)
+    potential[(r >= 16.0) & (r < 19.0)] = 2.0e-2
+
+    values, vectors, meta = _refine_shallow_bound_states_zero_tail(
+        r,
+        float(grid.dxi),
+        np.asarray([[np.inf]]),
+        np.zeros((1, r.size, 1), dtype=float),
+        np.asarray([0]),
+        potential,
+        potential_r=r,
+        potential=potential,
+        enabled=True,
+        min_binding=1.0e-4,
+        max_binding=2.0e-2,
+        scan_points=64,
+        l_max=0,
+        edge_rel_tol=0.25,
+    )
+
+    assert meta["applied"] is True
+    assert meta["matching_mode"] == "direct_physical_boundary"
+    assert np.isfinite(values[0, 0])
+    assert values[0, 0] < 0.0
+    assert 0.0 < np.trapezoid(vectors[0, :, 0] ** 2 * r, r) < 1.0
+
+
 def test_ks_zero_tail_refinement_rejects_large_scf_edge() -> None:
     grid = create_sqrt_grid(rmax=20.0, N=1200)
     r_bound = np.asarray(grid.r, dtype=float)

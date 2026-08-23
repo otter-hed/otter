@@ -178,17 +178,20 @@ def phase_root_resonance_scout(phases: np.ndarray) -> np.ndarray:
     In the asymptotic matching convention used here, an unnormalised regular
     solution is fitted as
 
-    ``u = c_F F_l + c_G G_l``
+    ``u = c_F F_l + c_G G_l``.  The propagated regular solution has an
+    arbitrary overall sign, so both coefficients can change sign and the
+    reported phase can change by pi without changing the scattering state.
+    A scout based on ``cos(delta_l)`` is therefore not sign invariant and can
+    manufacture a root at that harmless branch change.
 
-    with ``c_F = A cos(delta_l)`` and ``c_G = -A sin(delta_l)``.  Therefore
-
-    ``T_l = c_F / hypot(c_F, c_G) = cos(delta_l)``
-
-    has zeros at a purely irregular exterior solution.  For ``l > 0`` a
-    narrow shape resonance produces a sharp zero of this function and a
-    simultaneous maximum of the energy-normalised interior charge.  The root
-    location is independent of the arbitrary magnitude (and its zero is
-    independent of the sign) of the outward-propagated Numerov solution.
+    We instead use ``T_l = sin(2 delta_l)``.  It is invariant under
+    ``delta_l -> delta_l + pi`` and crosses zero at a purely irregular
+    exterior solution.  The caller additionally requires
+    ``cos(2 delta_l) < 0`` at the root, which selects the resonance crossing
+    ``delta_l = pi/2 (mod pi)`` and rejects ordinary zero-phase crossings.
+    For ``l > 0`` a narrow shape resonance produces a sharp zero of this
+    function and a simultaneous maximum of the energy-normalised interior
+    charge.
 
     This criterion is *inspired by*, but is not identical to, the smooth
     relativistic ``Theta(epsilon)`` construction used to catch sub-grid
@@ -213,7 +216,7 @@ def phase_root_resonance_scout(phases: np.ndarray) -> np.ndarray:
     a Green-function contour treatment would be the more complete solution
     for arbitrary ultra-narrow spectra.
     """
-    return np.cos(np.asarray(phases, dtype=float))
+    return np.sin(2.0 * np.asarray(phases, dtype=float))
 
 
 def free_electron_y(r: np.ndarray, k: float, l: int) -> np.ndarray:
@@ -1993,8 +1996,12 @@ def _compute_l_cap(energy: float,
     "match" (default):
         Use the end of the matching window r_m_end and a safety margin
         Δr ≈ match_min_points * dr to define
-        l_cap(E) = floor(k * (r_m_end - Δr) - 1). This skips large l
-        whose oscillatory region lies beyond the match window.
+        l_cap(E) = floor(k * (r_m_end - Δr) - 1), with the configured
+        ``l_pad`` low-l channels retained at every positive energy.  The
+        floor is required because exact free/Coulomb matching remains valid
+        at small ``kr`` and an l>=1 bound level becomes a threshold shape
+        resonance rather than disappearing from the spectrum.  Large l whose
+        oscillatory region lies beyond the match window are still skipped.
         If match_r_cut is provided, r_m_end defaults to match_r_cut + match_width.
     "rmax":
         l_cap(E) = ceil(k * Rmax + l_pad) (legacy behavior).
@@ -2057,6 +2064,13 @@ def _compute_l_cap(energy: float,
 
         # Require k r_eff >= l + 1 ⇒ l_cap = floor(k r_eff - 1).
         l_cap = int(np.floor(k * r_eff - 1.0))
+        # ``l_pad`` is not only a high-energy truncation margin.  It is also
+        # the small set of partial waves whose threshold spectral weight must
+        # never be removed by the energy-dependent match cap.  Before the
+        # low-kr matching path was made robust, dropping these channels hid
+        # narrow p/d shape resonances and made pressure-ionized AA densities
+        # jump between bound and continuum SCF branches.
+        l_cap = max(l_cap, min(int(l_pad), int(l_max)))
 
     l_cap = max(0, min(int(l_cap), int(l_max)))
     return l_cap
@@ -2104,8 +2118,8 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
     - Asymptotic matching to extract phase shifts and normalization.
     - If apply_occ=True, includes Fermi-Dirac occupancy.
     - l is truncated at an energy-dependent l_cap, controlled by
-      l_cap_strategy ("match" default). In the default mode, r_m is taken
-      as the start of the tail-matching window and l_cap(E) = floor(k r_m - 1).
+      l_cap_strategy ("match" default). The default retains l=0..l_pad at
+      threshold, then grows the cap from the tail-matching window.
     """
     numerov_geom = numerov_geom if numerov_geom is not None else _prepare_numerov_geometry(r, v_eff)
     r_eval = np.asarray(numerov_geom["r"], dtype=float)
@@ -2728,8 +2742,8 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     - "bisection": use phase-shift bisection to locate resonance windows, then
       apply local Simpson refinement only inside those windows.
     - "phase-root" (alias "theta-scout"): explicitly scout the
-      normalized regular matching coefficient
-      ``T_l=cos(delta_l)`` for ``l>=resonance_theta_l_min``.  Bracketed
+      sign-invariant S-matrix function
+      ``T_l=sin(2 delta_l)`` for ``l>=resonance_theta_l_min``.  Bracketed
       zeros are located with Brent's method and symmetric local Simpson panels
       are carved around them.  This is a non-relativistic phase-root guard
       inspired by, but not mathematically identical to, the relativistic
@@ -3131,12 +3145,13 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         scout_nodes: np.ndarray,
         scout_deltas: list[np.ndarray],
     ) -> list[dict[str, float | int]]:
-        """Locate bracketed normalized regular-coefficient roots.
+        """Locate bracketed sign-invariant resonance roots.
 
         The regular/irregular fit coefficients are smooth even when the
         energy-normalised interior density is too narrow for a quadrature
-        estimator to notice.  Looking for their regular-coefficient zero is
-        therefore an independent guard against false quadrature convergence,
+        estimator to notice.  Looking for the ``sin(2 delta_l)=0`` crossing
+        with ``cos(2 delta_l)<0`` is therefore an independent guard against
+        false quadrature convergence,
         following Wilson et al. (2006), Sec. 6.
         """
         nonlocal theta_candidates
@@ -3186,6 +3201,17 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                         theta_rejected += 1
                         continue
                 else:
+                    continue
+
+                # ``sin(2 delta)`` also vanishes at delta=0 (mod pi).  Only
+                # the negative real part of the S matrix identifies the
+                # irregular, resonance-centred crossing.  This check also
+                # rejects a numerical pi branch change of the arbitrary-sign
+                # regular solution, which used to look like a false root to
+                # the non-invariant cos(delta) scout.
+                _, delta_root = eval_energy_single(float(e_root))
+                if np.cos(2.0 * float(delta_root[l_val])) >= 0.0:
+                    theta_rejected += 1
                     continue
 
                 # Estimate the local energy scale from Theta'(E_r).  For a
