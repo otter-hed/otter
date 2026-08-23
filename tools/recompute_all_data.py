@@ -84,6 +84,14 @@ TASKS: dict[str, Task] = {
             "johnson_et_al_2025_two_temperature_al/gallery_recomputed",
         ),
     ),
+    "schorner_al_sii": Task(
+        "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py",
+        {"OTTER_RECOMPUTE_SCHORNER_AL": "1"},
+        (
+            "benchmarks/outputs/"
+            "schorner_et_al_2022_al_sii/gallery_recomputed",
+        ),
+    ),
     "starrett_fig3": Task(
         "benchmarks/examples/plot_starrett_et_al_2014_mixtures_fig3.py",
         {"OTTER_RECOMPUTE_STARRETT_FIG3": "1"},

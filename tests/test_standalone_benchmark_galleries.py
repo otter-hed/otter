@@ -22,6 +22,10 @@ GALLERIES = (
     ROOT
     / "benchmarks"
     / "examples"
+    / "plot_schorner_et_al_2022_al_sii.py",
+    ROOT
+    / "benchmarks"
+    / "examples"
     / "plot_starrett_et_al_2014_mixtures_fig3.py",
     ROOT
     / "benchmarks"

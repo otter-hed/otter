@@ -137,6 +137,22 @@ The carbon page is an equilibrium :math:`S_{ii}` comparison:
       <div class="sphx-glr-thumbnail-title">Carbon Otter PA-HNC and Dr. Argha Roy DFT-MD data</div>
     </div>
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Equilibrium aluminium LDA-PW92 and PBE structure factors at 1 and 5 eV compared with corrected Figure 2 curves from Schörner et al. (2022).">
+
+.. only:: html
+
+   .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_schorner_et_al_2022_al_sii_thumb.png
+      :alt: Schörner et al. 2022 equilibrium aluminium structure-factor benchmark
+
+   :doc:`gen_benchmarks/plot_schorner_et_al_2022_al_sii`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Schörner 2022 aluminium LDA/PBE structure factors</div>
+    </div>
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -223,6 +239,7 @@ reference for every panel.
    starrett_single_species_2013_2014
    johnson_et_al_2025_two_temperature_al
    argha_roy_carbon_sii
+   schorner_et_al_2022_al_sii
    gen_benchmarks/index
    validation_policy
 

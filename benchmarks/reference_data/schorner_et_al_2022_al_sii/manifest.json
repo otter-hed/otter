@@ -1,0 +1,80 @@
+{
+  "schema_version": "otter_reference_manifest_v1",
+  "reference_id": "schorner_et_al_2022_al_sii",
+  "title": "Aluminium static ion structure factors from Schörner et al. (2022), Figure 2",
+  "origin_type": "maintainer_digitized_publication_figure",
+  "attribution": "Digitized by the Otter maintainer from Figure 2 of Schörner et al., Physical Review B 105, 174310 (2022).",
+  "method_label": "published Figure 2 S_ii(k)",
+  "publication": {
+    "citation_key": "SchornerEtAl2022",
+    "title": "Extending ab initio simulations for the ion-ion structure factor of warm dense aluminum to the hydrodynamic limit using neural network potentials",
+    "authors": [
+      "Maximilian Schörner",
+      "Hannes R. Rüter",
+      "Martin French",
+      "Ronald Redmer"
+    ],
+    "journal": "Physical Review B",
+    "volume": "105",
+    "article": "174310",
+    "year": 2022,
+    "figure": "Figure 2",
+    "doi": "10.1103/PhysRevB.105.174310"
+  },
+  "redistribution_status": "published_by_maintainer_with_attribution",
+  "license_declared": "NOASSERTION",
+  "public_release_gate": "resolved",
+  "release_decision": {
+    "decision_date": "2026-08-23",
+    "decision_maker": "Otter project maintainer",
+    "scope": "the digitized CSV listed in this manifest",
+    "policy": "publish with explicit article attribution and without applying Otter's BSD-3-Clause software license to the reference data",
+    "rights_note": "This repository-distribution decision does not assert a third-party data license or replace permission from the publisher or authors."
+  },
+  "units": {
+    "wavenumber": "Angstrom^-1",
+    "static_structure_factor": "dimensionless",
+    "electron_temperature": "eV",
+    "ion_temperature": "eV",
+    "mass_density": "g cm^-3"
+  },
+  "states": [
+    {
+      "state_id": "al_rho4p712_te1_ti1",
+      "column_group": "Al_T_1p0_rho_4p712gcc",
+      "element": "Al",
+      "rho_g_cc": 4.712,
+      "te_ev": 1.0,
+      "ti_ev": 1.0,
+      "k_column": 0,
+      "sii_column": 1,
+      "sii_additive_correction": 1.5,
+      "correction_reason": "Only the 5 eV curve was used for ordinate calibration; the stored 1 eV curve is shifted downward by 1.5."
+    },
+    {
+      "state_id": "al_rho8p1_te5_ti5",
+      "column_group": "Al_T_5p0_rho_8p1gcc",
+      "element": "Al",
+      "rho_g_cc": 8.1,
+      "te_ev": 5.0,
+      "ti_ev": 5.0,
+      "k_column": 2,
+      "sii_column": 3,
+      "sii_additive_correction": 0.0,
+      "correction_reason": "This curve defines the ordinate calibration and needs no shift."
+    }
+  ],
+  "files": [
+    {
+      "path": "schornerExtendingInitioSimulations2022_Sii_fig2.csv",
+      "sha256": "517129e1f85f5cf6e2322c476964456654d256f781bef1a5b6fbb5ce740ed706",
+      "row_count": 60,
+      "columns": [
+        "al_1ev_k_angstrom_inv",
+        "al_1ev_sii_stored",
+        "al_5ev_k_angstrom_inv",
+        "al_5ev_sii_stored"
+      ]
+    }
+  ]
+}
