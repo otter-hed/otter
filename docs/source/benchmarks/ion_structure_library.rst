@@ -37,6 +37,28 @@ Each panel states whether it is an equilibrium or two-temperature comparison.
 The two Clérouin panels include independent Otter KS and Thomas--Fermi
 average-atom calculations; both use the same QOZ/HNC settings.
 
+The Wünsch Be panels contain three Otter results made from one IS-QOZ pair
+potential:
+
+* **Otter-HNC** uses the bridge-free hypernetted-chain closure.
+* **Otter-VMHNC** uses the variational Rosenfeld--Ashcroft hard-sphere bridge
+  :cite:p:`RosenfeldAshcroft1979,Faussurier2004`.
+* **Otter-MD** is a 2048-ion LAMMPS :cite:p:`ThompsonEtAl2022` calculation
+  with the same tabulated potential.  Shaded bands are twice the standard
+  error across RDF blocks or saved-frame reciprocal-shell averages.
+
+The accepted archive retains every periodic reciprocal shell.  The plotted
+MD :math:`S_{ii}(k)` starts at the second shell,
+:math:`k=0.5025\,\mathrm{\AA}^{-1}`: the cubic-box fundamental at
+:math:`0.3553\,\mathrm{\AA}^{-1}` has only three independent half-space
+vectors and is therefore excluded from the curve as a direction-starved
+finite-size estimate.  No smoothing or replacement value is applied.
+
+Thus the HNC--MD difference diagnoses the ionic closure without changing the
+average atom, ionization, screening density, or pair potential.  VMHNC is not
+IEMHNC: VMHNC uses a variational hard-sphere reference, whereas IEMHNC maps an
+OCP bridge to a YOCP state.
+
 Units
 -----
 
@@ -57,10 +79,22 @@ The downloadable script
    USE_PRECOMPUTED_DATA = True
 
 ``True`` verifies and loads checksummed Otter results.  ``False`` runs the
-average-atom and QOZ/HNC calculations in the same script, writes new files
+audited producer, including the Wünsch HNC/VMHNC and LAMMPS calculation,
+writes new files
 under ``benchmarks/outputs/ion_structure_library/gallery_recomputed``, and
 plots those results.  Accepted files are never overwritten automatically.
 Each run exports PNG and PDF figures.
+
+The common single- and multi-species MD implementation is
+``tools/otter_lammps_md.py``.  The benchmark producer
+``benchmarks/runners/regenerate_ion_structure_library.py`` keeps all Wünsch
+particle counts, temperatures, time scales, sampling intervals, and MPI
+settings in its user-editable Python constants.  A run preserves
+``atoms.data``, ``pair_potentials.table``, ``in.otter_md``, LAMMPS logs, RDF
+blocks, the trajectory, statistical results, and a checksummed JSON metadata
+record below ``benchmarks/outputs/ion_structure_library/recomputed/md_work``.
+For mixtures the same tool requires every unordered pair potential and writes
+all partial :math:`g_{ij}(r)` and :math:`S_{ij}(k)` channels.
 
 Reference-data notice
 ---------------------

@@ -81,6 +81,10 @@ Mandy Bethkenhagen, Bastian B. L. Witte, Maximilian Schörner, Gerd Röpke, Tilo
 
 Felix Bloch. Bemerkung zur Elektronentheorie des Ferromagnetismus und der elektrischen Leitfähigkeit. Zeitschrift für Physik 57(7–8), 545–555 (1929). DOI: https://doi.org/10.1007/BF01340281.
 
+### `CarnahanStarling1969`
+
+Norman F. Carnahan, Kenneth E. Starling. Equation of State for Nonattracting Rigid Spheres. The Journal of Chemical Physics 51(2), 635–636 (1969). DOI: https://doi.org/10.1063/1.1672048.
+
 ### `Chabrier1990`
 
 G. Chabrier. An equation of state for fully ionized hydrogen. Journal de Physique 51(15), 1607–1632 (1990). DOI: https://doi.org/10.1051/jphys:0199000510150160700.
@@ -93,9 +97,17 @@ G. Chabrier, A. Y. Potekhin. Equation of state of fully ionized electron-ion pla
 
 Jean Clérouin, Grégory Robert, Philippe Arnault, Christopher Ticknor, Joel D. Kress, Lee A. Collins. Evidence for out-of-equilibrium states in warm dense matter probed by x-ray Thomson scattering. Physical Review E 91(1), 011101 (2015). DOI: https://doi.org/10.1103/PhysRevE.91.011101.
 
+### `DaughtonMurilloThode2000`
+
+William Daughton, Michael S. Murillo, Lester Thode. Empirical bridge function for strongly coupled Yukawa systems. Physical Review E 61(2), 2129–2132 (2000). DOI: https://doi.org/10.1103/PhysRevE.61.2129.
+
 ### `Dirac1930`
 
 P. A. M. Dirac. Note on Exchange Phenomena in the Thomas Atom. Mathematical Proceedings of the Cambridge Philosophical Society 26(3), 376–385 (1930). DOI: https://doi.org/10.1017/S0305004100016108.
+
+### `Faussurier2004`
+
+G. Faussurier. Description of strongly coupled Yukawa fluids using the variational modified hypernetted chain approach. Physical Review E 69(6), 066402 (2004). DOI: https://doi.org/10.1103/PhysRevE.69.066402.
 
 ### `GeldartVosko1966`
 
@@ -121,9 +133,17 @@ J. Hubbard. The description of collective motions in terms of many-body perturba
 
 S. Ichimaru, H. Iyetomi, S. Tanaka. Statistical physics of dense plasmas: Thermodynamics, transport coefficients and dynamic correlations. Physics Reports 149(2–3), 91–205 (1987). DOI: https://doi.org/10.1016/0370-1573(87)90125-6.
 
+### `IyetomiOgataIchimaru1992`
+
+Hiroshi Iyetomi, Shuji Ogata, Setsuo Ichimaru. Bridge functions and improvement on the hypernetted-chain approximation for classical one-component plasmas. Physical Review A 46(2), 1051–1058 (1992). DOI: https://doi.org/10.1103/PhysRevA.46.1051.
+
 ### `JohnsonEtAl2025`
 
 Z. A. Johnson, N. R. Shaffer, M. S. Murillo. Quantum Ornstein–Zernike theory for two-temperature two-component plasmas. Physical Review E 112(2), 025207 (2025). DOI: https://doi.org/10.1103/5c29-kdx1.
+
+### `LadoFoilesAshcroft1983`
+
+F. Lado, S. M. Foiles, N. W. Ashcroft. Solutions of the reference-hypernetted-chain equation with minimized free energy. Physical Review A 28(4), 2374–2379 (1983). DOI: https://doi.org/10.1103/PhysRevA.28.2374.
 
 ### `LehtolaEtAl2018`
 
@@ -169,6 +189,10 @@ David Pines, David Bohm. A Collective Description of Electron Interactions: II. 
 
 R. Piron, T. Blenski. Variational-average-atom-in-quantum-plasmas code and virial theorem: Equation-of-state and shock-Hugoniot calculations for warm dense Al, Fe, Cu, and Pb. Physical Review E 83(2), 026403 (2011). DOI: https://doi.org/10.1103/PhysRevE.83.026403.
 
+### `RosenfeldAshcroft1979`
+
+Yaakov Rosenfeld, N. W. Ashcroft. Theory of simple classical fluids: Universality in the short-range structure. Physical Review A 20(3), 1208–1235 (1979). DOI: https://doi.org/10.1103/PhysRevA.20.1208.
+
 ### `SchornerEtAl2022`
 
 M. Schörner, H. R. Rüter, M. French, R. Redmer. Extending ab initio simulations for the ion-ion structure factor of warm dense aluminum to the hydrodynamic limit using neural network potentials. Physical Review B 105(17), 174310 (2022). DOI: https://doi.org/10.1103/PhysRevB.105.174310.
@@ -201,9 +225,21 @@ C. E. Starrett, D. Saumon. A simple method for determining the ionic structure o
 
 C. E. Starrett, D. Saumon. Equation of state of dense plasmas with pseudoatom molecular dynamics. Physical Review E 93(6), 063206 (2016). DOI: https://doi.org/10.1103/PhysRevE.93.063206.
 
+### `Thiele1963`
+
+Everett Thiele. Equation of State for Hard Spheres. The Journal of Chemical Physics 39(2), 474–479 (1963). DOI: https://doi.org/10.1063/1.1734272.
+
+### `ThompsonEtAl2022`
+
+Aidan P. Thompson, Hasan Metin Aktulga, Richard Berger, Dan S. Bolintineanu, W. Michael Brown, Paul S. Crozier, Pieter J. in 't Veld, Axel Kohlmeyer, Stan G. Moore, Trung Dac Nguyen, Ray Shan, Mark J. Stevens, Julien Tranchida, Christian Trott, Steven J. Plimpton. LAMMPS - a flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales. Computer Physics Communications 271, 108171 (2022). DOI: https://doi.org/10.1016/j.cpc.2021.108171.
+
 ### `TiesingaEtAl2021`
 
 Eite Tiesinga, Peter J. Mohr, David B. Newell, Barry N. Taylor. CODATA recommended values of the fundamental physical constants: 2018. Reviews of Modern Physics 93(2), 025010 (2021). DOI: https://doi.org/10.1103/RevModPhys.93.025010.
+
+### `ToliasLuccoCastello2019`
+
+P. Tolias, F. Lucco Castello. Isomorph-based empirically modified hypernetted-chain approach for strongly coupled Yukawa one-component plasmas. Physics of Plasmas 26(4), 043703 (2019). DOI: https://doi.org/10.1063/1.5089663.
 
 ### `UtsumiIchimaru1982`
 
@@ -216,6 +252,10 @@ P. Vashishta, K. S. Singwi. Electron correlations at metallic densities. Physica
 ### `VoskoWilkNusair1980`
 
 S. H. Vosko, L. Wilk, M. Nusair. Accurate spin-dependent electron liquid correlation energies for local spin density calculations: A critical analysis. Canadian Journal of Physics 58(8), 1200–1211 (1980). DOI: https://doi.org/10.1139/p80-159.
+
+### `Wertheim1963`
+
+M. S. Wertheim. Exact Solution of the Percus–Yevick Integral Equation for Hard Spheres. Physical Review Letters 10(8), 321–323 (1963). DOI: https://doi.org/10.1103/PhysRevLett.10.321.
 
 ### `WilsonEtAl2006`
 

@@ -244,6 +244,33 @@ def test_state_file_round_trips_without_pickle(tmp_path) -> None:
     np.testing.assert_allclose(loaded["f_k"], loaded["n_ion_k"])
 
 
+def test_state_export_preserves_vmhnc_bridge_and_variational_parameters() -> None:
+    workflow = _synthetic_workflow(1)
+    ion = workflow["ion"]
+    r = np.asarray(ion["r"], dtype=float)
+    ion.update(
+        {
+            "hnc_bridge_model": "rosenfeld_ashcroft",
+            "bridge_r": -0.1 * np.exp(-r),
+            "hnc_effective_potential_r": 1.0 + 0.1 * np.exp(-r),
+            "vmhnc_eta": 0.4,
+            "vmhnc_sigma_bohr": 2.1,
+            "vmhnc_variational_residual": 2.0e-5,
+        }
+    )
+    arrays = build_state_arrays(workflow)
+    metadata = json.loads(str(arrays["metadata_json"].item()))
+
+    assert arrays["bridge_r"].shape[:2] == (1, 1)
+    assert arrays["hnc_effective_potential_r"].shape == arrays["bridge_r"].shape
+    assert arrays["vmhnc_eta"].item() == pytest.approx(0.4)
+    assert arrays["vmhnc_sigma_bohr"].item() == pytest.approx(2.1)
+    assert metadata["model"]["hnc_bridge_model"] == "rosenfeld_ashcroft"
+    assert metadata["convergence"]["vmhnc_variational_residual"] == pytest.approx(
+        2.0e-5
+    )
+
+
 def test_single_species_state_recovers_ion_density_from_rws() -> None:
     workflow = _synthetic_workflow(1)
     result = workflow["electronic"]["result"]

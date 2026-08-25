@@ -1,7 +1,12 @@
 """Ionic structure and QOZ/HNC interfaces."""
 from __future__ import annotations
 
-from otter.ionic.correlation import IonCorrelationModel, IonSphereStepModel, ion_sphere_radius_from_density
+from otter.ionic.bridges import HardSpherePYReference, VMHNCResult, solve_vmhnc
+from otter.ionic.correlation import (
+    IonCorrelationModel,
+    IonSphereStepModel,
+    ion_sphere_radius_from_density,
+)
 from otter.ionic.lfc import (
     LFC_MODEL_CITATION_KEYS,
     LFC_MODEL_REFERENCE_KEYS,
@@ -53,6 +58,7 @@ from otter.numerics.transforms import (
 
 __all__ = [
     "EffectivePotentialResult",
+    "HardSpherePYReference",
     "IonCorrelationModel",
     "IonSphereStepModel",
     "LFC_MODEL_REFERENCE_KEYS",
@@ -62,6 +68,7 @@ __all__ = [
     "QOZPotentialOptions",
     "QOZResponseOptions",
     "ScreeningChargeConsistencyResult",
+    "VMHNCResult",
     "build_effective_vii_from_nscr",
     "build_effective_vij_from_nscr",
     "cee_from_gee",
@@ -96,5 +103,6 @@ __all__ = [
     "radial_inverse",
     "qoz_zbar_from_nscr",
     "radial_charge_trapezoid",
+    "solve_vmhnc",
     "wigner_seitz_radius_au",
 ]

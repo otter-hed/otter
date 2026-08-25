@@ -206,21 +206,35 @@ STATE_TITLES = {
 }
 
 OTTER_SERIES = {
-    state_id: ((state_id, "Otter KS", "-"),)
+    state_id: ((state_id, "Otter KS", "-", ""),)
     for state_id in REFERENCE_SERIES
 }
 OTTER_SERIES.update(
     {
         "al_clerouin_rho8p1_te10_ti10": (
-            ("al_clerouin_rho8p1_te10_ti10", "Otter KS", "-"),
-            ("al_clerouin_rho8p1_te10_ti10_tf", "Otter TF", "--"),
+            ("al_clerouin_rho8p1_te10_ti10", "Otter KS", "-", ""),
+            ("al_clerouin_rho8p1_te10_ti10_tf", "Otter TF", "--", ""),
         ),
         "al_clerouin_rho8p1_te10_ti2": (
-            ("al_clerouin_rho8p1_te10_ti2", "Otter KS", "-"),
-            ("al_clerouin_rho8p1_te10_ti2_tf", "Otter TF", "--"),
+            ("al_clerouin_rho8p1_te10_ti2", "Otter KS", "-", ""),
+            ("al_clerouin_rho8p1_te10_ti2_tf", "Otter TF", "--", ""),
+        ),
+        "be_wunsch_rho5p544_te13_ti13": (
+            ("be_wunsch_rho5p544_te13_ti13", "Otter-HNC", "-", ""),
+            (
+                "be_wunsch_rho5p544_te13_ti13",
+                "Otter-VMHNC",
+                "--",
+                "vmhnc_",
+            ),
+            ("be_wunsch_rho5p544_te13_ti13", "Otter-MD", "-.", "md_"),
         ),
     }
 )
+
+# Do not draw the direction-starved fundamental MD shell (three independent
+# half-space vectors); the raw value remains available in the accepted NPZ.
+MD_MIN_HALF_SPACE_MODES_PER_BIN = 4
 
 
 def sha256_file(path: Path) -> str:
@@ -240,7 +254,7 @@ def load_manifest(path: Path = MANIFEST_PATH) -> dict[str, Any]:
     expected = {
         result_id
         for branches in OTTER_SERIES.values()
-        for result_id, _, _ in branches
+        for result_id, _, _, _ in branches
     }
     if {state["state_id"] for state in manifest["states"]} != expected:
         raise ValueError("Manifest and reference state maps differ.")
@@ -299,18 +313,25 @@ def _otter_curve(
     state: dict[str, np.ndarray],
     observable: str,
     x_unit: str,
+    prefix: str = "",
 ) -> tuple[np.ndarray, np.ndarray]:
     if observable == "sii":
-        x = np.asarray(state["k_bohr_inv"], dtype=float)
-        y = np.asarray(state["sii_k"], dtype=float)
+        x = np.asarray(state[f"{prefix}k_bohr_inv"], dtype=float)
+        y = np.asarray(state[f"{prefix}sii_k"], dtype=float)
+        if prefix == "md_":
+            reliable = (
+                np.asarray(state["md_sii_vectors_per_bin"], dtype=int)
+                >= MD_MIN_HALF_SPACE_MODES_PER_BIN
+            )
+            x, y = x[reliable], y[reliable]
         if x_unit == "angstrom^-1":
             x = x / BOHR_TO_ANGSTROM
         elif x_unit != "bohr^-1":
             raise ValueError(f"Unsupported reciprocal unit {x_unit!r}.")
         return x, y
     if observable == "gii":
-        x = np.asarray(state["r_bohr"], dtype=float)
-        y = np.asarray(state["gii_r"], dtype=float)
+        x = np.asarray(state[f"{prefix}r_bohr"], dtype=float)
+        y = np.asarray(state[f"{prefix}gii_r"], dtype=float)
         if x_unit == "angstrom":
             x = x * BOHR_TO_ANGSTROM
         elif x_unit != "bohr":
@@ -324,7 +345,7 @@ def evaluate(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for state_id, series_list in REFERENCE_SERIES.items():
-        for result_id, model_label, _ in OTTER_SERIES[state_id]:
+        for result_id, model_label, _, prefix in OTTER_SERIES[state_id]:
             state = states[result_id]
             for series in series_list:
                 x_ref, y_ref = load_reference(series)
@@ -332,6 +353,7 @@ def evaluate(
                     state,
                     series["observable"],
                     series["x_unit"],
+                    prefix,
                 )
                 mask = (x_ref >= x_otter[0]) & (x_ref <= x_otter[-1])
                 if not np.any(mask):
@@ -373,12 +395,13 @@ def write_metrics(rows: list[dict[str, Any]]) -> None:
 
 def print_metrics(rows: list[dict[str, Any]]) -> None:
     print(
-        f"{'state':42s} {'obs':>3s} {'reference':19s} "
+        f"{'state':42s} {'model':12s} {'obs':>3s} {'reference':19s} "
         f"{'RMSE':>10s} {'MAE':>10s} {'max':>10s}"
     )
     for row in rows:
         print(
-            f"{row['state_id']:42s} {row['observable']:>3s} "
+            f"{row['state_id']:42s} {row['otter_model']:12s} "
+            f"{row['observable']:>3s} "
             f"{row['reference'][:19]:19s} "
             f"{row['rmse']:10.4e} {row['mae']:10.4e} "
             f"{row['max_abs']:10.4e}"
@@ -412,22 +435,53 @@ def _plot_observable(
             if item["observable"] == observable
         ]
         display_unit = str(series_for_observable[0]["x_unit"])
-        for model_index, (result_id, label, line_style) in enumerate(
+        for model_index, (result_id, label, line_style, prefix) in enumerate(
             OTTER_SERIES[state_id]
         ):
             x_otter, y_otter = _otter_curve(
                 states[result_id],
                 observable,
                 display_unit,
+                prefix,
+            )
+            color = (
+                "black"
+                if model_index == 0
+                else reference_colors[(model_index - 1) % len(reference_colors)]
             )
             ax.plot(
                 x_otter,
                 y_otter,
-                color="black" if model_index == 0 else "#D55E00",
+                color=color,
                 ls=line_style,
                 lw=2.1,
+                alpha=0.82,
                 label=label,
             )
+            sem_key = (
+                "md_sii_frame_sem"
+                if prefix == "md_" and observable == "sii"
+                else "md_gii_block_sem"
+            )
+            if prefix == "md_" and sem_key in states[result_id]:
+                sem = np.asarray(states[result_id][sem_key], dtype=float)
+                if observable == "sii":
+                    reliable = (
+                        np.asarray(
+                            states[result_id]["md_sii_vectors_per_bin"],
+                            dtype=int,
+                        )
+                        >= MD_MIN_HALF_SPACE_MODES_PER_BIN
+                    )
+                    sem = sem[reliable]
+                ax.fill_between(
+                    x_otter,
+                    y_otter - 2.0 * sem,
+                    y_otter + 2.0 * sem,
+                    color=color,
+                    alpha=0.14,
+                    linewidth=0.0,
+                )
         reference_x: list[np.ndarray] = []
         for index, series in enumerate(series_for_observable):
             x_ref, y_ref = load_reference(series)
@@ -486,7 +540,7 @@ def _plot_observable(
     for panel in range(len(state_ids), axes.size):
         axes.ravel()[panel].set_visible(False)
     fig.suptitle(
-        "Otter QOZ/HNC versus curated literature curves",
+        "Otter ion structure versus curated literature curves",
         y=0.995,
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.975))

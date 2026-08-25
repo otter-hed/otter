@@ -2,7 +2,7 @@
 Ion-structure literature library
 ================================
 
-This benchmark compares Otter QOZ/HNC results with literature curves for
+This benchmark compares Otter ion-structure results with literature curves for
 aluminium, beryllium, and carbon.  ``USE_PRECOMPUTED_DATA = True`` verifies
 and loads checksummed Otter NPZ files.  With ``False``, this file
 constructs :class:`otter.PlasmaWorkflowConfig`, evaluates every average atom
@@ -13,7 +13,10 @@ those results.
 In the four-panel :math:`S_{ii}(k)` figure, panel 1 uses Gill *et al.*,
 Fig. 3 :cite:p:`GillEtAl2015`; panels 2 and 3 use Clérouin *et al.*, Fig. 1
 :cite:p:`ClerouinEtAl2015`; and panel 4 uses Wünsch *et al.*, Fig. 2
-:cite:p:`WunschEtAl2009`.  The separate real-space Wünsch comparison uses
+:cite:p:`WunschEtAl2009`.  For Wünsch Be, ordinary HNC, Rosenfeld--Ashcroft
+VMHNC, and same-potential LAMMPS MD reuse one IS-QOZ pair potential.  The MD
+error band is twice the standard error across independent RDF blocks or
+saved-frame reciprocal-shell averages.  The real-space comparison uses
 Fig. 1(c).  The carbon PA-HNC data were provided by C. E. Starrett
 (private communication; unpublished).
 Reference coordinates remain separate data files because they are digitized
@@ -36,11 +39,13 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import time
 from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.constants import physical_constants
 
 from otter import (
     PlasmaWorkflowConfig,
@@ -71,6 +76,15 @@ HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
+VMHNC_ETA_TOL = 1.0e-6
+RUN_WUNSCH_SAME_POTENTIAL_MD = True
+WUNSCH_MD_MPI_PROCESSES = 10
+WUNSCH_MD_ATOMS = 2048
+WUNSCH_MD_K_MAX_ANGSTROM_INV = 10.2
+# The fundamental cubic-cell shell has only three independent half-space
+# vectors and is visibly direction-starved.  Keep it in the NPZ audit data,
+# but require at least the next shell's four modes when drawing MD S(k).
+MD_MIN_HALF_SPACE_MODES_PER_BIN = 4
 # =============================================================================
 
 
@@ -298,18 +312,28 @@ STATE_TITLES = {
 }
 
 OTTER_SERIES = {
-    state_id: ((state_id, "Otter KS", "-"),)
+    state_id: ((state_id, "Otter KS", "-", ""),)
     for state_id in REFERENCE_SERIES
 }
 OTTER_SERIES.update(
     {
         "al_clerouin_rho8p1_te10_ti10": (
-            ("al_clerouin_rho8p1_te10_ti10", "Otter KS", "-"),
-            ("al_clerouin_rho8p1_te10_ti10_tf", "Otter TF", "--"),
+            ("al_clerouin_rho8p1_te10_ti10", "Otter KS", "-", ""),
+            ("al_clerouin_rho8p1_te10_ti10_tf", "Otter TF", "--", ""),
         ),
         "al_clerouin_rho8p1_te10_ti2": (
-            ("al_clerouin_rho8p1_te10_ti2", "Otter KS", "-"),
-            ("al_clerouin_rho8p1_te10_ti2_tf", "Otter TF", "--"),
+            ("al_clerouin_rho8p1_te10_ti2", "Otter KS", "-", ""),
+            ("al_clerouin_rho8p1_te10_ti2_tf", "Otter TF", "--", ""),
+        ),
+        "be_wunsch_rho5p544_te13_ti13": (
+            ("be_wunsch_rho5p544_te13_ti13", "Otter-HNC", "-", ""),
+            (
+                "be_wunsch_rho5p544_te13_ti13",
+                "Otter-VMHNC",
+                "--",
+                "vmhnc_",
+            ),
+            ("be_wunsch_rho5p544_te13_ti13", "Otter-MD", "-.", "md_"),
         ),
     }
 )
@@ -335,6 +359,8 @@ def repository_root() -> Path:
 
 
 ROOT = repository_root()
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 PRECOMPUTED_DIR = (
     ROOT / "benchmarks" / "baselines" / "ion_structure_library"
 )
@@ -393,6 +419,7 @@ def workflow_config(
     state: dict[str, Any],
     *,
     ion_temperature_ev: float | None,
+    bridge_model: str = "none",
 ) -> PlasmaWorkflowConfig:
     """Build the complete public Otter workflow for one thermodynamic state."""
     return PlasmaWorkflowConfig(
@@ -410,6 +437,8 @@ def workflow_config(
         hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=500,
+        hnc_bridge_model=bridge_model,
+        vmhnc_eta_tol=VMHNC_ETA_TOL,
     )
 
 
@@ -476,6 +505,100 @@ def pack_result(
     }
 
 
+def add_wunsch_vmhnc(
+    payload: dict[str, np.ndarray],
+    hnc_workflow: dict[str, Any],
+    vmhnc_workflow: dict[str, Any],
+) -> None:
+    """Store the second closure after checking that its potential is unchanged."""
+    _, hnc = strict_check(hnc_workflow)
+    _, vmhnc = strict_check(vmhnc_workflow)
+    if str(hnc["hnc_bridge_model"]) != "none":
+        raise RuntimeError("The ordinary-HNC Wünsch curve used a bridge.")
+    if str(vmhnc["hnc_bridge_model"]) != "rosenfeld_ashcroft":
+        raise RuntimeError("The Wünsch VMHNC curve used the wrong bridge.")
+    if not np.allclose(hnc["vii_r"], vmhnc["vii_r"], rtol=0.0, atol=0.0):
+        raise RuntimeError("Wünsch HNC and VMHNC did not reuse one potential.")
+    r = np.asarray(vmhnc["r"], dtype=float)
+    k = np.asarray(vmhnc["k"], dtype=float)
+    r_mask, k_mask = r <= R_RETAIN_MAX_BOHR, k <= K_RETAIN_MAX_BOHR_INV
+    payload.update(
+        {
+            "vmhnc_r_bohr": r[r_mask],
+            "vmhnc_gii_r": np.asarray(vmhnc["gii_r"])[r_mask],
+            "vmhnc_k_bohr_inv": k[k_mask],
+            "vmhnc_sii_k": np.asarray(vmhnc["sii_k"])[k_mask],
+            "vmhnc_best_residual": np.asarray(float(vmhnc["hnc_output_residual"])),
+            "vmhnc_closure_mismatch": np.asarray(
+                float(vmhnc["closure_transform_max_abs"])
+            ),
+            "vmhnc_eta": np.asarray(float(vmhnc["vmhnc_eta"])),
+            "vmhnc_variational_residual": np.asarray(
+                float(vmhnc["vmhnc_variational_residual"])
+            ),
+        }
+    )
+
+
+def add_wunsch_md(
+    payload: dict[str, np.ndarray],
+    workflow: dict[str, Any],
+) -> None:
+    """Run the reusable single-/multi-species LAMMPS driver for Wünsch Be."""
+    from tools.otter_lammps_md import (
+        MDConfig,
+        MDSpecies,
+        PairPotential,
+        run_otter_lammps_md,
+    )
+
+    ion = dict(workflow["ion"])
+    mass_u = 9.0121831
+    mass_ratio = (
+        physical_constants["atomic mass constant"][0]
+        / physical_constants["electron mass"][0]
+    )
+    atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
+    omega_p = np.sqrt(
+        4.0
+        * np.pi
+        * float(ion["n_i"])
+        * float(ion["zbar_partition"]) ** 2
+        / (mass_u * mass_ratio)
+    )
+    state_id = str(payload["state_id"].item())
+    result = run_otter_lammps_md(
+        MDConfig(
+            output_dir=OUTPUT_DIR / "md_work" / state_id,
+            species=(MDSpecies("Be", mass_u, WUNSCH_MD_ATOMS),),
+            ion_density_bohr3=float(ion["n_i"]),
+            ion_temperature_ev=float(payload["ti_ev"]),
+            timestep_ps=0.005 / omega_p * atomic_time_ps,
+            thermostat_damp_ps=0.5 / omega_p * atomic_time_ps,
+            equilibration_steps=10_000,
+            production_steps=100_000,
+            rdf_bins=500,
+            rdf_every=100,
+            rdf_repeat=50,
+            trajectory_every=5_000,
+            table_points=8_192,
+            k_max_angstrom_inv=WUNSCH_MD_K_MAX_ANGSTROM_INV,
+            random_seed=20_260_825,
+            mpi_processes=WUNSCH_MD_MPI_PROCESSES,
+            structure_factor_workers=WUNSCH_MD_MPI_PROCESSES,
+        ),
+        [PairPotential("Be", "Be", np.asarray(ion["r"]), np.asarray(ion["vii_r"]))],
+    )
+    payload.update(result)
+    payload["md_gii_r"] = np.asarray(result["md_gij_r"])[:, 0]
+    payload["md_gii_block_sem"] = np.asarray(result["md_gij_block_sem"])[:, 0]
+    payload["md_sii_k"] = np.asarray(result["md_snn_k"])
+    payload["md_sii_frame_sem"] = np.asarray(result["md_snn_frame_sem"])
+    payload["md_sii_vectors_per_bin"] = np.asarray(
+        result["md_vectors_per_k_bin"]
+    )
+
+
 def solve_group(
     group: tuple[dict[str, Any], ...],
 ) -> dict[str, dict[str, np.ndarray]]:
@@ -502,6 +625,19 @@ def solve_group(
         )
         elapsed = electronic_elapsed + time.perf_counter() - ion_started
         payload = pack_result(workflow, state, elapsed_s=elapsed)
+        if str(state["state_id"]).startswith("be_wunsch"):
+            vmhnc = continue_plasma_workflow_from_electronic_result(
+                workflow_config(
+                    state,
+                    ion_temperature_ev=float(state["ti_ev"]),
+                    bridge_model="rosenfeld_ashcroft",
+                ),
+                electronic_kind=electronic_kind,
+                electronic_result=electronic,
+            )
+            add_wunsch_vmhnc(payload, workflow, vmhnc)
+            if RUN_WUNSCH_SAME_POTENTIAL_MD:
+                add_wunsch_md(payload, workflow)
         solved[str(state["state_id"])] = payload
     return solved
 
@@ -544,19 +680,26 @@ def otter_curve(
     state: dict[str, np.ndarray],
     observable: str,
     x_unit: str,
+    prefix: str = "",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert only the Otter coordinate to the publication's stated unit."""
     if observable == "sii":
-        x = np.asarray(state["k_bohr_inv"], dtype=float)
-        y = np.asarray(state["sii_k"], dtype=float)
+        x = np.asarray(state[f"{prefix}k_bohr_inv"], dtype=float)
+        y = np.asarray(state[f"{prefix}sii_k"], dtype=float)
+        if prefix == "md_":
+            reliable = (
+                np.asarray(state["md_sii_vectors_per_bin"], dtype=int)
+                >= MD_MIN_HALF_SPACE_MODES_PER_BIN
+            )
+            x, y = x[reliable], y[reliable]
         if x_unit == "angstrom^-1":
             x = x / BOHR_TO_ANGSTROM
         elif x_unit != "bohr^-1":
             raise ValueError(f"Unsupported reciprocal unit {x_unit!r}.")
         return x, y
     if observable == "gii":
-        x = np.asarray(state["r_bohr"], dtype=float)
-        y = np.asarray(state["gii_r"], dtype=float)
+        x = np.asarray(state[f"{prefix}r_bohr"], dtype=float)
+        y = np.asarray(state[f"{prefix}gii_r"], dtype=float)
         if x_unit == "angstrom":
             x = x * BOHR_TO_ANGSTROM
         elif x_unit != "bohr":
@@ -571,13 +714,14 @@ def print_metrics(states: dict[str, dict[str, np.ndarray]]) -> None:
         f"{'RMSE':>10s} {'MAE':>10s} {'max':>10s}"
     )
     for state_id, series_list in REFERENCE_SERIES.items():
-        for result_id, model_label, _ in OTTER_SERIES[state_id]:
+        for result_id, model_label, _, prefix in OTTER_SERIES[state_id]:
             for series in series_list:
                 x_ref, y_ref = load_reference(series)
                 x_otter, y_otter = otter_curve(
                     states[result_id],
                     str(series["observable"]),
                     str(series["x_unit"]),
+                    prefix,
                 )
                 mask = (x_ref >= x_otter[0]) & (x_ref <= x_otter[-1])
                 delta = (
@@ -633,19 +777,47 @@ def plot_observable(
             if item["observable"] == observable
         ]
         display_unit = str(series_list[0]["x_unit"])
-        for model_index, (result_id, label, line_style) in enumerate(
+        for model_index, (result_id, label, line_style, prefix) in enumerate(
             OTTER_SERIES[state_id]
         ):
             x_otter, y_otter = otter_curve(
                 states[result_id],
                 observable,
                 display_unit,
+                prefix,
             )
             style = dict(MODEL_STYLES["otter"])
             style["linestyle"] = line_style
-            if model_index:
-                style["color"] = "#D55E00"
+            style["alpha"] = 0.82
+            if model_index == 1:
+                style["color"] = colors[0]
+            elif model_index == 2:
+                style["color"] = colors[1]
             axis.plot(x_otter, y_otter, label=label, **style)
+            sem_key = (
+                "md_sii_frame_sem"
+                if prefix == "md_" and observable == "sii"
+                else "md_gii_block_sem"
+            )
+            if prefix == "md_" and sem_key in states[result_id]:
+                sem = np.asarray(states[result_id][sem_key], dtype=float)
+                if observable == "sii":
+                    reliable = (
+                        np.asarray(
+                            states[result_id]["md_sii_vectors_per_bin"],
+                            dtype=int,
+                        )
+                        >= MD_MIN_HALF_SPACE_MODES_PER_BIN
+                    )
+                    sem = sem[reliable]
+                axis.fill_between(
+                    x_otter,
+                    y_otter - 2.0 * sem,
+                    y_otter + 2.0 * sem,
+                    color=style["color"],
+                    alpha=0.14,
+                    linewidth=0.0,
+                )
         reference_x: list[np.ndarray] = []
         for index, series in enumerate(series_list):
             x_ref, y_ref = load_reference(series)
@@ -688,7 +860,7 @@ def plot_observable(
         axis.legend(fontsize="small")
     for panel in range(len(state_ids), axes.size):
         axes.ravel()[panel].set_visible(False)
-    fig.suptitle("Otter QOZ/HNC versus curated literature curves", y=0.985)
+    fig.suptitle("Otter ion structure versus curated literature curves", y=0.985)
     source_line = (
         "Reference data: Gill et al. (2015); Clérouin et al. (2015); "
         "Wunsch et al. (2009)."

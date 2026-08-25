@@ -62,6 +62,7 @@ from otter.ionic import (
     radial_charge_trapezoid,
     radial_forward,
     radial_inverse,
+    solve_vmhnc,
 )
 
 from otter.electronic.full_external import (
@@ -469,6 +470,10 @@ class PlasmaWorkflowConfig(CitationMixin):
         Maximum relative mismatch between the raw finite-box screening charge
         and the pseudoatom partition before QOZ/HNC. Scalar QOZ
         renormalization cannot repair a badly shaped screening cloud.
+    hnc_bridge_model
+        Optional one-component ionic closure. ``"none"`` is ordinary HNC;
+        ``"rosenfeld_ashcroft"`` selects variational modified HNC with a
+        hard-sphere Percus--Yevick bridge.
     show_progress
         Print the compact workflow report and SCF ``d_n``/``d_v`` trace.
     debug
@@ -583,9 +588,15 @@ class PlasmaWorkflowConfig(CitationMixin):
     # high-level production path leaves it disabled and reports that identity.
     hnc_enforce_nodal_tail_zero: bool = False
     hnc_potential_scales: tuple[float, ...] = (0.05, 0.15, 0.35, 0.6, 0.8, 1.0)
+    # ``rosenfeld_ashcroft`` selects the one-component variational modified
+    # HNC closure.  Plain HNC remains the default and is bit-for-bit unchanged.
+    hnc_bridge_model: str = "none"
+    vmhnc_points_per_diameter: int = 256
+    vmhnc_eta_bounds: tuple[float, float] = (0.05, 0.49)
+    vmhnc_eta_tol: float = 1.0e-4
 
     def __post_init__(self) -> None:
-        resolve_plasma_composition(
+        symbols, _ = resolve_plasma_composition(
             formula=self.formula,
             elements=self.elements,
             counts=self.counts,
@@ -710,6 +721,36 @@ class PlasmaWorkflowConfig(CitationMixin):
             )
         if int(self.hnc_newton_max_iter) < 2:
             raise ValueError("hnc_newton_max_iter must be at least 2.")
+        bridge_key = str(self.hnc_bridge_model).strip().lower().replace("-", "_")
+        if bridge_key in {"hnc", "off"}:
+            bridge_key = "none"
+        elif bridge_key in {"ra", "vmhnc", "rosenfeld_ashcroft_vmhnc"}:
+            bridge_key = "rosenfeld_ashcroft"
+        if bridge_key not in {"none", "rosenfeld_ashcroft"}:
+            raise ValueError(
+                "hnc_bridge_model must be 'none' or 'rosenfeld_ashcroft'."
+            )
+        self.hnc_bridge_model = bridge_key
+        if int(self.vmhnc_points_per_diameter) < 32:
+            raise ValueError("vmhnc_points_per_diameter must be at least 32.")
+        eta_low, eta_high = (float(value) for value in self.vmhnc_eta_bounds)
+        if not 0.0 < eta_low < eta_high < 0.5:
+            raise ValueError(
+                "vmhnc_eta_bounds must satisfy 0 < low < high < 0.5."
+            )
+        self.vmhnc_eta_bounds = (eta_low, eta_high)
+        if float(self.vmhnc_eta_tol) <= 0.0:
+            raise ValueError("vmhnc_eta_tol must be positive.")
+        if bridge_key != "none" and self.ion_temperature_ev is not None:
+            if len(symbols) != 1:
+                raise ValueError(
+                    "Rosenfeld--Ashcroft VMHNC is currently implemented only "
+                    "for one-component ion fluids."
+                )
+            if float(self.ion_temperature_ev) <= 0.0:
+                raise ValueError(
+                    "Rosenfeld--Ashcroft VMHNC requires a positive ion temperature."
+                )
         if str(self.run_mode).strip().lower() not in ("full", "full+ext", "full_ext"):
             raise ValueError("run_mode must be 'full' or 'full+ext'.")
         if self.ion_temperature_ev is not None and str(self.run_mode).strip().lower() == "full":
@@ -725,6 +766,17 @@ class PlasmaWorkflowConfig(CitationMixin):
             *citation_keys_for_chi0_model(self.qoz_response_chi0_model),
             *citation_keys_for_lfc_model(self.qoz_response_lfc_model),
         ]
+        if str(self.hnc_bridge_model) == "rosenfeld_ashcroft":
+            keys.extend(
+                (
+                    "RosenfeldAshcroft1979",
+                    "LadoFoilesAshcroft1983",
+                    "Faussurier2004",
+                    "Wertheim1963",
+                    "Thiele1963",
+                    "CarnahanStarling1969",
+                )
+            )
         return tuple(dict.fromkeys(keys))
 
     def solve(self) -> dict[str, Any]:
@@ -985,21 +1037,51 @@ def _one_component_ion_structure(
         if str(cfg.hnc_mixing_scheme).strip().lower() in {"auto", "newton_krylov"}
         else str(cfg.hnc_mixing_scheme)
     )
-    g_r, s_k, h_r, c_r, residual_history = hnc_solver(
-        r,
-        k,
-        qoz.vii_r,
-        transform,
-        float(1.0 / float(species_entry["volume_bohr3"])),
-        ion_temperature_ha,
-        mix=float(cfg.hnc_mix),
-        tol=float(cfg.hnc_tol),
-        max_iter=int(cfg.hnc_max_iter),
-        mixing_scheme=direct_mixing_scheme,
-        tail_points=int(cfg.hnc_tail_points),
-        c_map_clip=float(cfg.hnc_nodal_clip),
-        enforce_h_tail_zero=bool(cfg.hnc_enforce_nodal_tail_zero),
-    )
+    bridge_model = str(cfg.hnc_bridge_model)
+    vmhnc_result = None
+    if bridge_model == "rosenfeld_ashcroft":
+        vmhnc_result = solve_vmhnc(
+            r,
+            k,
+            np.asarray(qoz.vii_r, dtype=float),
+            transform,
+            float(1.0 / float(species_entry["volume_bohr3"])),
+            ion_temperature_ha,
+            points_per_diameter=int(cfg.vmhnc_points_per_diameter),
+            eta_bounds=tuple(float(value) for value in cfg.vmhnc_eta_bounds),
+            eta_tol=float(cfg.vmhnc_eta_tol),
+            hnc_mix=float(cfg.hnc_mix),
+            hnc_tol=float(cfg.hnc_tol),
+            hnc_max_iter=int(cfg.hnc_max_iter),
+            hnc_newton_max_iter=int(cfg.hnc_newton_max_iter),
+            hnc_tail_points=int(cfg.hnc_tail_points),
+            hnc_potential_scales=tuple(
+                float(value) for value in cfg.hnc_potential_scales
+            ),
+            hnc_min_scale_step=float(cfg.hnc_min_scale_step),
+            hnc_max_stage_attempts=int(cfg.hnc_max_stage_attempts),
+        )
+        g_r = np.asarray(vmhnc_result.g_r, dtype=float)
+        s_k = np.asarray(vmhnc_result.s_k, dtype=float)
+        h_r = np.asarray(vmhnc_result.h_r, dtype=float)
+        c_r = np.asarray(vmhnc_result.c_r, dtype=float)
+        residual_history = list(vmhnc_result.hnc_residual_history)
+    else:
+        g_r, s_k, h_r, c_r, residual_history = hnc_solver(
+            r,
+            k,
+            qoz.vii_r,
+            transform,
+            float(1.0 / float(species_entry["volume_bohr3"])),
+            ion_temperature_ha,
+            mix=float(cfg.hnc_mix),
+            tol=float(cfg.hnc_tol),
+            max_iter=int(cfg.hnc_max_iter),
+            mixing_scheme=direct_mixing_scheme,
+            tail_points=int(cfg.hnc_tail_points),
+            c_map_clip=float(cfg.hnc_nodal_clip),
+            enforce_h_tail_zero=bool(cfg.hnc_enforce_nodal_tail_zero),
+        )
     closure_tol = (
         max(10.0 * float(cfg.hnc_tol), 1.0e-6)
         if cfg.hnc_closure_transform_tol is None
@@ -1069,8 +1151,16 @@ def _one_component_ion_structure(
 
     primary_hnc = _diagnose_one_component_hnc(g_r, s_k, residual_history)
     fallback_used = False
-    stage_meta: list[dict[str, float | bool | str]] = []
-    hnc_solver_path = f"direct_{direct_mixing_scheme}"
+    stage_meta: list[dict[str, float | bool | str]] = (
+        []
+        if vmhnc_result is None
+        else [dict(stage) for stage in vmhnc_result.hnc_stage_meta]
+    )
+    hnc_solver_path = (
+        f"direct_{direct_mixing_scheme}"
+        if vmhnc_result is None
+        else "vmhnc_newton_krylov"
+    )
 
     # Strongly coupled one-component states can have a physical HNC root even
     # when a cold start at the full pair potential stalls on an inadmissible
@@ -1082,7 +1172,8 @@ def _one_component_ion_structure(
     # method; Newton iteration for strongly coupled HNC is discussed by
     # Starrett et al., Phys. Rev. E 90, 033110 (2014), Sec. III.
     if (
-        not bool(primary_hnc["converged"])
+        bridge_model == "none"
+        and not bool(primary_hnc["converged"])
         and cfg.hnc_fallback_mixing_scheme is not None
     ):
         requested_scheme = str(cfg.hnc_mixing_scheme).strip().lower()
@@ -1196,6 +1287,33 @@ def _one_component_ion_structure(
         "qoz_zbar_mode": str(cfg.qoz_zbar_mode),
         "qoz_response_chi0_model": str(cfg.qoz_response_chi0_model),
         "qoz_response_lfc_model": str(cfg.qoz_response_lfc_model),
+        "hnc_bridge_model": bridge_model,
+        "bridge_r": (
+            np.zeros_like(r)
+            if vmhnc_result is None
+            else np.asarray(vmhnc_result.bridge_r, dtype=float)
+        ),
+        "hnc_effective_potential_r": (
+            np.asarray(qoz.vii_r, dtype=float)
+            if vmhnc_result is None
+            else np.asarray(vmhnc_result.effective_potential_r, dtype=float)
+        ),
+        "vmhnc_eta": (
+            None if vmhnc_result is None else float(vmhnc_result.eta)
+        ),
+        "vmhnc_sigma_bohr": (
+            None if vmhnc_result is None else float(vmhnc_result.sigma_bohr)
+        ),
+        "vmhnc_variational_residual": (
+            None
+            if vmhnc_result is None
+            else float(vmhnc_result.variational_residual)
+        ),
+        "vmhnc_eta_history": (
+            []
+            if vmhnc_result is None
+            else [dict(item) for item in vmhnc_result.eta_history]
+        ),
         "n_i": float(1.0 / float(species_entry["volume_bohr3"])),
         "gii_r": np.asarray(g_r, dtype=float),
         "sii_k": np.asarray(s_k, dtype=float),

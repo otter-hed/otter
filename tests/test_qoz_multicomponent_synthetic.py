@@ -365,6 +365,111 @@ def test_binary_hnc_fast_oz_inverse_matches_generic_solver(
         )
 
 
+def test_newton_zero_direction_returns_best_physical_iterate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A degenerate Krylov direction must remain available to continuation."""
+    import scipy.optimize
+
+    import otter.ionic.qoz as qoz_module
+
+    transform = precompute_dst_lattice_transform_like(
+        create_linear_grid(rmax=12.0, N=96).r
+    )
+    r = transform.r
+    v_r = np.zeros((1, 1, r.size), dtype=float)
+
+    def _zero_direction(fun, x0, *, callback, **_kwargs):
+        residual = fun(x0)
+        callback(x0, residual)
+        raise ValueError(
+            "Jacobian inversion yielded zero vector. "
+            "This indicates a bug in the Jacobian approximation."
+        )
+
+    monkeypatch.setattr(scipy.optimize, "newton_krylov", _zero_direction)
+    g_r, s_k, _h_r, _c_r, history = qoz_module.hnc_solver_multicomponent(
+        r,
+        transform.k,
+        v_r,
+        transform,
+        np.asarray([1.0e-3]),
+        1.0,
+        tol=1.0e-8,
+        max_iter=4,
+        mixing_scheme="newton_krylov",
+        s_projection_mode="none",
+        c_map_clip=0.0,
+        enforce_h_tail_zero=False,
+    )
+
+    np.testing.assert_allclose(g_r, 1.0)
+    np.testing.assert_allclose(s_k, 1.0)
+    assert history[-1] == pytest.approx(0.0)
+
+
+def test_continuation_retries_primary_after_zero_direction_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed Newton fallback must not own later adaptive midpoints."""
+    import otter.ionic.qoz as qoz_module
+
+    transform = precompute_dst_lattice_transform_like(
+        create_linear_grid(rmax=12.0, N=64).r
+    )
+    shape = (1, 1, transform.r.size)
+    v_r = np.ones(shape, dtype=float)
+    calls: list[tuple[str, float]] = []
+    accepted_midpoint = False
+
+    def _fake_solver(*args, **kwargs):
+        nonlocal accepted_midpoint
+        scale = float(np.max(np.asarray(args[2], dtype=float)))
+        scheme = str(kwargs["mixing_scheme"])
+        calls.append((scheme, scale))
+        if scheme == "newton_krylov":
+            raise ValueError(
+                "Jacobian inversion yielded zero vector. "
+                "This indicates a bug in the Jacobian approximation."
+            )
+        converged = scale < 1.0 or accepted_midpoint
+        accepted_midpoint = accepted_midpoint or scale < 1.0
+        return (
+            np.ones(shape),
+            np.ones(shape),
+            np.zeros(shape),
+            np.zeros(shape),
+            [0.0 if converged else 1.0],
+        )
+
+    monkeypatch.setattr(qoz_module, "hnc_solver_multicomponent", _fake_solver)
+    result = qoz_module.hnc_solver_multicomponent_continuation(
+        transform.r,
+        transform.k,
+        v_r,
+        transform,
+        np.asarray([1.0e-3]),
+        1.0,
+        potential_scales=(1.0,),
+        mixing_scheme="anderson",
+        fallback_mixing_scheme="newton_krylov",
+        adaptive=True,
+        min_scale_step=0.1,
+        max_stage_attempts=4,
+        require_converged=True,
+        tol=1.0e-4,
+        s_projection_mode="none",
+    )
+
+    assert calls == [
+        ("anderson", 1.0),
+        ("newton_krylov", 1.0),
+        ("anderson", 0.5),
+        ("anderson", 1.0),
+    ]
+    np.testing.assert_allclose(result[0], 1.0)
+
+
 def test_strict_continuation_rejects_a_projected_false_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """A tiny reported residual cannot hide a broken OZ/closure identity."""
     import otter.ionic.qoz as qoz_module

@@ -5,6 +5,20 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+### Added
+
+- Added an optional one-component Rosenfeld--Ashcroft VMHNC closure with a
+  Percus--Yevick hard-sphere reference, variational packing-fraction search,
+  strict raw-solution diagnostics, and primary-literature attribution.
+- Added a reusable one- and multicomponent Otter-to-LAMMPS driver with
+  shifted-force pair tables, total and partial structure diagnostics,
+  reproducibility artifacts, and sampling uncertainties.
+- Added HNC, VMHNC, and same-potential MD comparisons to all four Johnson et
+  al. (2025) aluminium panels and the Wünsch et al. (2009) beryllium state.
+- Extended the Schörner et al. (2022) aluminium benchmark to compare LDA/PBE
+  HNC and VMHNC with direct, same-potential LAMMPS structure factors and the
+  corrected published DFT-MD curves.
+
 ### Changed
 
 - Made the bound-state sum and continuum integral meet at the asymptotic

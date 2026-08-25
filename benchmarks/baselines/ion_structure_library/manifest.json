@@ -2,7 +2,7 @@
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "ion_structure_library",
   "title": "Otter ion-structure literature comparisons",
-  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ/HNC states paired with the provenance-audited subset of the local form-factor library.",
+  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ ion-structure states paired with the provenance-audited subset of the local form-factor library; Wünsch Be includes HNC, VMHNC, and same-potential MD.",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
     "reference_data_in_separate_package": true,
@@ -23,16 +23,30 @@
     {
       "citation_key": "Chabrier1990",
       "doi": "10.1051/jphys:0199000510150160700"
+    },
+    {
+      "citation_key": "RosenfeldAshcroft1979",
+      "doi": "10.1103/PhysRevA.20.1208"
+    },
+    {
+      "citation_key": "Faussurier2004",
+      "doi": "10.1103/PhysRevE.69.066402"
+    },
+    {
+      "citation_key": "ThompsonEtAl2022",
+      "doi": "10.1016/j.cpc.2021.108171"
     }
   ],
   "producer": {
     "project": "Otter",
     "git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9",
     "script_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
-    "script_sha256": "91e28a665b861e7a9f37afc75a202a84703ff7930ab75c7c5557eae6bd5cbf3c",
+    "script_sha256": "ceb73f96d9e144b85ee41cb8cb28f3320cb5d22ca33d83d814a820a54775210b",
     "script_sha256_at_generation": "8145a2c22c3fb9ca5b365f9a2341a3c7caa9d89cbed271ff49df0de7ad1fd8b1",
-    "script_sha256_current": "91e28a665b861e7a9f37afc75a202a84703ff7930ab75c7c5557eae6bd5cbf3c",
-    "note": "All archived states were generated with this producer script in the recorded working tree; the embedded signatures record the resolved 4096-point calculation settings.",
+    "script_sha256_current": "ceb73f96d9e144b85ee41cb8cb28f3320cb5d22ca33d83d814a820a54775210b",
+    "lammps_tool_relative_path": "tools/otter_lammps_md.py",
+    "lammps_tool_sha256_current": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
+    "note": "The original HNC states retain their recorded producer revision. The Wünsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
     "worktree_clean": false
   },
   "configuration": {
@@ -50,6 +64,23 @@
     "hnc_nonlinear_tolerance": 0.0001,
     "hnc_transform_closure_tolerance": 0.0025,
     "hnc_max_iterations": 1000,
+    "wunsch_ionic_closures": [
+      "HNC",
+      "Rosenfeld--Ashcroft VMHNC"
+    ],
+    "wunsch_same_potential_md": {
+      "atoms": 2048,
+      "ensemble_sequence": "NVT->NVE",
+      "equilibration_omega_p_inverse": 50.0,
+      "production_omega_p_inverse": 500.0,
+      "timestep_omega_p_inverse": 0.005,
+      "rdf_blocks": 20,
+      "trajectory_frames": 21,
+      "sii_estimator": "complete periodic reciprocal-shell average",
+      "reciprocal_vectors_per_bin": "all available half-space modes",
+      "k_max_angstrom_inverse": 10.2,
+      "uncertainty": "SEM across RDF blocks or shell-averaged saved frames"
+    },
     "r_retained_max_bohr": 20.0,
     "k_retained_max_bohr_inv": 20.0,
     "electronic_models": [
@@ -156,10 +187,18 @@
       "te_ev": 13.0,
       "ti_ev": 13.0,
       "baseline_file": "be_wunsch_rho5p544_te13_ti13.npz",
-      "baseline_sha256": "a00a5527d0b60931d9dcbcb11cad23d5e136d8da38ed96dc4528757ffc739152",
+      "baseline_sha256": "8338ed7970d2f5a7e5eab94087fe124c9bad41a589fbc584b2c287c93228570a",
       "reference_family": "WunschEtAl2009",
-      "zbar_partition": 2.0074566572559402,
-      "hnc_closure_mismatch": 1.3807534535614785e-05,
+      "producer_git_commit": "d734f28cb5d58977b911866b53faf557dd81edb9",
+      "zbar_partition": 2.007455281556659,
+      "hnc_closure_mismatch": 1.2146134604762437e-05,
+      "vmhnc_eta": 0.1121859359741211,
+      "vmhnc_variational_residual": 3.1037833198716003e-07,
+      "md_atoms": 2048,
+      "md_rdf_blocks": 20,
+      "md_trajectory_frames": 21,
+      "md_nve_relative_energy_drift": -2.619538065837914e-07,
+      "md_mean_temperature_k": 152549.62554455447,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
       "n_model_points": 3346

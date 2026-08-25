@@ -84,3 +84,79 @@ def test_bethkenhagen_benchmark_reuses_the_carbon_ionization_scan() -> None:
         and node.module == "otter.plotting"
         for node in ast.walk(tree)
     )
+
+
+def test_ion_structure_library_adds_wunsch_vmhnc_and_reproducible_md() -> None:
+    path = ROOT / "benchmarks" / "examples" / "plot_ion_structure_library.py"
+    source = path.read_text(encoding="utf-8")
+    assert "Otter-HNC" in source
+    assert "Otter-VMHNC" in source
+    assert "Otter-MD" in source
+    assert 'bridge_model="rosenfeld_ashcroft"' in source
+    assert "from tools.otter_lammps_md import" in source
+    assert "RUN_WUNSCH_SAME_POTENTIAL_MD = True" in source
+    assert "MD_MIN_HALF_SPACE_MODES_PER_BIN = 4" in source
+    assert 'states[result_id]["md_sii_vectors_per_bin"]' in source
+
+
+def test_johnson_gallery_compares_hnc_and_vmhnc_on_the_same_is_state() -> None:
+    """All four Johnson panels must isolate the ionic closure, not IS/SC."""
+    path = (
+        ROOT
+        / "benchmarks"
+        / "examples"
+        / "plot_johnson_et_al_2025_two_temperature_al.py"
+    )
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+
+    otter_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "otter"
+        for alias in node.names
+    }
+    assert {
+        "continue_plasma_workflow_from_electronic_result",
+        "solve_plasma_workflow",
+    }.issubset(otter_imports)
+    assert 'bridge_model="none"' in source
+    assert 'bridge_model="rosenfeld_ashcroft"' in source
+    assert "Otter IS-QOZ/HNC" in source
+    assert "Otter IS-QOZ/VMHNC" in source
+    assert "Otter IS-potential MD" in source
+    assert "RUN_SAME_POTENTIAL_MD = True" in source
+    assert '"NVT->NVE"' in source
+    assert "solve_sc_feedback_workflow" not in source
+    assert "otter.experimental" not in source
+    assert "for definition in STATES" in source
+
+
+def test_schorner_gallery_compares_xc_closures_and_same_potential_md() -> None:
+    """Schörner panels must vary XC and closure without changing the IS model."""
+    path = (
+        ROOT
+        / "benchmarks"
+        / "examples"
+        / "plot_schorner_et_al_2022_al_sii.py"
+    )
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    otter_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "otter"
+        for alias in node.names
+    }
+    assert {
+        "continue_plasma_workflow_from_electronic_result",
+        "solve_plasma_workflow",
+    } <= otter_imports
+    assert 'bridge_model="none"' in source
+    assert 'bridge_model="rosenfeld_ashcroft"' in source
+    assert '"xc_model": "lda_pw"' in source
+    assert '"xc_model": "pbe"' in source
+    assert "RUN_SAME_POTENTIAL_MD = True" in source
+    assert "complete periodic reciprocal-shell" in source
+    assert "solve_sc_feedback_workflow" not in source

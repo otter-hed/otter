@@ -461,7 +461,9 @@ def _metadata(
             "sij_k": "dimensionless",
             "hij_r": "dimensionless",
             "cij_r": "dimensionless",
+            "bridge_r": "dimensionless",
             "vij_r": "Hartree",
+            "hnc_effective_potential_r": "Hartree",
             "vij_k": "Hartree Bohr^3",
             "v_ie_k": "Hartree Bohr^3",
             "v_ei_k": "Hartree Bohr^3",
@@ -506,6 +508,9 @@ def _metadata(
             "qoz_zbar_mode": ion.get("qoz_zbar_mode"),
             "chi0_model": ion.get("qoz_response_chi0_model"),
             "lfc_model": ion.get("qoz_response_lfc_model"),
+            "hnc_bridge_model": ion.get("hnc_bridge_model", "none"),
+            "vmhnc_eta": ion.get("vmhnc_eta"),
+            "vmhnc_sigma_bohr": ion.get("vmhnc_sigma_bohr"),
         },
         "window": {
             "r_max_bohr_exclusive": float(options.r_max_bohr),
@@ -521,6 +526,9 @@ def _metadata(
             "hnc_best_residual": ion.get("hnc_best_residual"),
             "hnc_output_residual": ion.get("hnc_output_residual"),
             "closure_transform_max_abs": ion.get("closure_transform_max_abs"),
+            "vmhnc_variational_residual": ion.get(
+                "vmhnc_variational_residual"
+            ),
             "charge_fix": ion.get("charge_fix"),
         },
         "definitions": {
@@ -746,6 +754,26 @@ def build_state_arrays(
             "c_ee_r": c_ee_r_full[r_mask],
         }
     )
+    if str(ion.get("hnc_bridge_model", "none")) != "none":
+        bridge_full = _as_pair_axes(
+            ion["bridge_r"],
+            n_species=n_species,
+            name="bridge_r",
+        )
+        effective_full = _as_pair_axes(
+            ion["hnc_effective_potential_r"],
+            n_species=n_species,
+            name="hnc_effective_potential_r",
+        )
+        arrays["bridge_r"] = bridge_full[..., r_mask]
+        arrays["hnc_effective_potential_r"] = effective_full[..., r_mask]
+        arrays["vmhnc_eta"] = np.asarray(float(ion["vmhnc_eta"]))
+        arrays["vmhnc_sigma_bohr"] = np.asarray(
+            float(ion["vmhnc_sigma_bohr"])
+        )
+        arrays["vmhnc_variational_residual"] = np.asarray(
+            float(ion["vmhnc_variational_residual"])
+        )
 
     mu_values = []
     r_ws_values = []

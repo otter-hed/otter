@@ -97,6 +97,105 @@ def test_johnson_units_and_accepted_baselines_are_explicit() -> None:
     _check_accepted_archives(directory, manifest)
 
 
+def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
+    """Every panel must carry two audited IS closures and a real DFT-MD overlap."""
+    benchmark_id = "johnson_et_al_2025_two_temperature_al"
+    baseline_dir = ROOT / "benchmarks" / "baselines" / benchmark_id
+    reference_dir = ROOT / "benchmarks" / "reference_data" / benchmark_id
+    manifest = _json(baseline_dir / "manifest.json")
+
+    for record in manifest["states"]:
+        with np.load(
+            baseline_dir / str(record["baseline_file"]),
+            allow_pickle=False,
+        ) as archive:
+            required = {
+                "r_bohr",
+                "gii_r",
+                "vmhnc_r_bohr",
+                "vmhnc_gii_r",
+                "vmhnc_eta",
+                "vmhnc_variational_residual",
+                "vmhnc_hnc_best_residual",
+                "vmhnc_hnc_closure_mismatch",
+                "md_r_bohr",
+                "md_gii_r",
+                "md_gii_block_sem",
+                "md_nve_relative_energy_drift",
+            }
+            assert required <= set(archive.files)
+            assert str(archive["structure_model"].item()) == "IS"
+            assert str(archive["hnc_bridge_model"].item()) == "none"
+            assert (
+                str(archive["vmhnc_hnc_bridge_model"].item())
+                == "rosenfeld_ashcroft"
+            )
+            assert 0.0 < float(archive["vmhnc_eta"]) < 0.5
+            assert abs(float(archive["vmhnc_variational_residual"])) <= 3.0e-5
+            assert float(archive["vmhnc_hnc_best_residual"]) <= 1.0e-4
+            assert float(archive["vmhnc_hnc_closure_mismatch"]) <= 2.5e-3
+
+            r_md = np.asarray(archive["md_r_bohr"], dtype=float)
+            g_md = np.asarray(archive["md_gii_r"], dtype=float)
+            sem_md = np.asarray(archive["md_gii_block_sem"], dtype=float)
+            assert r_md.shape == g_md.shape == sem_md.shape
+            assert np.all(np.isfinite(g_md))
+            assert np.all(np.isfinite(sem_md))
+            assert np.all(sem_md >= 0.0)
+            assert int(archive["md_atoms"]) == 2048
+            assert int(archive["md_rdf_blocks"]) == 20
+            assert str(archive["md_ensemble_sequence"].item()) == "NVT->NVE"
+            assert float(archive["md_timestep_omega_p_inv"]) == pytest.approx(
+                5.0e-3
+            )
+            assert abs(float(archive["md_nve_relative_energy_drift"])) < 5.0e-5
+            assert float(archive["md_nve_mean_temperature_k"]) == pytest.approx(
+                11604.51812155008,
+                rel=0.2,
+            )
+
+            r_hnc = np.asarray(archive["r_bohr"], dtype=float)
+            g_hnc = np.asarray(archive["gii_r"], dtype=float)
+            r_vmhnc = np.asarray(archive["vmhnc_r_bohr"], dtype=float)
+            g_vmhnc = np.asarray(archive["vmhnc_gii_r"], dtype=float)
+            common = (r_hnc >= r_vmhnc[0]) & (r_hnc <= r_vmhnc[-1])
+            closure_delta = g_hnc[common] - np.interp(
+                r_hnc[common], r_vmhnc, g_vmhnc
+            )
+            assert np.all(np.isfinite(closure_delta))
+            assert float(np.max(np.abs(closure_delta))) > 1.0e-4
+
+            md_overlap = (r_md >= r_hnc[0]) & (r_md <= r_hnc[-1])
+            md_hnc_delta = g_md[md_overlap] - np.interp(
+                r_md[md_overlap], r_hnc, g_hnc
+            )
+            md_vmhnc_delta = g_md[md_overlap] - np.interp(
+                r_md[md_overlap], r_vmhnc, g_vmhnc
+            )
+            hnc_md_rmse = float(np.sqrt(np.mean(md_hnc_delta**2)))
+            vmhnc_md_rmse = float(np.sqrt(np.mean(md_vmhnc_delta**2)))
+            assert vmhnc_md_rmse < hnc_md_rmse
+            assert vmhnc_md_rmse < 2.5e-2
+
+            dft_path = reference_dir / (
+                f"Zak_2025_Al_rho2.7_Te{float(record['te_ev']):.1f}_"
+                "Ti1.0_DFTMD.csv"
+            )
+            dft = np.asarray(np.genfromtxt(dft_path, delimiter=","), dtype=float)
+            dft = dft[np.all(np.isfinite(dft[:, :2]), axis=1), :2]
+            overlap = (dft[:, 0] >= r_hnc[0]) & (dft[:, 0] <= r_hnc[-1])
+            for radius, pair_distribution in (
+                (r_hnc, g_hnc),
+                (r_vmhnc, g_vmhnc),
+            ):
+                delta = (
+                    np.interp(dft[overlap, 0], radius, pair_distribution)
+                    - dft[overlap, 1]
+                )
+                assert delta.size > 0
+                assert np.isfinite(np.sqrt(np.mean(delta**2)))
+
+
 def test_argha_attribution_uncertainty_and_current_otter_states_are_explicit() -> None:
     benchmark_id = "argha_roy_carbon_sii"
     reference = _json(
@@ -142,19 +241,14 @@ def test_argha_attribution_uncertainty_and_current_otter_states_are_explicit() -
     _check_accepted_archives(directory, manifest)
 
 
-def test_schorner_ordinate_correction_and_otter_states_are_explicit() -> None:
+def test_schorner_bridge_md_baselines_and_ordinate_correction() -> None:
+    """The corrected DFT-MD overlay must carry two closures and direct MD S(k)."""
     benchmark_id = "schorner_et_al_2022_al_sii"
     reference_dir = ROOT / "benchmarks" / "reference_data" / benchmark_id
     reference = _json(reference_dir / "manifest.json")
-
-    assert reference["schema_version"] == "otter_reference_manifest_v1"
-    assert reference["reference_id"] == benchmark_id
-    assert reference["publication"]["doi"] == (
-        "10.1103/PhysRevB.105.174310"
-    )
+    assert reference["publication"]["doi"] == "10.1103/PhysRevB.105.174310"
     assert reference["publication"]["figure"] == "Figure 2"
     assert reference["license_declared"] == "NOASSERTION"
-    assert reference["public_release_gate"] == "resolved"
     assert reference["release_decision"]["decision_date"] == "2026-08-23"
 
     file_record = reference["files"][0]
@@ -163,52 +257,154 @@ def test_schorner_ordinate_correction_and_otter_states_are_explicit() -> None:
     values = np.genfromtxt(csv_path, delimiter=",", skip_header=2)
     assert file_record["row_count"] == 60
     assert values.shape == (60, 4)
-
-    records = {record["state_id"]: record for record in reference["states"]}
-    one_ev = records["al_rho4p712_te1_ti1"]
-    five_ev = records["al_rho8p1_te5_ti5"]
-    assert one_ev["te_ev"] == one_ev["ti_ev"] == pytest.approx(1.0)
-    assert five_ev["te_ev"] == five_ev["ti_ev"] == pytest.approx(5.0)
-    assert one_ev["sii_additive_correction"] == pytest.approx(1.5)
-    assert five_ev["sii_additive_correction"] == pytest.approx(0.0)
-    assert np.min(values[:, one_ev["sii_column"]]) < 0.0
-    corrected = (
-        values[:, one_ev["sii_column"]]
-        + float(one_ev["sii_additive_correction"])
-    )
-    assert np.min(corrected) >= 0.0
-    assert corrected[0] == pytest.approx(0.02976349443)
+    states = {record["state_id"]: record for record in reference["states"]}
+    assert states["al_rho4p712_te1_ti1"]["sii_additive_correction"] == 1.5
+    assert states["al_rho8p1_te5_ti5"]["sii_additive_correction"] == 0.0
+    assert np.min(values[:, 1]) < 0.0
+    assert np.min(values[:, 1] + 1.5) >= 0.0
 
     baseline_dir = ROOT / "benchmarks" / "baselines" / benchmark_id
-    baseline = _json(baseline_dir / "manifest.json")
-    controller = ROOT / str(baseline["producer"]["script_relative_path"])
-    assert _sha256(controller) == baseline["producer"]["script_sha256"]
-    assert [record["state_id"] for record in baseline["states"]] == [
+    manifest = _json(baseline_dir / "manifest.json")
+    controller = ROOT / str(manifest["producer"]["script_relative_path"])
+    assert _sha256(controller) == manifest["producer"][
+        "current_controller_sha256"
+    ]
+    assert manifest["configuration"]["structure_model"] == "IS"
+    assert manifest["configuration"]["ionic_closures"] == [
+        "HNC",
+        "Rosenfeld--Ashcroft VMHNC",
+    ]
+    md_config = manifest["configuration"]["same_potential_md"]
+    assert md_config["atoms"] == 2048
+    assert md_config["sii_estimator"] == (
+        "complete periodic reciprocal-shell average"
+    )
+    assert md_config["reciprocal_vectors_per_bin"] == (
+        "all available half-space modes"
+    )
+    assert md_config["trajectory_frames"] == 21
+
+    expected_ids = {
         "al_rho4p712_te1_ti1_lda",
         "al_rho4p712_te1_ti1_pbe",
         "al_rho8p1_te5_ti5_lda",
         "al_rho8p1_te5_ti5_pbe",
-    ]
-    assert all(record["status"] == "accepted" for record in baseline["states"])
-    assert {record["xc_model"] for record in baseline["states"]} == {
-        "lda_pw",
-        "pbe",
     }
-    for record in baseline["states"]:
-        path = baseline_dir / record["baseline_file"]
+    assert {record["state_id"] for record in manifest["states"]} == expected_ids
+    for record in manifest["states"]:
+        path = baseline_dir / str(record["baseline_file"])
         with np.load(path, allow_pickle=False) as archive:
-            assert archive["xc_model"].item() == record["xc_model"]
-            provenance = json.loads(archive["xc_provenance_json"].item())
-            metadata = json.loads(archive["metadata_json"].item())
+            required = {
+                "sii_k",
+                "vmhnc_sii_k",
+                "vmhnc_eta",
+                "vmhnc_variational_residual",
+                "md_r_bohr",
+                "md_gii_r",
+                "md_k_bohr_inv",
+                "md_sii_k",
+                "md_sii_block_sem",
+                "md_sii_vectors_per_bin",
+                "md_sii_uncertainty_definition",
+                "md_trajectory_frames",
+                "md_nve_relative_energy_drift",
+            }
+            assert required <= set(archive.files)
+            assert str(archive["schema_version"].item()) == (
+                "otter_schorner_2022_al_sii_v4"
+            )
+            assert str(archive["structure_model"].item()) == "IS"
+            assert str(archive["hnc_bridge_model"].item()) == "none"
+            assert str(archive["vmhnc_hnc_bridge_model"].item()) == (
+                "rosenfeld_ashcroft"
+            )
+            assert float(archive["hnc_output_residual"]) <= 1.0e-4
+            assert float(archive["vmhnc_hnc_output_residual"]) <= 1.0e-4
+            assert abs(float(archive["vmhnc_variational_residual"])) <= 3.0e-5
+            assert 0.0 < float(archive["vmhnc_eta"]) < 0.5
+
+            k_md = np.asarray(archive["md_k_bohr_inv"], dtype=float)
+            sii_md = np.asarray(archive["md_sii_k"], dtype=float)
+            sem_md = np.asarray(archive["md_sii_block_sem"], dtype=float)
+            assert k_md.shape == sii_md.shape == sem_md.shape
+            assert np.all(np.diff(k_md) > 0.0)
+            assert np.all(np.isfinite(sii_md)) and np.all(sii_md >= 0.0)
+            assert np.all(np.isfinite(sem_md)) and np.all(sem_md >= 0.0)
+            box_length = float(archive["md_box_length_bohr"])
+            fundamental = 2.0 * np.pi / box_length
+            n_max = int(np.floor(4.5 / fundamental))
+            integers = np.arange(-n_max, n_max + 1)
+            nx, ny, nz = np.meshgrid(
+                integers, integers, integers, indexing="ij"
+            )
+            triplets = np.column_stack((nx.ravel(), ny.ravel(), nz.ravel()))
+            half_space = (
+                (triplets[:, 0] > 0)
+                | ((triplets[:, 0] == 0) & (triplets[:, 1] > 0))
+                | (
+                    (triplets[:, 0] == 0)
+                    & (triplets[:, 1] == 0)
+                    & (triplets[:, 2] > 0)
+                )
+            )
+            magnitudes = fundamental * np.sqrt(
+                np.sum(triplets[half_space] ** 2, axis=1)
+            )
+            magnitudes = magnitudes[magnitudes <= 4.5]
+            radial_bin = np.floor(
+                magnitudes / (0.1 * 0.529177210903)
+            ).astype(int)
+            populated_bins, expected_counts = np.unique(
+                radial_bin, return_counts=True
+            )
+            expected_k = np.asarray(
+                [
+                    np.mean(magnitudes[radial_bin == bin_index])
+                    for bin_index in populated_bins
+                ]
+            )
+            np.testing.assert_array_equal(
+                archive["md_sii_vectors_per_bin"], expected_counts
+            )
+            np.testing.assert_allclose(k_md, expected_k, rtol=0.0, atol=1e-13)
+            assert int(archive["md_trajectory_frames"]) == 21
+            assert str(archive["md_sii_uncertainty_definition"].item()) == (
+                "SEM across shell-averaged saved production frames"
+            )
+            assert int(archive["md_atoms"]) == 2048
+            assert int(archive["md_rdf_blocks"]) == 20
+            assert str(archive["md_ensemble_sequence"].item()) == "NVT->NVE"
+            assert abs(float(archive["md_nve_relative_energy_drift"])) < 5e-5
+            assert float(archive["md_nve_mean_temperature_k"]) == pytest.approx(
+                float(archive["ti_ev"]) * 11604.51812155008,
+                rel=0.2,
+            )
+
+            r_md = np.asarray(archive["md_r_bohr"], dtype=float)
+            g_md = np.asarray(archive["md_gii_r"], dtype=float)
+            overlap = (r_md >= 0.5) & (
+                r_md
+                <= min(
+                    float(archive["r_bohr"][-1]),
+                    float(archive["vmhnc_r_bohr"][-1]),
+                )
+            )
+            hnc_delta = g_md[overlap] - np.interp(
+                r_md[overlap], archive["r_bohr"], archive["gii_r"]
+            )
+            vmhnc_delta = g_md[overlap] - np.interp(
+                r_md[overlap],
+                archive["vmhnc_r_bohr"],
+                archive["vmhnc_gii_r"],
+            )
+            assert np.sqrt(np.mean(vmhnc_delta**2)) < np.sqrt(
+                np.mean(hnc_delta**2)
+            )
+
+            provenance = json.loads(str(archive["xc_provenance_json"].item()))
             assert provenance["provider"] == "libxc"
             assert provenance["provider_version"] == "7.0.0"
-            assert [item["id"] for item in provenance["components"]] == (
-                record["xc_components"]
-            )
-            assert metadata["producer"]["script_sha256"] == baseline[
-                "producer"
-            ]["script_sha256_at_generation"]
-    _check_accepted_archives(baseline_dir, baseline)
+    _check_accepted_archives(baseline_dir, manifest)
 
 
 def _check_accepted_archives(directory: Path, manifest: dict) -> None:

@@ -1789,6 +1789,19 @@ def hnc_solver_multicomponent(
             )
         except NoConvergence as exc:
             solved_vec = np.asarray(exc.args[0], dtype=float)
+        except ValueError as exc:
+            # SciPy can report a zero Krylov direction after useful physical
+            # iterates have already been visited.  Preserve the best audited
+            # iterate so the continuation driver can reject the stage or
+            # reduce its potential step using the true residual.  Unrelated
+            # ValueErrors and failures before any physical iterate still fail
+            # closed.
+            if (
+                "Jacobian inversion yielded zero vector" not in str(exc)
+                or not best_ok
+            ):
+                raise
+            solved_vec = np.asarray(best_vec, dtype=float)
 
         solved_n = _unpack_pair(solved_vec)
         solved_residual = _raw_residual(solved_vec)
@@ -2012,7 +2025,8 @@ def hnc_solver_multicomponent_continuation(
     last_accepted_meta: dict[str, float | bool | str] | None = None
     pending_scales = list(scales)
     last_accepted_scale = 0.0
-    active_scheme = str(local_kwargs.get("mixing_scheme", "anderson"))
+    primary_scheme = str(local_kwargs.get("mixing_scheme", "anderson"))
+    active_scheme = primary_scheme
     attempt = 0
     while pending_scales:
         if attempt >= int(max_stage_attempts):
@@ -2023,6 +2037,10 @@ def hnc_solver_multicomponent_continuation(
             )
         scale = float(pending_scales.pop(0))
         attempt += 1
+        # A fallback belongs only to the stage that rejected the primary
+        # iteration.  In particular, a failed Newton attempt must not force
+        # every later adaptive midpoint to start with Newton as well.
+        active_scheme = primary_scheme
         solve_kwargs = dict(local_kwargs)
         solve_kwargs["mixing_scheme"] = active_scheme
         g_r, s_k, h_r, c_r, res_hist = hnc_solver_multicomponent(
@@ -2105,18 +2123,27 @@ def hnc_solver_multicomponent_continuation(
             active_scheme = fallback
             solve_kwargs = dict(local_kwargs)
             solve_kwargs["mixing_scheme"] = active_scheme
-            g_r, s_k, h_r, c_r, res_hist = hnc_solver_multicomponent(
-                r,
-                k,
-                float(scale) * np.asarray(v_ij_r, dtype=float),
-                transform,
-                n_i,
-                temperature_ha,
-                n_init_r=n_init,
-                max_iter=_iteration_cap(active_scheme),
-                **solve_kwargs,
-            )
-            meta = _stage_diagnostics()
+            try:
+                g_r, s_k, h_r, c_r, res_hist = hnc_solver_multicomponent(
+                    r,
+                    k,
+                    float(scale) * np.asarray(v_ij_r, dtype=float),
+                    transform,
+                    n_i,
+                    temperature_ha,
+                    n_init_r=n_init,
+                    max_iter=_iteration_cap(active_scheme),
+                    **solve_kwargs,
+                )
+            except ValueError as exc:
+                if "Jacobian inversion yielded zero vector" not in str(exc):
+                    raise
+                # Keep the rejected primary-stage diagnostics.  The adaptive
+                # driver can now reduce the scale and retry from the last
+                # accepted physical root instead of aborting in SciPy.
+                active_scheme = primary_scheme
+            else:
+                meta = _stage_diagnostics()
 
         stage_meta.append(meta)
         if bool(meta["converged"]):

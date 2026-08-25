@@ -25,6 +25,32 @@ The default state is Al at :math:`8.1\,\mathrm{g\,cm^{-3}}` and
 The script plots the electronic density, effective potential,
 :math:`g_{ii}(r)`, and :math:`S_{ii}(k)`.
 
+For a strongly coupled one-component ion fluid, the optional
+Rosenfeld--Ashcroft closure is selected in the same configuration:
+
+.. code-block:: python
+
+   config = PlasmaWorkflowConfig(
+       elements=["Al"],
+       temperature_ev=5.0,
+       ion_temperature_ev=5.0,
+       rho_g_cc=8.1,
+       hnc_bridge_model="rosenfeld_ashcroft",
+   )
+
+This runs variational modified HNC and reports the self-consistent hard-sphere
+packing fraction as ``result["ion"]["vmhnc_eta"]``.  The implementation uses
+the bridge-universality ansatz of :cite:t:`RosenfeldAshcroft1979`, the exact
+Percus--Yevick hard-sphere reference of :cite:t:`Wertheim1963,Thiele1963`, and
+the variational criterion written explicitly by :cite:t:`Faussurier2004`.
+This is not IEMHNC: IEMHNC maps a simulation-derived OCP bridge onto a Yukawa
+one-component plasma (YOCP) along an isomorph
+:cite:p:`IyetomiOgataIchimaru1992,ToliasLuccoCastello2019`, whereas VMHNC
+determines a hard-sphere packing fraction variationally.
+Plain HNC remains the default.  The current implementation is one-component
+only; it deliberately rejects mixtures rather than applying a scalar bridge
+to unlike-species channels.
+
 Mixtures
 --------
 

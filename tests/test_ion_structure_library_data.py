@@ -88,9 +88,10 @@ def test_library_manifest_hashes_and_portable_archives() -> None:
                 "otter_ion_structure_library_state_v1"
             )
             assert archive["state_id"].item() == item["state_id"]
-            assert archive["otter_git_commit"].item() == (
-                manifest["producer"]["git_commit"]
+            expected_commit = item.get(
+                "producer_git_commit", manifest["producer"]["git_commit"]
             )
+            assert archive["otter_git_commit"].item() == expected_commit
             signature = json.loads(
                 str(archive["producer_signature_json"].item())
             )
@@ -160,6 +161,30 @@ def test_library_grid_charge_and_convergence_invariants() -> None:
             )
 
 
+def test_wunsch_be_contains_hnc_vmhnc_and_same_potential_md() -> None:
+    path = LIBRARY_DIR / "be_wunsch_rho5p544_te13_ti13.npz"
+    with np.load(path, allow_pickle=False) as archive:
+        required = {
+            "gii_r",
+            "sii_k",
+            "vmhnc_gii_r",
+            "vmhnc_sii_k",
+            "vmhnc_eta",
+            "vmhnc_variational_residual",
+            "md_gii_r",
+            "md_gii_block_sem",
+            "md_sii_k",
+            "md_sii_frame_sem",
+            "md_type_pairs",
+            "md_nve_relative_energy_drift",
+        }
+        assert required.issubset(archive.files)
+        assert archive["md_type_pairs"].tolist() == [[1, 1]]
+        assert np.all(archive["md_gii_block_sem"] >= 0.0)
+        assert np.all(archive["md_sii_frame_sem"] >= 0.0)
+        assert 0.05 <= float(archive["vmhnc_eta"]) <= 0.49
+
+
 def test_reference_manifest_hashes_and_release_decision() -> None:
     manifest = _json(REFERENCE_DIR / "manifest.json")
     assert manifest["schema_version"] == "otter_reference_manifest_v1"
@@ -198,9 +223,9 @@ def test_offline_library_runner_recomputes_metrics() -> None:
     runner = _load_module("otter_library_offline_test", runner_path)
     states = runner.load_states(runner.load_manifest())
     rows = runner.evaluate(states)
-    assert len(rows) == 18
+    assert len(rows) == 34
     primary_rows = [row for row in rows if row["role"] == "primary"]
-    assert len(primary_rows) == 8
+    assert len(primary_rows) == 12
     for row in rows:
         assert row["n_points"] > 5
         assert np.isfinite(row["rmse"])
@@ -241,6 +266,19 @@ def test_reference_coordinate_conversions_match_source_plot_scripts() -> None:
         [runner.BOHR_TO_ANGSTROM],
     )
     np.testing.assert_allclose(r_bohr, [1.0])
+    md_state = {
+        "md_k_bohr_inv": np.asarray([0.2, 0.3]),
+        "md_sii_k": np.asarray([0.4, 0.5]),
+        "md_sii_vectors_per_bin": np.asarray([3, 6]),
+    }
+    md_k, md_sii = runner._otter_curve(
+        md_state,
+        "sii",
+        "bohr^-1",
+        "md_",
+    )
+    np.testing.assert_allclose(md_k, [0.3])
+    np.testing.assert_allclose(md_sii, [0.5])
     assert {
         series["x_unit"]
         for series in runner.REFERENCE_SERIES[

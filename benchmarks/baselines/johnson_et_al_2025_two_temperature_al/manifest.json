@@ -2,7 +2,7 @@
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "johnson_et_al_2025_two_temperature_al",
   "title": "Otter versus Johnson et al. (2025) two-temperature aluminium gii",
-  "description": "Four aluminium states corresponding to Johnson et al. Fig. 2(a)-2(d).",
+  "description": "Four IS states comparing ordinary HNC, Rosenfeld--Ashcroft VMHNC, and same-potential MD with Johnson et al. Fig. 2(a)-2(d).",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
     "reference_data_in_separate_package": true,
@@ -25,18 +25,57 @@
       "doi": "10.1051/jphys:0199000510150160700"
     },
     {
+      "citation_key": "RosenfeldAshcroft1979",
+      "doi": "10.1103/PhysRevA.20.1208"
+    },
+    {
+      "citation_key": "LadoFoilesAshcroft1983",
+      "doi": "10.1103/PhysRevA.28.2374"
+    },
+    {
+      "citation_key": "Faussurier2004",
+      "doi": "10.1103/PhysRevE.69.066402"
+    },
+    {
+      "citation_key": "Wertheim1963",
+      "doi": "10.1103/PhysRevLett.10.321"
+    },
+    {
+      "citation_key": "Thiele1963",
+      "doi": "10.1063/1.1734272"
+    },
+    {
+      "citation_key": "CarnahanStarling1969",
+      "doi": "10.1063/1.1672048"
+    },
+    {
+      "citation_key": "IyetomiOgataIchimaru1992",
+      "doi": "10.1103/PhysRevA.46.1051"
+    },
+    {
+      "citation_key": "DaughtonMurilloThode2000",
+      "doi": "10.1103/PhysRevE.61.2129"
+    },
+    {
+      "citation_key": "ToliasLuccoCastello2019",
+      "doi": "10.1063/1.5089663"
+    },
+    {
+      "citation_key": "ThompsonEtAl2022",
+      "doi": "10.1016/j.cpc.2021.108171"
+    },
+    {
       "citation_key": "JohnsonEtAl2025",
       "doi": "10.1103/5c29-kdx1"
     }
   ],
   "producer": {
     "script_relative_path": "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py",
-    "script_sha256": "88a8ebf6186a617027acd29c32f861867cb100718ae34dda7f3db2d2128e8c63",
-    "git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9",
+    "script_sha256": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34",
+    "git_commit": "d734f28cb5d58977b911866b53faf557dd81edb9",
     "worktree_dirty": true,
-    "script_sha256_current": "88a8ebf6186a617027acd29c32f861867cb100718ae34dda7f3db2d2128e8c63",
-    "script_sha256_at_generation": "88a8ebf6186a617027acd29c32f861867cb100718ae34dda7f3db2d2128e8c63",
-    "current_controller_sha256": "88a8ebf6186a617027acd29c32f861867cb100718ae34dda7f3db2d2128e8c63"
+    "script_sha256_at_generation": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34",
+    "current_controller_sha256": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34"
   },
   "configuration": {
     "aa_n_points": 4096,
@@ -55,7 +94,28 @@
       0.8,
       1.0
     ],
-    "hnc_adaptive_continuation": true
+    "hnc_adaptive_continuation": true,
+    "ionic_closures": [
+      "HNC",
+      "Rosenfeld--Ashcroft VMHNC"
+    ],
+    "electronic_state_reused_between_closures": true,
+    "vmhnc_points_per_diameter": 256,
+    "vmhnc_eta_bounds": [
+      0.05,
+      0.49
+    ],
+    "vmhnc_eta_tolerance": 1e-06,
+    "same_potential_md": {
+      "engine": "LAMMPS (7 Feb 2024 - Update 1)",
+      "atoms": 2048,
+      "ensemble_sequence": "NVT->NVE",
+      "timestep_omega_p_inv": 0.005,
+      "equilibration_omega_p_inv": 50.0,
+      "production_omega_p_inv": 500.0,
+      "rdf_bins": 500,
+      "rdf_blocks": 20
+    }
   },
   "units": {
     "radius": "Bohr",
@@ -74,12 +134,23 @@
       "paper_panel": "Fig. 2(a)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te1_ti1.npz",
-      "baseline_sha256": "442865bd22abb8d523d913bed2f331b85f50b4d0fd007e2e4fa03ff4bbdd7709",
-      "zbar_partition": 3.0004789962130918,
+      "baseline_sha256": "5aa59757f4ebd51fe44c2a22d022e61583eb2d675d2c21387b3a8214f3572479",
+      "structure_model": "IS",
+      "zbar_partition": 3.0004785063680224,
       "hnc_solver_path": "direct_anderson",
-      "hnc_best_residual": 6.641858728781457e-05,
-      "hnc_min_s_k": 0.08746249478788337,
-      "hnc_closure_mismatch": 0.0010780730318693532,
+      "hnc_best_residual": 1.4959752306696474e-05,
+      "hnc_min_s_k": 0.08161857482752377,
+      "hnc_closure_mismatch": 0.00013057878390321243,
+      "vmhnc_solver_path": "vmhnc_newton_krylov",
+      "vmhnc_best_residual": 6.086100773689668e-11,
+      "vmhnc_min_s_k": 0.06558927881859045,
+      "vmhnc_closure_mismatch": 1.7459145240650287e-11,
+      "vmhnc_eta": 0.31804317474365235,
+      "vmhnc_sigma_bohr": 4.082053578109621,
+      "vmhnc_variational_residual": -9.447333849221806e-06,
+      "md_nve_relative_energy_drift": 1.6278429985603756e-06,
+      "hnc_vs_same_potential_md_rmse": 0.03257079657972685,
+      "vmhnc_vs_same_potential_md_rmse": 0.008527748353877507,
       "n_model_points": 1826
     },
     {
@@ -91,12 +162,23 @@
       "paper_panel": "Fig. 2(b)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te3_ti1.npz",
-      "baseline_sha256": "b05dac79b22b9b00eb674258a15d0224b07a7dc8a10176f26ae3c48938f5f3fa",
-      "zbar_partition": 3.000480098684662,
+      "baseline_sha256": "813e70ce34a746168668fbbe30464ff9e38f3daae027586b819637d6199064c8",
+      "structure_model": "IS",
+      "zbar_partition": 3.000480415414515,
       "hnc_solver_path": "direct_anderson",
-      "hnc_best_residual": 3.809583318054121e-05,
-      "hnc_min_s_k": 0.055991572129581946,
-      "hnc_closure_mismatch": 0.001445650070633353,
+      "hnc_best_residual": 4.668494049203033e-05,
+      "hnc_min_s_k": 0.05456911791613894,
+      "hnc_closure_mismatch": 0.0012619521587889926,
+      "vmhnc_solver_path": "vmhnc_newton_krylov",
+      "vmhnc_best_residual": 7.652478704723495e-11,
+      "vmhnc_min_s_k": 0.04530066818359213,
+      "vmhnc_closure_mismatch": 1.9344525981068728e-11,
+      "vmhnc_eta": 0.33116962432861335,
+      "vmhnc_sigma_bohr": 4.1374571195648855,
+      "vmhnc_variational_residual": -9.73636717782611e-06,
+      "md_nve_relative_energy_drift": -1.8728957987472975e-06,
+      "hnc_vs_same_potential_md_rmse": 0.040447161609408526,
+      "vmhnc_vs_same_potential_md_rmse": 0.008711096144807697,
       "n_model_points": 1826
     },
     {
@@ -108,12 +190,23 @@
       "paper_panel": "Fig. 2(c)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te10_ti1.npz",
-      "baseline_sha256": "f55dc75d3aa5d764b88b14b0fd608f1268b45fbc48ebc03a438aec2e0d5e9251",
-      "zbar_partition": 3.0267159910613,
+      "baseline_sha256": "3cf1a9f93c785aee47aacc120dd2a8c06174c1c124b93e4122fdff93692b7c20",
+      "structure_model": "IS",
+      "zbar_partition": 3.026669348039084,
       "hnc_solver_path": "direct_anderson",
-      "hnc_best_residual": 9.612156472761131e-05,
-      "hnc_min_s_k": 0.02272622702330096,
-      "hnc_closure_mismatch": 0.0008988672284879762,
+      "hnc_best_residual": 2.6552240915489983e-06,
+      "hnc_min_s_k": 0.022180027744863384,
+      "hnc_closure_mismatch": 0.00043091680920714914,
+      "vmhnc_solver_path": "vmhnc_newton_krylov",
+      "vmhnc_best_residual": 4.2480674883601355e-11,
+      "vmhnc_min_s_k": 0.019604898755437916,
+      "vmhnc_closure_mismatch": 3.345645982477663e-11,
+      "vmhnc_eta": 0.3603413772583008,
+      "vmhnc_sigma_bohr": 4.255540408371748,
+      "vmhnc_variational_residual": -2.074177786526299e-06,
+      "md_nve_relative_energy_drift": 7.939229672006248e-07,
+      "hnc_vs_same_potential_md_rmse": 0.0464534509876449,
+      "vmhnc_vs_same_potential_md_rmse": 0.008571697227312906,
       "n_model_points": 1826
     },
     {
@@ -125,14 +218,23 @@
       "paper_panel": "Fig. 2(d)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te30_ti1.npz",
-      "baseline_sha256": "616544589f51efd31bc0bc07dc2208a6cffebee700eb701736c44bc09d12157d",
-      "zbar_partition": 4.4802052841386395,
-      "hnc_primary_solver": "anderson",
-      "hnc_primary_best_residual": 1.0,
+      "baseline_sha256": "2268da7b64863a94e05d50d5def2c7ce136e7075e25714af9e4875fa4a5cbb84",
+      "structure_model": "IS",
+      "zbar_partition": 4.480388184562944,
       "hnc_solver_path": "direct_anderson->continuation_newton_krylov",
-      "hnc_best_residual": 4.2208944832889535e-11,
-      "hnc_min_s_k": 0.00598481489535152,
-      "hnc_closure_mismatch": 1.789651682404525e-08,
+      "hnc_best_residual": 6.368214512138727e-11,
+      "hnc_min_s_k": 0.005958622990626106,
+      "hnc_closure_mismatch": 1.8933862810932567e-08,
+      "vmhnc_solver_path": "vmhnc_newton_krylov",
+      "vmhnc_best_residual": 2.486715857706233e-11,
+      "vmhnc_min_s_k": 0.005381774232095182,
+      "vmhnc_closure_mismatch": 1.2092815637743115e-10,
+      "vmhnc_eta": 0.4453422927856446,
+      "vmhnc_sigma_bohr": 4.566827990565369,
+      "vmhnc_variational_residual": -2.1202375079187874e-05,
+      "md_nve_relative_energy_drift": -2.5920293541134466e-07,
+      "hnc_vs_same_potential_md_rmse": 0.08496803192533574,
+      "vmhnc_vs_same_potential_md_rmse": 0.01624246758793603,
       "n_model_points": 1826
     }
   ]

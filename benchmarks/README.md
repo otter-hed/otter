@@ -47,7 +47,8 @@ Curated packages currently included are:
 - `baselines/starrett_et_al_2014_mixtures_fig3`: project-generated CH1.36
   precursor results paired with separately gated, digitized literature curves.
 - `baselines/ion_structure_library`: Otter Al/Be/C states paired with
-  the provenance-audited portion of the local reference library;
+  the provenance-audited portion of the local reference library, including
+  HNC, VMHNC, and same-potential MD for the Wünsch Be state;
 - `baselines/starrett_single_species_2013_2014`: strict native Otter C and H
   results, plus explicit rejected/not-calculated Fe and W records, paired
   with a panel-by-panel audited Starrett--Saumon reference collection;
@@ -56,15 +57,20 @@ Curated packages currently included are:
   Shaffer, and Murillo (2025);
 - `baselines/argha_roy_carbon_sii`: accepted Otter carbon states paired with
   DFT-MD data provided by Dr. Argha Roy (private communication; unpublished);
-- `baselines/schorner_et_al_2022_al_sii`: equilibrium Otter aluminium
-  LDA-PW92 and PBE structure factors paired with the corrected, digitized
-  Figure 2 curves of Schörner et al. (2022); and
+- `baselines/schorner_et_al_2022_al_sii`: equilibrium aluminium LDA/PBE HNC,
+  VMHNC, and same-potential MD paired with the corrected Figure 2 DFT-MD
+  curves of Schörner et al. (2022); and
 - `baselines/al_full_workflow_1ev`: the complete Otter Al
   electronic-to-QOZ/HNC gallery state.
 
 Expensive producer programs are named ``regenerate_*.py``.  They write to
 ``benchmarks/outputs/**/recomputed`` and do not modify accepted reference
 results.
+
+Same-potential MD producers use ``tools/otter_lammps_md.py``.  This shared
+driver accepts all unordered pair potentials for one or many species and
+preserves runnable LAMMPS inputs, total/partial RDF and structure factors,
+sampling uncertainties, logs, trajectories, and checksummed metadata.
 
 To recalculate every public Otter dataset without reusing old candidates or
 the accepted carbon-ionization states, run:

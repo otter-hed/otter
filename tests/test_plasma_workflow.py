@@ -92,6 +92,32 @@ def test_workflow_rejects_nonpositive_hnc_closure_transform_tolerance() -> None:
         )
 
 
+def test_workflow_normalizes_vmhnc_and_rejects_mixture_use() -> None:
+    cfg = wf.PlasmaWorkflowConfig(
+        elements=["Al"],
+        temperature_ev=5.0,
+        rho_g_cc=2.7,
+        ion_temperature_ev=5.0,
+        hnc_bridge_model="vmhnc",
+    )
+    assert cfg.hnc_bridge_model == "rosenfeld_ashcroft"
+    assert "RosenfeldAshcroft1979" in cfg.citation_keys
+    assert "LadoFoilesAshcroft1983" in cfg.citation_keys
+    assert "Faussurier2004" in cfg.citation_keys
+    assert "Wertheim1963" in cfg.citation_keys
+    assert "Thiele1963" in cfg.citation_keys
+    assert "CarnahanStarling1969" in cfg.citation_keys
+
+    with pytest.raises(ValueError, match="one-component ion fluids"):
+        wf.PlasmaWorkflowConfig(
+            formula="CH2",
+            temperature_ev=5.0,
+            rho_g_cc=1.0,
+            ion_temperature_ev=5.0,
+            hnc_bridge_model="rosenfeld_ashcroft",
+        )
+
+
 def test_solve_plasma_workflow_dispatches_single_species_electronic() -> None:
     """A one-species explicit composition should use the single-species AA runner."""
     old_full = wf.solve_full_then_external
@@ -345,6 +371,83 @@ def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given
     )
     assert result["ion"]["hnc_fallback_used"] is False
     assert result["ion"]["hnc_solver_path"] == "direct_anderson"
+
+
+def test_one_component_workflow_selects_vmhnc_without_changing_qoz_potential(
+    monkeypatch,
+) -> None:
+    r_native = np.linspace(0.01, 6.0, 96)
+    species_entry = {
+        "element": "Al",
+        "Z": 13,
+        "volume_bohr3": 20.0,
+        "result": {
+            "r": r_native,
+            "n_ion": np.zeros_like(r_native),
+            "n_scr": np.exp(-r_native),
+            "zbar": 3.0,
+            "zbar_partition": 3.0,
+        },
+    }
+    seen: dict[str, np.ndarray] = {}
+
+    def fake_build(**kwargs):
+        r = np.asarray(kwargs["r"], dtype=float)
+        k = np.asarray(kwargs["k"], dtype=float)
+        return SimpleNamespace(
+            vii_r=np.exp(-r),
+            vii_k=np.exp(-k),
+            n_scr_k=np.exp(-k),
+            chi_ee_k=-np.ones_like(k),
+            chi0_k=-np.ones_like(k),
+            gee_k=np.zeros_like(k),
+        )
+
+    def fake_vmhnc(r, k, potential_r, *_args, **_kwargs):
+        seen["potential"] = np.asarray(potential_r, dtype=float)
+        bridge = -0.1 * np.exp(-np.asarray(r, dtype=float))
+        return SimpleNamespace(
+            g_r=np.ones_like(r),
+            s_k=np.ones_like(k),
+            h_r=np.zeros_like(r),
+            c_r=np.zeros_like(r),
+            bridge_r=bridge,
+            effective_potential_r=np.asarray(potential_r) - bridge,
+            eta=0.4,
+            sigma_bohr=2.0,
+            variational_residual=2.0e-5,
+            eta_history=(
+                {"eta": 0.4, "variational_residual": 2.0e-5},
+            ),
+            hnc_residual_history=(1.0e-5,),
+            hnc_stage_meta=(),
+        )
+
+    monkeypatch.setattr(wf, "build_effective_vii_from_nscr", fake_build)
+    monkeypatch.setattr(wf, "solve_vmhnc", fake_vmhnc)
+    monkeypatch.setattr(
+        wf,
+        "hnc_solver",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Plain HNC must not run for VMHNC.")
+        ),
+    )
+    cfg = wf.PlasmaWorkflowConfig(
+        elements=["Al"],
+        temperature_ev=5.0,
+        rho_g_cc=2.7,
+        ion_temperature_ev=5.0,
+        qoz_linear_n_points=128,
+        hnc_bridge_model="rosenfeld_ashcroft",
+    )
+    ion = wf._one_component_ion_structure(cfg, species_entry=species_entry)
+
+    np.testing.assert_allclose(ion["vii_r"], seen["potential"])
+    assert ion["hnc_bridge_model"] == "rosenfeld_ashcroft"
+    assert ion["vmhnc_eta"] == pytest.approx(0.4)
+    assert ion["vmhnc_sigma_bohr"] == pytest.approx(2.0)
+    assert ion["hnc_solver_path"] == "vmhnc_newton_krylov"
+    assert ion["hnc_converged"] is True
 
 
 def test_one_component_ion_structure_rejects_unconverged_hnc_map() -> None:

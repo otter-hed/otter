@@ -14,6 +14,7 @@ physical CPU cores to avoid nested oversubscription.
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -23,17 +24,27 @@ import time
 from typing import Any
 
 import numpy as np
+from scipy.constants import physical_constants
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
 
 from otter import (  # noqa: E402
     PlasmaWorkflowConfig,
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
+)
+from otter_lammps_md import (  # noqa: E402
+    MDConfig,
+    MDSpecies,
+    PairPotential,
+    run_otter_lammps_md,
 )
 
 
@@ -45,6 +56,24 @@ CONTINUUM_WORKERS_PER_STATE = 6
 QOZ_N_POINTS = 4096
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
+VMHNC_ETA_TOL = 1.0e-6
+
+# The Wünsch Be state additionally compares HNC and VMHNC with classical MD
+# using the identical IS-QOZ pair potential.  Set this to False only when
+# preparing an electronic/integral-equation candidate without LAMMPS.
+RUN_WUNSCH_SAME_POTENTIAL_MD = True
+LAMMPS_EXECUTABLE = "lmp"
+MPI_LAUNCHER = "mpirun"
+MPI_PROCESSES_PER_MD_CASE = 10
+MD_ATOMS = 2048
+MD_TIMESTEP_OMEGA_P_INV = 0.005
+MD_EQUILIBRATION_OMEGA_P_INV = 50.0
+MD_PRODUCTION_OMEGA_P_INV = 500.0
+WUNSCH_MD_K_MAX_ANGSTROM_INV = 10.2
+
+# ``None`` reproduces the complete library.  A tuple such as
+# ``("be_wunsch",)`` recomputes only the named state group.
+STATE_GROUPS_TO_RUN: tuple[str, ...] | None = None
 
 OUTPUT_DIR = (
     ROOT
@@ -134,7 +163,19 @@ def _git_commit() -> str:
         return "unknown"
 
 
-def _configuration(state: dict[str, Any]) -> PlasmaWorkflowConfig:
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _configuration(
+    state: dict[str, Any],
+    *,
+    bridge_model: str = "none",
+) -> PlasmaWorkflowConfig:
     """Build the documented production configuration for one state."""
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
@@ -155,6 +196,8 @@ def _configuration(state: dict[str, Any]) -> PlasmaWorkflowConfig:
         # Al.  This does not relax positivity or fixed-point checks.
         hnc_closure_transform_tol=2.5e-3,
         hnc_max_iter=1000,
+        hnc_bridge_model=bridge_model,
+        vmhnc_eta_tol=VMHNC_ETA_TOL,
     )
 
 
@@ -266,6 +309,12 @@ def _pack_result(
             "require_converged": True,
         },
     }
+    if str(state["state_id"]).startswith("be_wunsch"):
+        signature["ionic_comparison"] = {
+            "closures": ["HNC", "Rosenfeld--Ashcroft VMHNC"],
+            "same_potential_md": bool(RUN_WUNSCH_SAME_POTENTIAL_MD),
+            "vmhnc_eta_tol": VMHNC_ETA_TOL,
+        }
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "benchmark_id": np.asarray("ion_structure_library"),
@@ -309,6 +358,7 @@ def _pack_result(
         "zbar_aa": np.asarray(float(electronic["zbar"])),
         "zbar_partition": np.asarray(float(ion["zbar_partition"])),
         "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
+        "ion_density_bohr3": np.asarray(float(ion["n_i"])),
         "threshold_state_status": np.asarray(
             str(electronic.get("threshold_state_status", "none"))
         ),
@@ -355,26 +405,226 @@ def _pack_result(
     return payload
 
 
+def _add_wunsch_vmhnc(
+    payload: dict[str, np.ndarray],
+    hnc_result: dict[str, Any],
+    vmhnc_result: dict[str, Any],
+) -> None:
+    """Append VMHNC fields after proving that only the closure changed."""
+    hnc = dict(hnc_result["ion"])
+    vmhnc = dict(vmhnc_result["ion"])
+    if str(hnc["hnc_bridge_model"]) != "none":
+        raise RuntimeError("The Wünsch ordinary-HNC result used a bridge.")
+    if str(vmhnc["hnc_bridge_model"]) != "rosenfeld_ashcroft":
+        raise RuntimeError("The Wünsch VMHNC result used the wrong bridge.")
+    if not np.allclose(hnc["vii_r"], vmhnc["vii_r"], rtol=0.0, atol=0.0):
+        raise RuntimeError("HNC and VMHNC did not reuse the same QOZ potential.")
+    if vmhnc.get("hnc_converged") is not True:
+        raise RuntimeError("Wünsch VMHNC did not converge.")
+    if float(vmhnc["closure_transform_max_abs"]) > 2.5e-3:
+        raise RuntimeError("Wünsch VMHNC failed the transform-closure audit.")
+
+    r = np.asarray(vmhnc["r"], dtype=float)
+    k = np.asarray(vmhnc["k"], dtype=float)
+    r_mask = r <= R_RETAIN_MAX_BOHR
+    k_mask = k <= K_RETAIN_MAX_BOHR_INV
+    payload.update(
+        {
+            "vmhnc_r_bohr": r[r_mask],
+            "vmhnc_gii_r": np.asarray(vmhnc["gii_r"], dtype=float)[r_mask],
+            "vmhnc_k_bohr_inv": k[k_mask],
+            "vmhnc_sii_k": np.asarray(vmhnc["sii_k"], dtype=float)[k_mask],
+            "vmhnc_best_residual": np.asarray(
+                float(vmhnc["hnc_output_residual"])
+            ),
+            "vmhnc_closure_mismatch": np.asarray(
+                float(vmhnc["closure_transform_max_abs"])
+            ),
+            "vmhnc_eta": np.asarray(float(vmhnc["vmhnc_eta"])),
+            "vmhnc_sigma_bohr": np.asarray(float(vmhnc["vmhnc_sigma_bohr"])),
+            "vmhnc_variational_residual": np.asarray(
+                float(vmhnc["vmhnc_variational_residual"])
+            ),
+        }
+    )
+
+
+def _wunsch_md_config(
+    state: dict[str, Any],
+    ion: dict[str, Any],
+    output_dir: Path,
+) -> MDConfig:
+    """Use a dimensionless plasma-frequency protocol for the Be MD run."""
+    mass_u = 9.0121831
+    mass_ratio = (
+        physical_constants["atomic mass constant"][0]
+        / physical_constants["electron mass"][0]
+    )
+    atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
+    n_i = float(ion["n_i"])
+    zbar = float(ion["zbar_partition"])
+    omega_p = np.sqrt(4.0 * np.pi * n_i * zbar**2 / (mass_u * mass_ratio))
+    return MDConfig(
+        output_dir=output_dir,
+        species=(MDSpecies("Be", mass_u, MD_ATOMS),),
+        ion_density_bohr3=n_i,
+        ion_temperature_ev=float(state["ti_ev"]),
+        timestep_ps=MD_TIMESTEP_OMEGA_P_INV / omega_p * atomic_time_ps,
+        thermostat_damp_ps=0.5 / omega_p * atomic_time_ps,
+        equilibration_steps=round(
+            MD_EQUILIBRATION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
+        ),
+        production_steps=round(
+            MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
+        ),
+        rdf_bins=500,
+        rdf_every=100,
+        rdf_repeat=50,
+        trajectory_every=5_000,
+        table_points=8_192,
+        k_max_angstrom_inv=WUNSCH_MD_K_MAX_ANGSTROM_INV,
+        random_seed=20_260_825,
+        lammps_executable=LAMMPS_EXECUTABLE,
+        mpi_launcher=MPI_LAUNCHER,
+        mpi_processes=MPI_PROCESSES_PER_MD_CASE,
+        structure_factor_workers=MPI_PROCESSES_PER_MD_CASE,
+    )
+
+
+def _add_wunsch_md(
+    payload: dict[str, np.ndarray],
+    result: dict[str, Any],
+    state: dict[str, Any],
+    output_dir: Path,
+) -> None:
+    """Run Be MD with the HNC/VMHNC pair potential and append its statistics."""
+    ion = dict(result["ion"])
+    md = run_otter_lammps_md(
+        _wunsch_md_config(state, ion, output_dir),
+        [
+            PairPotential(
+                "Be",
+                "Be",
+                np.asarray(ion["r"], dtype=float),
+                np.asarray(ion["vii_r"], dtype=float),
+            )
+        ],
+    )
+    payload.update(md)
+    # Friendly one-component aliases keep gallery access explicit.
+    payload["md_gii_r"] = np.asarray(md["md_gij_r"])[:, 0]
+    payload["md_gii_block_sem"] = np.asarray(md["md_gij_block_sem"])[:, 0]
+    payload["md_sii_k"] = np.asarray(md["md_snn_k"])
+    payload["md_sii_frame_sem"] = np.asarray(md["md_snn_frame_sem"])
+    payload["md_sii_vectors_per_bin"] = np.asarray(md["md_vectors_per_k_bin"])
+
+
+def _attach_metadata(
+    payload: dict[str, np.ndarray],
+    state: dict[str, Any],
+) -> None:
+    """Embed portable provenance after every optional result is attached."""
+    state_id = str(state["state_id"])
+    citation_keys = ["StarrettSaumon2013", "StarrettSaumon2014", "Chabrier1990"]
+    if state_id.startswith("be_wunsch"):
+        citation_keys += [
+            "WunschEtAl2009",
+            "RosenfeldAshcroft1979",
+            "Faussurier2004",
+            "ThompsonEtAl2022",
+        ]
+    metadata = {
+        "schema_version": "otter_compact_archive_metadata_v1",
+        "archive_role": "project_generated_example_or_benchmark_baseline",
+        "archive_schema_version": SCHEMA,
+        "package_id": "ion_structure_library",
+        "configuration": json.loads(
+            str(payload["producer_signature_json"].item())
+        ),
+        "state": {
+            "state_id": state_id,
+            "element": str(state["element"]),
+            "rho_g_cc": float(state["rho_g_cc"]),
+            "te_ev": float(state["te_ev"]),
+            "ti_ev": float(state["ti_ev"]),
+            "electronic_model": str(state.get("electronic_model", "qm")),
+        },
+        "producer": {
+            "project": "Otter",
+            "git_commit": _git_commit(),
+            "script_relative_path": str(Path(__file__).resolve().relative_to(ROOT)),
+            "script_sha256": _sha256(Path(__file__).resolve()),
+        },
+        "citation_keys": citation_keys,
+        "convergence": {
+            "aa_stage2_converged": True,
+            "aa_ext_converged": True,
+            "threshold_state_status": str(payload["threshold_state_status"].item()),
+            "hnc_best_residual": float(payload["hnc_best_residual"]),
+            "hnc_closure_mismatch": float(payload["hnc_closure_mismatch"]),
+            **(
+                {
+                    "vmhnc_best_residual": float(payload["vmhnc_best_residual"]),
+                    "vmhnc_closure_mismatch": float(
+                        payload["vmhnc_closure_mismatch"]
+                    ),
+                    "vmhnc_variational_residual": float(
+                        payload["vmhnc_variational_residual"]
+                    ),
+                    "md_nve_relative_energy_drift": float(
+                        payload["md_nve_relative_energy_drift"]
+                    ),
+                }
+                if "vmhnc_best_residual" in payload
+                else {}
+            ),
+        },
+        "fields": sorted(payload),
+    }
+    payload["metadata_json"] = np.asarray(
+        json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+    )
+
+
 def _solve_group(
     group_name: str,
     states: tuple[dict[str, Any], ...],
+    output_dir: Path,
 ) -> dict[str, dict[str, np.ndarray]]:
     """Solve one electronic state and all requested ion temperatures."""
     first = states[0]
     start = time.perf_counter()
     first_result = solve_plasma_workflow(_configuration(first))
+    first_id = str(first["state_id"])
     packed = {
-        str(first["state_id"]): _pack_result(
-            first_result,
-            first,
-            elapsed_s=time.perf_counter() - start,
+        first_id: _pack_result(
+            first_result, first, elapsed_s=time.perf_counter() - start
         )
     }
+    electronic_kind = str(first_result["electronic"]["kind"])
+    electronic_result = dict(first_result["electronic"]["result"])
+    if group_name == "be_wunsch":
+        vmhnc_started = time.perf_counter()
+        vmhnc_result = continue_plasma_workflow_from_electronic_result(
+            _configuration(first, bridge_model="rosenfeld_ashcroft"),
+            electronic_kind=electronic_kind,
+            electronic_result=electronic_result,
+        )
+        _add_wunsch_vmhnc(packed[first_id], first_result, vmhnc_result)
+        packed[first_id]["vmhnc_elapsed_s"] = np.asarray(
+            time.perf_counter() - vmhnc_started
+        )
+        if RUN_WUNSCH_SAME_POTENTIAL_MD:
+            _add_wunsch_md(
+                packed[first_id],
+                first_result,
+                first,
+                output_dir / "md_work" / first_id,
+            )
+    _attach_metadata(packed[first_id], first)
     if len(states) == 1:
         return packed
 
-    electronic_kind = str(first_result["electronic"]["kind"])
-    electronic_result = dict(first_result["electronic"]["result"])
     for state in states[1:]:
         ion_start = time.perf_counter()
         result = continue_plasma_workflow_from_electronic_result(
@@ -382,11 +632,13 @@ def _solve_group(
             electronic_kind=electronic_kind,
             electronic_result=electronic_result,
         )
-        packed[str(state["state_id"])] = _pack_result(
+        payload = _pack_result(
             result,
             state,
             elapsed_s=time.perf_counter() - ion_start,
         )
+        _attach_metadata(payload, state)
+        packed[str(state["state_id"])] = payload
     return packed
 
 
@@ -399,11 +651,16 @@ def regenerate(
     output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     failures: list[tuple[str, str]] = []
-    workers = max(1, min(int(max_state_workers), len(STATE_GROUPS)))
+    selected = (
+        STATE_GROUPS
+        if STATE_GROUPS_TO_RUN is None
+        else {name: STATE_GROUPS[name] for name in STATE_GROUPS_TO_RUN}
+    )
+    workers = max(1, min(int(max_state_workers), len(selected)))
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_solve_group, name, states): name
-            for name, states in STATE_GROUPS.items()
+            pool.submit(_solve_group, name, states, output_dir): name
+            for name, states in selected.items()
         }
         for future in as_completed(futures):
             group = futures[future]

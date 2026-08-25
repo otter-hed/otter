@@ -112,7 +112,7 @@ continuous lines.
 Equilibrium structure factors: :math:`S_{ii}(k)`
 -------------------------------------------------
 
-The carbon page is an equilibrium :math:`S_{ii}` comparison:
+These carbon and aluminium pages are equilibrium :math:`S_{ii}` comparisons:
 :math:`T_e=T_i` is stated for every displayed curve.
 
 .. raw:: html
@@ -139,18 +139,18 @@ The carbon page is an equilibrium :math:`S_{ii}` comparison:
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Equilibrium aluminium LDA-PW92 and PBE structure factors at 1 and 5 eV compared with corrected Figure 2 curves from Schörner et al. (2022).">
+    <div class="sphx-glr-thumbcontainer" tooltip="Equilibrium aluminium LDA-PW92/PBE HNC, VMHNC, and same-potential MD structure factors compared with corrected Figure 2 DFT-MD curves from Schörner et al. (2022).">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_schorner_et_al_2022_al_sii_thumb.png
-      :alt: Schörner et al. 2022 equilibrium aluminium structure-factor benchmark
+      :alt: Schörner et al. 2022 aluminium HNC, VMHNC, and MD benchmark
 
    :doc:`gen_benchmarks/plot_schorner_et_al_2022_al_sii`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Schörner 2022 aluminium LDA/PBE structure factors</div>
+      <div class="sphx-glr-thumbnail-title">Schörner 2022 aluminium bridges and MD</div>
     </div>
 
 .. thumbnail-parent-div-close
