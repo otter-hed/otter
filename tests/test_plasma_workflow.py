@@ -347,7 +347,8 @@ def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given
     assert result["ion"]["f_k"].shape == result["ion"]["k"].shape
     np.testing.assert_array_equal(result["ion"]["f_k"], result["ion"]["n_ion_k"])
     np.testing.assert_array_equal(result["ion"]["q_k"], result["ion"]["n_scr_k"])
-    np.testing.assert_array_equal(result["ion"]["gee_k"], result["ion"]["g_ee_k"])
+    np.testing.assert_array_equal(result["ion"]["G_ee_k"], result["ion"]["gee_k"])
+    np.testing.assert_array_equal(result["ion"]["G_ee_k"], result["ion"]["g_ee_k"])
     np.testing.assert_array_equal(result["ion"]["v_ei_k"], result["ion"]["v_ie_k"])
     np.testing.assert_allclose(
         result["ion"]["c_ie_k"],
@@ -740,7 +741,8 @@ def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_give
     assert result["ion"]["f_k"].shape == (2, result["ion"]["k"].size)
     np.testing.assert_array_equal(result["ion"]["f_k"], result["ion"]["n_ion_k"])
     np.testing.assert_array_equal(result["ion"]["q_k"], result["ion"]["n_scr_k"])
-    np.testing.assert_array_equal(result["ion"]["gee_k"], result["ion"]["g_ee_k"])
+    np.testing.assert_array_equal(result["ion"]["G_ee_k"], result["ion"]["gee_k"])
+    np.testing.assert_array_equal(result["ion"]["G_ee_k"], result["ion"]["g_ee_k"])
     assert float(seen["options"].high_k_taper_start_frac) == 0.9
     assert seen["hnc_tail_shift"] is False
     assert result["ion"]["hnc_enforce_nodal_tail_zero"] is False

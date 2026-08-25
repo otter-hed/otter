@@ -200,8 +200,9 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert arrays["c_ie_k"].shape[0] == n_species
     assert arrays["v_ee_k"].ndim == 1
     assert arrays["c_ee_k"].ndim == 1
-    assert arrays["gee_k"].shape == arrays["k_bohr_inv"].shape
-    np.testing.assert_array_equal(arrays["gee_k"], arrays["g_ee_k"])
+    assert arrays["G_ee_k"].shape == arrays["k_bohr_inv"].shape
+    np.testing.assert_array_equal(arrays["G_ee_k"], arrays["gee_k"])
+    np.testing.assert_array_equal(arrays["G_ee_k"], arrays["g_ee_k"])
     assert arrays["chi0_k"].shape == arrays["k_bohr_inv"].shape
     assert arrays["chi_ee_k"].shape == arrays["k_bohr_inv"].shape
     assert arrays["vij_r"].shape[:2] == (n_species, n_species)
@@ -224,6 +225,7 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert metadata["units"]["q_k"] == "electron number"
     assert metadata["units"]["v_ie_k"] == "Hartree Bohr^3"
     assert metadata["units"]["c_ee_k"] == "Bohr^3"
+    assert metadata["units"]["G_ee_k"] == "dimensionless"
     assert metadata["configuration"]["rho_g_cc"] == 1.0
     assert metadata["citation_keys"] == [
         "StarrettSaumon2014",
@@ -292,6 +294,26 @@ def test_state_validator_accepts_legacy_v1_without_interaction_channels() -> Non
     metadata["schema_version"] = "otter_state_v1"
     legacy["metadata_json"] = np.asarray(json.dumps(metadata))
     validate_state_arrays(legacy)
+
+
+def test_state_validator_accepts_legacy_v3_without_canonical_lfc_key() -> None:
+    arrays = build_state_arrays(_synthetic_workflow(1))
+    legacy = {key: value for key, value in arrays.items() if key != "G_ee_k"}
+    legacy["schema_version"] = np.asarray("otter_state_v3")
+    metadata = json.loads(str(legacy["metadata_json"].item()))
+    metadata["schema_version"] = "otter_state_v3"
+    metadata["fields"] = sorted(set(metadata["fields"]) - {"G_ee_k"})
+    legacy["metadata_json"] = np.asarray(json.dumps(metadata))
+    validate_state_arrays(legacy)
+
+
+def test_state_validator_rejects_inconsistent_lfc_compatibility_alias() -> None:
+    arrays = build_state_arrays(_synthetic_workflow(1))
+    inconsistent = dict(arrays)
+    inconsistent["gee_k"] = np.array(arrays["gee_k"], copy=True)
+    inconsistent["gee_k"][0] += 1.0e-6
+    with pytest.raises(ValueError, match="alias of G_ee_k"):
+        validate_state_arrays(inconsistent)
 
 
 def test_state_save_adds_npz_suffix_and_leaves_no_temporary_file(tmp_path) -> None:

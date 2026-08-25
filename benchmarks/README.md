@@ -27,7 +27,7 @@ Baseline NPZ files use benchmark-specific schemas because a single archive
 may contain several densities, temperatures, or model variants.  They are
 read by the corresponding gallery/runner, not by ``otter.load_plasma_state``.
 For a complete single-workflow archive and its stable public API, use
-``otter.save_plasma_state`` and the ``otter_state_v3`` schema documented in
+``otter.save_plasma_state`` and the ``otter_state_v4`` schema documented in
 ``docs/source/user_guide/state_exports.rst``.
 
 Literature-derived and author-provided data are not covered by Otter's
@@ -52,6 +52,9 @@ Curated packages currently included are:
 - `baselines/starrett_single_species_2013_2014`: strict native Otter C and H
   results, plus explicit rejected/not-calculated Fe and W records, paired
   with a panel-by-panel audited Starrett--Saumon reference collection;
+- `baselines/starrett_saumon_2013_electronic`: Al-QM and Fe-TF production IS
+  and experimental SC-feedback level, pressure-ionization, and ionization
+  diagnostics compared with Tables I--III of Starrett and Saumon (2013);
 - `baselines/johnson_et_al_2025_two_temperature_al`: Otter aluminium
   calculations paired with the two-temperature Figure 2 curves of Johnson,
   Shaffer, and Murillo (2025);

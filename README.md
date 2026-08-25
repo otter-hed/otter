@@ -106,8 +106,10 @@ levels, `q/f`, electron response and LFC, electron/ion interaction channels,
 and `g_ij/S_ij`, together with units and convergence metadata.  In particular:
 
 - `q_k == n_scr_k` and `f_k == n_ion_k`;
-- `g_ee_k`, `chi0_k`, `chi_ee_k`, `v_ie_k`, `c_ie_k`, `v_ee_k`, and `c_ee_k`;
+- `G_ee_k`, `chi0_k`, `chi_ee_k`, `v_ie_k`, `c_ie_k`, `v_ee_k`, and `c_ee_k`;
 - `gij_r`, `sij_k`, `vij_r`, and `vij_k`.
+
+`gee_k` and `g_ee_k` are temporary compatibility aliases for `G_ee_k`.
 
 The default windows are `r < 20 Bohr` and `k < 20 Bohr^-1`. Archives load with
 `allow_pickle=False` and are written atomically. See the

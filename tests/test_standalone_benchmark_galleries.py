@@ -31,6 +31,10 @@ GALLERIES = (
     / "benchmarks"
     / "examples"
     / "plot_starrett_single_species_2013_2014.py",
+    ROOT
+    / "benchmarks"
+    / "examples"
+    / "plot_starrett_saumon_2013_electronic.py",
 )
 
 
@@ -55,8 +59,15 @@ def test_benchmark_gallery_is_one_complete_otter_script(path: Path) -> None:
         "FullExternalConfig" in source and "solve_full_only(" in source
     )
     assert plasma_workflow or full_average_atom
-    assert "from otter.plotting import" in source
-    assert "save_figure(" in source
+    if path.name == "plot_starrett_saumon_2013_electronic.py":
+        # Sparse level and ionization diagnostics are intentionally presented
+        # as direct article-style tables rather than redundant figures.
+        assert "<table class=\"docutils align-default\">" in source
+        assert "from otter.plotting import" not in source
+        assert "save_figure(" not in source
+    else:
+        assert "from otter.plotting import" in source
+        assert "save_figure(" in source
 
     assert "importlib" not in source
     assert "benchmarks/runners" not in source

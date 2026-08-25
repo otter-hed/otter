@@ -14,7 +14,7 @@ Notation on this page distinguishes the electron channels
 leading axes are ionic-species axes; they are not electron--ion potentials.
 
 This page describes the portable workflow-state schema
-``otter_state_v3``.  Benchmark baselines may instead use compact,
+``otter_state_v4``.  Benchmark baselines may instead use compact,
 benchmark-specific schemas because one archive can contain several model or
 thermodynamic states.  Such plotting archives are validated by their own
 producer/loader and are not inputs to :func:`otter.load_plasma_state`.  Every
@@ -60,7 +60,7 @@ For a single species:
    k = ion["k"]
    q = ion["q_k"]          # n_scr(k)
    f = ion["f_k"]          # n_ion(k)
-   G = ion["g_ee_k"]
+   G = ion["G_ee_k"]
    chi0 = ion["chi0_k"]
    chi_ee = ion["chi_ee_k"]
    V_ie = ion["v_ie_k"]
@@ -111,7 +111,7 @@ validation is not required:
        print(archive.files)
        k = archive["k_bohr_inv"]
        q = archive["q_k"]
-       G = archive["g_ee_k"]
+       G = archive["G_ee_k"]
        V_ee = archive["v_ee_k"]
        V_ab = archive["vij_k"]
        S = archive["sij_k"]
@@ -165,10 +165,10 @@ common reciprocal points:
    * - ``chi0_k``, ``chi_ee_k``
      - ``(N_k,)``
      - :math:`\chi^0_{ee}(k)` and :math:`\chi_{ee}(k)`.
-   * - ``g_ee_k`` / ``gee_k``
+   * - ``G_ee_k``
      - ``(N_k,)``
-     - Identical aliases for the selected local-field correction
-       :math:`G_{ee}(k)`.
+     - Selected local-field correction :math:`G_{ee}(k)`.
+       ``gee_k`` and ``g_ee_k`` are temporary compatibility aliases.
    * - ``v_ie_k`` / ``v_ei_k``
      - ``(N_s, N_k)``
      - Electron--ion potential; the two names are explicit aliases.

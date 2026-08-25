@@ -20,12 +20,18 @@ have not yet been released are collected under “Unreleased”.
 - Extended the Schörner et al. (2022) aluminium benchmark to compare LDA/PBE
   HNC and VMHNC with direct, same-potential LAMMPS structure factors and the
   corrected published DFT-MD curves.
+- Added a Starrett--Saumon (2013) electronic-structure benchmark comparing
+  published Al/Fe levels, pressure-ionization weights, and ionization metrics
+  with reproducible Otter IS and experimental SC-feedback calculations.
 
 ### Changed
 
 - Made the bound-state sum and continuum integral meet at the asymptotic
   `E=0` potential gauge by default, while retaining local-potential
   thresholds as explicit finite-box sensitivity controls.
+- Made ``G_ee_k`` the canonical public key for the electron local-field
+  correction in workflow and ``otter_state_v4`` outputs; ``gee_k`` and
+  ``g_ee_k`` remain temporary compatibility aliases.
 
 ### Fixed
 

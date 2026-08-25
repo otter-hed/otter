@@ -63,5 +63,11 @@ def test_public_galleries_use_thesis_bing_without_grids() -> None:
     assert gallery_paths
     for path in gallery_paths:
         source = path.read_text(encoding="utf-8")
+        if path.name == "plot_starrett_saumon_2013_electronic.py":
+            # This sparse numerical benchmark is intentionally table-only;
+            # the shared Matplotlib style does not apply when no figure exists.
+            assert '<table class="docutils align-default">' in source
+            assert "matplotlib" not in source
+            continue
         assert '"thesis", palette="bing"' in source, path
         assert ".grid(" not in source, path

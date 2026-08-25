@@ -1,0 +1,90 @@
+{
+  "schema_version": "otter_benchmark_manifest_v1",
+  "benchmark_id": "starrett_saumon_2013_electronic",
+  "status": "accepted",
+  "title": "IS/SC electronic levels and ionization versus Starrett and Saumon (2013)",
+  "data_rights": {
+    "origin_type": "project_generated_numerical_output",
+    "third_party_reference_data_included": false,
+    "method_citations_only": true,
+    "public_release_gate": "resolved"
+  },
+  "method_reference": {
+    "paper_comparison": {
+      "citation_key": "StarrettSaumon2013",
+      "doi": "10.1103/PhysRevE.87.013104",
+      "scope": "Eqs. (79)-(81), Tables I-III"
+    },
+    "otter_sc_feedback": {
+      "citation_key": "StarrettSaumon2014",
+      "doi": "10.1016/j.hedp.2013.12.001",
+      "scope": "Sec. 2.4, Eqs. (19)-(20)"
+    }
+  },
+  "configuration": {
+    "scope": "is_and_experimental_sc_feedback",
+    "external_average_atom": true,
+    "qoz_hnc": true,
+    "aa_n_points": 4096,
+    "bound_energy_cut_mode": "zero",
+    "bound_zero_tail_refine": true,
+    "bound_zero_tail_max_binding_ha": 0.03,
+    "ion_gamma_mode": "scattering",
+    "ion_gamma_scale": 1.0,
+    "al_electronic_model": "qm",
+    "al_rho_g_cc": 2.7,
+    "al_temperatures_ev": [2.0, 6.0, 10.0, 15.0],
+    "fe_electronic_model": "tf",
+    "fe_mu_bounds_ha": [-2000.0, 200.0],
+    "fe_hugoniot_rho_g_cc_temperature_ev": [
+      [22.5, 10.0],
+      [34.5, 100.0],
+      [39.65, 1000.0],
+      [34.37, 5000.0]
+    ],
+    "sc_controls": {
+      "fixed_is_mu": true,
+      "max_outer": 16,
+      "g_tol": 0.0005,
+      "v_corr_tol_ha": 0.0005,
+      "v_corr_mix": 0.5
+    }
+  },
+  "definition_scope": {
+    "paper_model": "Self-consistent QTCP for Al and TFTCP for the Fe charge table; Appendix B identifies the ion-sphere model as the initial guess.",
+    "otter_is": "Production ion-sphere full+external AA followed by QOZ/HNC.",
+    "otter_sc": "Experimental AA/QOZ/HNC feedback at fixed converged IS chemical potential; a controlled comparison, not an exact claim of reproducing the simultaneous 2013 solver.",
+    "zstar": "n0 / n_i from the converged full average atom",
+    "zbar_partition": "Z - integral_all_space(n_ion) from the converged full average atom"
+  },
+  "scientific_audit": {
+    "accepted_state_pairs": 8,
+    "failed_state_pairs": 0,
+    "sc_feedback_converged": true,
+    "sc_outer_iterations": [8, 8, 7, 7, 10, 10, 13, 13],
+    "al_15ev_is_3s_status": "no_negative_energy_level",
+    "al_15ev_sc_3s_status": "resolved",
+    "al_15ev_sc_3s_energy_ha": -0.00762965486252752,
+    "al_15ev_sc_3s_m": 0.08422615110891075,
+    "al_15ev_is_gamma_ha": 0.10942987426784002,
+    "al_15ev_sc_gamma_ha": 0.16988175422220445,
+    "al_15ev_is_zbar_partition": 3.239360968448123,
+    "al_15ev_sc_zbar_partition": 3.195380850047586,
+    "fe_10ev_is_zbar_partition": 8.807809287413011,
+    "fe_10ev_sc_zbar_partition": 8.739487182620799
+  },
+  "producer": {
+    "project": "Otter",
+    "script_relative_path": "benchmarks/examples/plot_starrett_saumon_2013_electronic.py",
+    "script_sha256_current": "162c2cc7feaa3a4a3ba438f74d657a4b7ece0c69f19f4062201d132a81b7458c",
+    "script_sha256_at_generation": "c001deb9e9854557880abc86a0bae9096cad04707288b7f85b0015e872c3677c",
+    "git_commit": "78c51ad5d4f671f89428a62053538da8b11423db",
+    "worktree_clean_at_generation": false
+  },
+  "state": {
+    "data_file": "electronic_states.npz",
+    "data_sha256": "f2ccae353b6865b3e1bde3db98ac897e55b434a57f84dec91bfcab398aed7667",
+    "count": 8,
+    "schema_version": "otter_starrett_saumon_2013_electronic_v2"
+  }
+}

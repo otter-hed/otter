@@ -14,9 +14,10 @@ QOZ/HNC quantities needed for analysis or downstream XRTS calculations:
 ``V_Ie(k)``, ``V_ee(k)``, ``C_Ie(k)``, ``C_ee(k)``
     Electron--ion and electron--electron potentials and direct-correlation
     channels used by the QOZ construction.
-``chi0_k``, ``chi_ee_k``, ``gee_k``
+``chi0_k``, ``chi_ee_k``, ``G_ee_k``
     Ideal and interacting electron responses and the selected local-field
-    correction :math:`G_{ee}(k)`.
+    correction :math:`G_{ee}(k)`.  ``gee_k`` and ``g_ee_k`` are temporary
+    compatibility aliases for ``G_ee_k``.
 ``species_<i>_*``
     Native-grid electronic densities, potential components, mean-ionization
     definitions, bound levels, and per-level density contributions.
@@ -44,10 +45,11 @@ from otter.numerics.transforms import (
 )
 
 
-STATE_SCHEMA_VERSION = "otter_state_v3"
+STATE_SCHEMA_VERSION = "otter_state_v4"
 _SUPPORTED_STATE_SCHEMA_VERSIONS = {
     "otter_state_v1",
     "otter_state_v2",
+    "otter_state_v3",
     STATE_SCHEMA_VERSION,
 }
 
@@ -476,6 +478,7 @@ def _metadata(
             "c_ee_r": "dimensionless",
             "chi0_k": "Bohr^-3 Hartree^-1",
             "chi_ee_k": "Bohr^-3 Hartree^-1",
+            "G_ee_k": "dimensionless",
             "gee_k": "dimensionless",
             "g_ee_k": "dimensionless",
             "electronic_density_r": "Bohr^-3",
@@ -631,7 +634,13 @@ def build_state_arrays(
     c_ee_k_full = np.asarray(ion["c_ee_k"], dtype=float)
     chi0_k_full = np.asarray(ion["chi0_k"], dtype=float)
     chi_ee_k_full = np.asarray(ion["chi_ee_k"], dtype=float)
-    gee_k_full = np.asarray(ion["gee_k"], dtype=float)
+    lfc_key = next(
+        (key for key in ("G_ee_k", "gee_k", "g_ee_k") if key in ion),
+        None,
+    )
+    if lfc_key is None:
+        raise KeyError("Ion structure result has no G_ee_k local-field correction.")
+    G_ee_k_full = np.asarray(ion[lfc_key], dtype=float)
     if any(
         value.shape != k_full.shape
         for value in (
@@ -639,7 +648,7 @@ def build_state_arrays(
             c_ee_k_full,
             chi0_k_full,
             chi_ee_k_full,
-            gee_k_full,
+            G_ee_k_full,
         )
     ):
         raise ValueError(
@@ -714,8 +723,10 @@ def build_state_arrays(
         "c_ee_k": c_ee_k_full[k_mask],
         "chi0_k": chi0_k_full[k_mask],
         "chi_ee_k": chi_ee_k_full[k_mask],
-        "gee_k": gee_k_full[k_mask],
-        "g_ee_k": gee_k_full[k_mask],
+        "G_ee_k": G_ee_k_full[k_mask],
+        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
+        "gee_k": G_ee_k_full[k_mask],
+        "g_ee_k": G_ee_k_full[k_mask],
         "gij_r": gij_full[..., r_mask],
         "sij_k": sij_full[..., k_mask],
         "hij_r": hij_full[..., r_mask],
@@ -885,6 +896,7 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
             "c_ee_r",
             "chi0_k",
             "chi_ee_k",
+            "G_ee_k",
             "gee_k",
             "g_ee_k",
             "hij_r",
@@ -953,6 +965,7 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
         "c_ee_k",
         "chi0_k",
         "chi_ee_k",
+        "G_ee_k",
         "gee_k",
         "g_ee_k",
     ):
@@ -1010,6 +1023,7 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
         "c_ee_k",
         "chi0_k",
         "chi_ee_k",
+        "G_ee_k",
         "gee_k",
         "g_ee_k",
         "v_ie_r",
@@ -1047,7 +1061,13 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
         converted["v_ie_r"], converted["v_ei_r"]
     ):
         raise ValueError("v_ei_r must be the explicit alias of v_ie_r.")
-    if "g_ee_k" in converted and not np.array_equal(
+    if "G_ee_k" in converted:
+        for alias in ("gee_k", "g_ee_k"):
+            if alias in converted and not np.array_equal(
+                converted["G_ee_k"], converted[alias]
+            ):
+                raise ValueError(f"{alias} must be an explicit alias of G_ee_k.")
+    elif "g_ee_k" in converted and not np.array_equal(
         converted["gee_k"], converted["g_ee_k"]
     ):
         raise ValueError("g_ee_k must be the explicit alias of gee_k.")

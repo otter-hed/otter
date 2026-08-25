@@ -83,7 +83,7 @@ The workflow returns electronic and ionic results in separate dictionaries:
    k = ion["k"]
    q_k = ion["q_k"]
    f_k = ion["f_k"]
-   G_k = ion["g_ee_k"]
+   G_k = ion["G_ee_k"]
    v_ie_k = ion["v_ie_k"]
    g_ii = ion["gii_r"]
    s_ii = ion["sii_k"]

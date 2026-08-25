@@ -1,0 +1,49 @@
+{
+  "schema_version": "otter_reference_manifest_v1",
+  "reference_id": "starrett_saumon_2013_electronic",
+  "title": "Electronic levels and ionization from Starrett and Saumon (2013), Tables I-III",
+  "publication": {
+    "authors": "C. E. Starrett and D. Saumon",
+    "title": "Electronic and ionic structures of warm and hot dense matter",
+    "journal": "Physical Review E",
+    "volume": "87",
+    "article": "013104",
+    "year": 2013,
+    "doi": "10.1103/PhysRevE.87.013104",
+    "url": "https://doi.org/10.1103/PhysRevE.87.013104"
+  },
+  "origin_type": "published_numerical_table_transcription",
+  "redistribution_status": "published_by_maintainer_with_attribution",
+  "license_declared": "NOASSERTION",
+  "public_release_gate": "resolved",
+  "release_decision": {
+    "decision_date": "2026-08-25",
+    "decision": "include_with_attribution_and_NOASSERTION",
+    "rights_note": "This repository records source attribution but does not assert a license for the transcribed publication table entries."
+  },
+  "scientific_scope": {
+    "table_i": "Al QM bound energies, pressure-ionization M(E), and gamma at rho=2.7 g cm^-3",
+    "table_ii": "Al QAA/QTCP ionization and coupling parameters at rho=2.7 g cm^-3",
+    "table_iii": "Fe TFAA/TFTCP ionization and coupling parameters along the principal Hugoniot"
+  },
+  "files": [
+    {
+      "path": "table_i_al_levels.csv",
+      "source_table": "Table I",
+      "rows": 8,
+      "sha256": "a5616390ae7b1f1e77c3a9248b988cd54a9702a5d4adac1ab141bcedc76e4a60"
+    },
+    {
+      "path": "table_ii_al_ionization.csv",
+      "source_table": "Table II",
+      "rows": 4,
+      "sha256": "b650d7e593012d0dd49e08bbe200d7a8ee327a8a04e106fb9827ba46ebb57145"
+    },
+    {
+      "path": "table_iii_fe_hugoniot.csv",
+      "source_table": "Table III",
+      "rows": 4,
+      "sha256": "ebb54f6c104ea6d00bcb4b873c82479c766b3af79dacb2cd1627cdb82ef9d1b1"
+    }
+  ]
+}

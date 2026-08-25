@@ -1339,6 +1339,8 @@ def _one_component_ion_structure(
         "c_ee_r": c_ee_r,
         "chi_ee_k": np.asarray(qoz.chi_ee_k, dtype=float),
         "chi0_k": np.asarray(qoz.chi0_k, dtype=float),
+        "G_ee_k": np.asarray(qoz.gee_k, dtype=float),
+        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
         "gee_k": np.asarray(qoz.gee_k, dtype=float),
         "g_ee_k": np.asarray(qoz.gee_k, dtype=float),
         "qoz_build_s": float(qoz_build_s),
@@ -1791,6 +1793,8 @@ def _multicomponent_ion_structure(
         "c_ee_r": c_ee_r,
         "chi_ee_k": np.asarray(qoz.chi_ee_k, dtype=float),
         "chi0_k": np.asarray(qoz.chi0_k, dtype=float),
+        "G_ee_k": np.asarray(qoz.gee_k, dtype=float),
+        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
         "gee_k": np.asarray(qoz.gee_k, dtype=float),
         "g_ee_k": np.asarray(qoz.gee_k, dtype=float),
         "qoz_build_s": float(qoz_build_s),

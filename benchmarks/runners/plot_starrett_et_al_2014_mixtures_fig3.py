@@ -172,7 +172,12 @@ def load_result(path: Path) -> dict[str, np.ndarray]:
         if labels != PAIR_ORDER:
             raise ValueError(f"Unexpected pair order in {path}: {labels}")
         return result
-    if schema in {"otter_state_v1", "otter_state_v2", "otter_state_v3"}:
+    if schema in {
+        "otter_state_v1",
+        "otter_state_v2",
+        "otter_state_v3",
+        "otter_state_v4",
+    }:
         symbols = tuple(str(value) for value in result["species_symbols"])
         if symbols != ("C", "H"):
             raise ValueError(f"Unexpected species order in {path}: {symbols}")
