@@ -43,6 +43,24 @@ def test_average_atom_radial_defaults_are_4096_points() -> None:
     ).n_points == 2**12
 
 
+def test_public_full_external_defaults_to_physical_continuum_edge() -> None:
+    """The A2 bound sum and A3 continuum integral meet at E=0."""
+    cfg = FullExternalConfig(
+        element="C",
+        temperature_ev=100.0,
+        rho_g_cc=2.0,
+    )
+
+    assert cfg.bound_energy_cut_mode == "zero"
+    assert _bound_energy_cut_value(
+        r=np.asarray((1.0, 2.0, 3.0)),
+        v_full=np.asarray((-1.0, -0.1, -0.01)),
+        r_ws=1.5,
+        mode=cfg.bound_energy_cut_mode,
+        value=cfg.bound_energy_cut,
+    ) == 0.0
+
+
 def test_auto_bound_basis_covers_neutral_shells_through_z118() -> None:
     """The automatic basis must cover every occupied neutral-atom subshell."""
     expected = {

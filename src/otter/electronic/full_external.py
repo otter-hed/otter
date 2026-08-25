@@ -1181,8 +1181,10 @@ class FullExternalConfig(CitationMixin):
     # External Eyert regularization.
 
     # ----- Bound partition controls -----
-    bound_energy_cut_mode: str = "v_frac"
-    # Bound/continuum split mode ("v_frac" is the validated default:'zero', 'v_ws', 'fixed').
+    bound_energy_cut_mode: str = "zero"
+    # Bound states have E < 0 in the physical V_eff(infinity)=0 gauge used by
+    # the A3 continuum integral.  Local-potential cuts remain available only
+    # for finite-box sensitivity studies.
     bound_energy_cut: float = 0.70
     # When mode="v_frac", use V_eff(r=bound_energy_cut*r_max) as threshold.
     bound_occ_mode: str = "fd"
@@ -1908,6 +1910,27 @@ def _resolve_b3_tail_controls(
     }
 
 
+_DIFFUSE_THRESHOLD_B3_FIT_RMS_RATIO_MAX = 100.0
+
+
+def _needs_diffuse_threshold_full_b3(result: dict[str, Any]) -> bool:
+    """Return whether a threshold orbital requires total-density B3 closure.
+
+    A zero-tail-matched shallow bound orbital can extend across the B3 handoff
+    window.  Fitting ``n_cont`` alone then leaves that orbital in
+    ``n_full-n_ext`` all the way to the box edge.  Appendix B instead fits the
+    total full and external densities separately, allowing the continuum
+    redistribution at pressure ionization to cancel the diffuse bound tail.
+    """
+    zero_tail = result.get("zero_tail_bound_meta", {})
+    return bool(
+        str(result.get("threshold_state_localization", "none")).lower()
+        == "diffuse"
+        and isinstance(zero_tail, dict)
+        and zero_tail.get("applied", False)
+    )
+
+
 def _apply_paired_pseudoatom_b3_charge_closure(
     result: dict[str, Any],
     cfg: FullExternalConfig,
@@ -1915,15 +1938,20 @@ def _apply_paired_pseudoatom_b3_charge_closure(
     r_ws: float,
     rmax: float,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Close a large pseudoatom charge mismatch through both B3 tails.
+    """Close an unsafe pseudoatom tail through a paired B3 reconstruction.
 
     Starrett--Saumon's pseudoatom definition requires
     ``integral(n_full - n_ext) = Z``.  Independent short-window B3 fits can
     reproduce the local A3 density while accumulating different finite-box
     charges.  When that mismatch is large, refit the saved full-continuum and
-    external-continuum pre-tail profiles over the physical B3 window, with
-    their respective source-charge equalities.  Applying the pair atomically
-    preserves every canonical density identity.
+    external-continuum pre-tail profiles over the physical B3 window.
+
+    A diffuse zero-tail-matched threshold orbital is a separate shape failure:
+    its scalar charge can already be exact while its second moment diverges.
+    For that diagnosed case, fit the saved *total* full density and external
+    density separately, as prescribed by Appendix B, so the continuum can
+    cancel the bound-state tail.  Both branches are committed atomically and
+    retain their source-charge equalities.
     """
     out = dict(result)
     meta: dict[str, Any] = {
@@ -1958,9 +1986,6 @@ def _apply_paired_pseudoatom_b3_charge_closure(
             "trigger_rel_tol": float(cfg.b3_pseudoatom_charge_rel_tol),
         }
     )
-    if relative_raw <= float(cfg.b3_pseudoatom_charge_rel_tol):
-        return out, {**meta, "reason": "raw charge mismatch is within tolerance"}
-
     full_controls = _resolve_b3_tail_controls(
         cfg,
         r_ws=float(r_ws),
@@ -1973,7 +1998,21 @@ def _apply_paired_pseudoatom_b3_charge_closure(
         rmax=float(rmax),
         stage_mode=str(cfg.ext_b3_tail_mode),
     )
-    if str(full_controls["target"]) not in ("cont", "both"):
+    diffuse_threshold_full_b3 = bool(
+        str(full_controls["target"]) == "cont"
+        and _needs_diffuse_threshold_full_b3(out)
+    )
+    meta["diffuse_threshold_full_b3"] = diffuse_threshold_full_b3
+    if (
+        relative_raw <= float(cfg.b3_pseudoatom_charge_rel_tol)
+        and not diffuse_threshold_full_b3
+    ):
+        return out, {**meta, "reason": "raw charge mismatch is within tolerance"}
+
+    if (
+        str(full_controls["target"]) not in ("cont", "both")
+        and not diffuse_threshold_full_b3
+    ):
         return out, {**meta, "reason": "full B3 target does not include n_cont"}
     if str(full_controls["mode"]) == "off" or str(ext_controls["mode"]) == "off":
         return out, {**meta, "reason": "B3 is disabled on a required branch"}
@@ -1987,6 +2026,10 @@ def _apply_paired_pseudoatom_b3_charge_closure(
 
     n_cont_pre_tail = np.asarray(
         out.get("n_cont_pre_tail", out["n_cont"]), dtype=float
+    )
+    n_full_pre_tail = np.asarray(
+        out.get("n_full_pre_tail", out["n_bound"] + n_cont_pre_tail),
+        dtype=float,
     )
     n_ext_pre_tail = np.asarray(
         out.get("n_ext_pre_tail", out["n_ext"]), dtype=float
@@ -2027,6 +2070,7 @@ def _apply_paired_pseudoatom_b3_charge_closure(
         *,
         target: float,
         model: str,
+        fit_rms_ratio_max: float | None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         idx_cut = int(np.searchsorted(r, float(controls["r_cut"])))
         fitted, tail_meta = apply_tail_match(
@@ -2044,9 +2088,7 @@ def _apply_paired_pseudoatom_b3_charge_closure(
             auto_rel_improve_tol=float(controls["auto_rel_improve_tol"]),
             auto_signal_rel_tol=float(controls["auto_signal_rel_tol"]),
             charge_target=float(target),
-            charge_constraint_fit_rms_ratio_max=(
-                cfg.b3_charge_constraint_fit_rms_ratio_max
-            ),
+            charge_constraint_fit_rms_ratio_max=fit_rms_ratio_max,
             charge_constraint_profile_delta_rel_max=(
                 cfg.b3_charge_constraint_profile_delta_rel_max
             ),
@@ -2058,12 +2100,40 @@ def _apply_paired_pseudoatom_b3_charge_closure(
         }
 
     try:
-        n_cont_closed, full_tail_meta = constrained_tail(
-            n_cont_pre_tail,
-            full_controls,
-            target=float(full_electron_target - bound_charge),
-            model=str(full_controls["model"]),
-        )
+        fit_rms_ratio_max = cfg.b3_charge_constraint_fit_rms_ratio_max
+        if diffuse_threshold_full_b3 and fit_rms_ratio_max is not None:
+            # The unconstrained total-density fit is nearly exact in this
+            # limit, so a harmless O(1e-5*n0) charge correction can have a
+            # deceptively large RMS *ratio*.  Keep a finite guard while the
+            # independent profile-delta, positivity, and charge checks remain
+            # active.
+            fit_rms_ratio_max = max(
+                float(fit_rms_ratio_max),
+                _DIFFUSE_THRESHOLD_B3_FIT_RMS_RATIO_MAX,
+            )
+        if diffuse_threshold_full_b3:
+            n_full_closed, full_tail_meta = constrained_tail(
+                n_full_pre_tail,
+                full_controls,
+                target=float(full_electron_target),
+                model=str(full_controls["model"]),
+                fit_rms_ratio_max=fit_rms_ratio_max,
+            )
+            full_tail_meta = {
+                **full_tail_meta,
+                "target": "full",
+                "diffuse_threshold_reclosure": True,
+            }
+            n_cont_closed = None
+        else:
+            n_cont_closed, full_tail_meta = constrained_tail(
+                n_cont_pre_tail,
+                full_controls,
+                target=float(full_electron_target - bound_charge),
+                model=str(full_controls["model"]),
+                fit_rms_ratio_max=fit_rms_ratio_max,
+            )
+            n_full_closed = n_bound + n_cont_closed
         ext_model = (
             str(cfg.ext_b3_tail_model)
             if cfg.ext_b3_tail_model is not None
@@ -2074,6 +2144,7 @@ def _apply_paired_pseudoatom_b3_charge_closure(
             ext_controls,
             target=float(ext_electron_target),
             model=ext_model,
+            fit_rms_ratio_max=fit_rms_ratio_max,
         )
     except Exception as exc:
         return out, {
@@ -2082,7 +2153,6 @@ def _apply_paired_pseudoatom_b3_charge_closure(
             "error": str(exc),
         }
 
-    n_full_closed = n_bound + n_cont_closed
     n_pa_closed = n_full_closed - n_ext_closed
     n_scr_closed = n_pa_closed - n_ion
     q_scr_closed = float(
@@ -2110,12 +2180,19 @@ def _apply_paired_pseudoatom_b3_charge_closure(
     out["n_ext_tail_meta_before_pseudoatom_charge_closure"] = dict(
         out.get("n_ext_tail_meta", out.get("ext_status", {}).get("tail_meta", {}))
     )
-    out["n_cont"] = n_cont_closed
+    if n_cont_closed is not None:
+        out["n_cont"] = n_cont_closed
+        out["n_cont_tail_meta"] = full_tail_meta
+    else:
+        out["n_full_tail_meta"] = full_tail_meta
+        out["n_cont_from_full"] = n_full_closed - n_bound
+        out["n_cont_from_full_definition"] = (
+            "n_full_minus_n_bound-derived-not-Eq-A3"
+        )
     out["n_full"] = n_full_closed
     out["n_ext"] = n_ext_closed
     out["n_pa"] = n_pa_closed
     out["n_scr"] = n_scr_closed
-    out["n_cont_tail_meta"] = full_tail_meta
     out["n_ext_tail_meta"] = ext_tail_meta
     ext_status = dict(out.get("ext_status", {}))
     ext_status["tail_meta"] = ext_tail_meta
@@ -2124,11 +2201,117 @@ def _apply_paired_pseudoatom_b3_charge_closure(
         **meta,
         "applied": True,
         "reason": "paired constrained B3 tails accepted",
+        "density_target": "full" if diffuse_threshold_full_b3 else "cont",
         "q_scr_closed": q_scr_closed,
         "q_scr_rel_closed": relative_closed,
         "full_tail_meta": full_tail_meta,
         "ext_tail_meta": ext_tail_meta,
     }
+
+
+def _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(
+    result: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Upgrade a saved pre-fix threshold state without rerunning its AA SCF.
+
+    The converged pre-B3 full/external profiles are sufficient to repeat the
+    atomic total-density tail reconstruction above.  This compatibility path
+    is deliberately narrow: ordinary states and results already produced with
+    a total-density B3 target are returned unchanged.
+    """
+    out = dict(result)
+    existing = out.get("b3_pseudoatom_charge_closure", {})
+    existing = dict(existing) if isinstance(existing, dict) else {}
+    result_meta = out.get("meta", {})
+    result_meta = dict(result_meta) if isinstance(result_meta, dict) else {}
+    tail_target = str(result_meta.get("b3_tail_target", "cont")).lower()
+    if not _needs_diffuse_threshold_full_b3(out):
+        return out, {"applied": False, "reason": "no diffuse threshold state"}
+    if tail_target in ("full", "both"):
+        return out, {"applied": False, "reason": "total-density B3 already requested"}
+    if bool(existing.get("applied", False)) and str(
+        existing.get("density_target", "")
+    ).lower() == "full":
+        return out, {"applied": False, "reason": "total-density B3 already applied"}
+
+    r = np.asarray(out["r"], dtype=float)
+    r_ws = float(out["r_ws"])
+    if r.ndim != 1 or r.size < 3 or not np.isfinite(r_ws) or r_ws <= 0.0:
+        raise ValueError("Diffuse-threshold B3 compatibility closure has invalid geometry.")
+
+    def finite_or_none(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if np.isfinite(parsed) else None
+
+    local_width = finite_or_none(
+        result_meta.get("b3_tail_local_fit_width_mult", None)
+    )
+    ext_model_raw = str(result_meta.get("ext_b3_tail_model", "")).strip()
+    cfg = FullExternalConfig(
+        element=int(out["Z"]),
+        temperature_ev=float(result_meta["temperature_ev"]),
+        rho_g_cc=float(result_meta["rho_g_cc"]),
+        r_ws_override_bohr=r_ws,
+        rmax_mult=float(r[-1] / r_ws),
+        geometry_r_ws_floor_bohr=min(0.8, r_ws),
+        b3_tail_stage1_mode="off",
+        b3_tail_stage2_mode=str(
+            result_meta.get("b3_tail_stage2_mode", "in_scf")
+        ),
+        b3_tail_target="cont",
+        b3_tail_fit_points=int(result_meta.get("b3_tail_fit_points", 20)),
+        b3_tail_local_fit_width_mult=local_width,
+        b3_tail_fit_window_mode=str(
+            result_meta.get("b3_tail_fit_window_mode", "local")
+        ),
+        b3_tail_blend_points=int(result_meta.get("b3_tail_blend_points", 10)),
+        b3_tail_model=str(result_meta.get("b3_tail_model", "full")),
+        b3_tail_auto_rel_improve_tol=float(
+            result_meta.get("b3_tail_auto_rel_improve_tol", 0.2)
+        ),
+        b3_tail_auto_signal_rel_tol=float(
+            result_meta.get("b3_tail_auto_signal_rel_tol", 5.0e-5)
+        ),
+        b3_r_fit_max_mult=float(result_meta["full_r_fit_max_bohr"]) / r_ws,
+        b3_r_cut_mult=float(result_meta["full_r_cut_bohr"]) / r_ws,
+        ext_b3_tail_mode=str(result_meta.get("ext_b3_tail_mode", "in_scf")),
+        ext_b3_tail_model=ext_model_raw or None,
+        b3_charge_constraint_fit_rms_ratio_max=finite_or_none(
+            result_meta.get("b3_charge_constraint_fit_rms_ratio_max", 10.0)
+        ),
+        b3_charge_constraint_profile_delta_rel_max=finite_or_none(
+            result_meta.get("b3_charge_constraint_profile_delta_rel_max", 10.0)
+        ),
+        b3_pseudoatom_charge_closure=True,
+        b3_pseudoatom_charge_rel_tol=float(
+            result_meta.get("b3_pseudoatom_charge_rel_tol", 5.0e-2)
+        ),
+        save_data=False,
+        show_scf_progress=False,
+        show_summary=False,
+    )
+    closed, closure = _apply_paired_pseudoatom_b3_charge_closure(
+        out,
+        cfg,
+        r_ws=r_ws,
+        rmax=float(r[-1]),
+    )
+    if not bool(closure.get("applied", False)) or str(
+        closure.get("density_target", "")
+    ).lower() != "full":
+        raise ValueError(
+            "Diffuse-threshold total-density B3 compatibility closure failed: "
+            + str(closure.get("error", closure.get("reason", "unknown reason")))
+        )
+    closure = {**closure, "legacy_qoz_compatibility_reclosure": True}
+    closed["b3_pseudoatom_charge_closure"] = closure
+    closed["qoz_screening_density_source"] = (
+        "n_full_minus_n_ext_diffuse_threshold_b3_reclosure"
+    )
+    return closed, closure
 
 
 def _apply_b3_post_to_full_result(

@@ -64,7 +64,11 @@ from otter.ionic import (
     radial_inverse,
 )
 
-from otter.electronic.full_external import FullExternalConfig, solve_full_then_external
+from otter.electronic.full_external import (
+    FullExternalConfig,
+    _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz,
+    solve_full_then_external,
+)
 from otter.electronic.mixture import (
     MixtureConfig,
     _species_result_eligibility,
@@ -318,6 +322,28 @@ def _species_entries_from_electronic(
             )
         ]
     return [{**dict(sp), "result": dict(sp["result"])} for sp in electronic_result["species"]]
+
+
+def _electronic_result_with_qoz_safe_threshold_tails(
+    electronic_kind: str,
+    electronic_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a shallow payload copy with legacy diffuse tails upgraded."""
+    if str(electronic_kind) == "single_species":
+        upgraded, _ = _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(
+            electronic_result
+        )
+        return upgraded
+
+    out = dict(electronic_result)
+    species = []
+    for entry in electronic_result["species"]:
+        upgraded, _ = _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(
+            dict(entry["result"])
+        )
+        species.append({**dict(entry), "result": upgraded})
+    out["species"] = species
+    return out
 
 
 def _electronic_convergence_issues(
@@ -827,7 +853,26 @@ def _screening_density_for_qoz(
     threshold-dependent low-k potential.  Recover the canonical profile when
     such a cache is encountered.  New results never overwrite ``n_scr`` and
     therefore take the ordinary branch below.
+
+    Caches produced before the diffuse-threshold fix are also upgraded from
+    their saved pre-B3 full/external profiles.  This retains the converged AA
+    state while applying the same paired total-density Appendix-B closure used
+    by new electronic solves.
     """
+    threshold_closed, threshold_meta = (
+        _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(final)
+    )
+    if bool(threshold_meta.get("legacy_qoz_compatibility_reclosure", False)):
+        return (
+            np.asarray(threshold_closed["n_scr"], dtype=float),
+            "n_full_minus_n_ext_diffuse_threshold_b3_reclosure",
+        )
+    threshold_source = str(
+        threshold_closed.get("qoz_screening_density_source", "")
+    ).strip()
+    if threshold_source:
+        return np.asarray(threshold_closed["n_scr"], dtype=float), threshold_source
+
     repair = final.get("screening_tail_repair", {})
     repair = dict(repair) if isinstance(repair, dict) else {}
     if bool(repair.get("applied", False)) and "n_scr_raw" in final:
@@ -1841,6 +1886,10 @@ def prepare_multicomponent_ion_structure_from_electronic_result(
         counts=cfg.counts,
         number_fraction=cfg.number_fraction,
     )
+    electronic_result = _electronic_result_with_qoz_safe_threshold_tails(
+        electronic_kind,
+        electronic_result,
+    )
     species_entries = _species_entries_from_electronic(
         symbols=symbols,
         counts=counts,
@@ -1904,6 +1953,10 @@ def continue_plasma_workflow_from_electronic_result(
         elements=cfg.elements,
         counts=cfg.counts,
         number_fraction=cfg.number_fraction,
+    )
+    electronic_result = _electronic_result_with_qoz_safe_threshold_tails(
+        electronic_kind,
+        electronic_result,
     )
     species_entries = _species_entries_from_electronic(
         symbols=symbols,

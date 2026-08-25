@@ -409,6 +409,49 @@ def test_bound_charge_branch_flips_trigger_threshold_retry(
     assert h_result["mixture_threshold_refine_retry_selected"] is True
 
 
+def test_converged_bound_charge_branch_flips_trigger_threshold_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A converged SCF residual must not hide two threshold branches."""
+    calls = {"H": 0, "C": 0}
+
+    def _fake_full(cfg_species):
+        symbol = str(mixmod.element_info(cfg_species.element).symbol)
+        calls[symbol] += 1
+        refined = bool(cfg_species.bound_zero_tail_refine)
+        result = _fake_species_result(cfg_species, mu=0.0, converged=True)
+        result["threshold_state_status"] = "resolved"
+        result["shallowest_bound_energy_ha"] = -1.0
+        result["bound_state_diagnostics"] = {"shallowest": {"l": 1}}
+        if symbol == "H" and not refined:
+            result["history"] = [
+                {"err": 1.0e-7, "charge_bound": value}
+                for value in (0.0, 0.2, 0.0, 0.1, 0.0, 0.15, 0.0, 0.1)
+            ]
+        return result
+
+    monkeypatch.setattr(mixmod, "solve_full_only", _fake_full)
+    cfg = MixtureConfig(
+        species=["H", "C"], counts=[1.0, 1.0], temperature_ev=10.0,
+        rho_g_cc=1.0, species_parallel_jobs=1, save_data=False,
+    )
+    evaluator = mixmod._MixtureEvaluator(cfg)
+    try:
+        record = evaluator.evaluate(np.asarray([0.0], dtype=float))
+    finally:
+        evaluator.close()
+
+    assert mixmod._record_species_results_are_converged(record)
+    assert calls == {"H": 2, "C": 1}
+    h_result = dict(record["results"][0])
+    assert h_result["mixture_threshold_refine_retry_attempted"] is True
+    assert h_result["mixture_threshold_refine_retry_selected"] is True
+    assert h_result["mixture_threshold_refine_latched"] is True
+    assert h_result["mixture_threshold_refine_retry_initial_reasons"] == (
+        "bound_charge_branch_flips",
+    )
+
+
 def test_threshold_refine_representation_is_latched_across_root_points(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -458,7 +501,7 @@ def test_threshold_refine_representation_is_latched_across_root_points(
     # The first diagnosed retry must be cold, while the latched representation
     # at the next root point reuses the previous converged potential.
     assert h_calls == [
-        (False, False, "v_frac"),
+        (False, False, "zero"),
         (True, False, "zero"),
         (True, True, "zero"),
     ]

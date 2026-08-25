@@ -25,6 +25,7 @@ from otter.electronic.full_external import (
     FullExternalConfig,
     _apply_paired_pseudoatom_b3_charge_closure,
     _build_continuum_params,
+    _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz,
     solve_full_then_external,
 )
 
@@ -165,6 +166,125 @@ def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles() -> None:
         closed["n_scr"], closed["n_pa"] - closed["n_ion"]
     )
     assert abs(_charge(r, closed["n_full"] - closed["n_ext"]) - 1.0) < 1.0e-9
+
+
+def test_diffuse_threshold_closure_fits_total_density_even_when_charge_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scalar charge check must not hide a nonlocal pressure-ionization tail."""
+    r_ws = 1.5
+    r = np.linspace(0.02, 15.0 * r_ws, 1200)
+    n0 = 0.02
+    g_ii = np.asarray(r >= r_ws, dtype=float)
+    n_bound = np.exp(-r / 3.0)
+    n_bound /= _charge(r, n_bound)
+    n_ext_pre = n0 * g_ii
+    n_full_pre = n_ext_pre + n_bound
+    result = {
+        "r": r,
+        "r_ws": r_ws,
+        "Z": 1,
+        "mu": 0.4,
+        "n0": n0,
+        "g_ii": g_ii,
+        "n_bound": n_bound,
+        "n_ion": np.zeros_like(r),
+        "n_cont_pre_tail": n_ext_pre.copy(),
+        "n_full_pre_tail": n_full_pre.copy(),
+        "n_ext_pre_tail": n_ext_pre.copy(),
+        "n_cont": n_ext_pre.copy(),
+        "n_full": n_full_pre.copy(),
+        "n_ext": n_ext_pre.copy(),
+        "n_pa": n_bound.copy(),
+        "n_scr": n_bound.copy(),
+        "stage2_converged": True,
+        "ext_status": {"converged": True},
+        "threshold_state_localization": "diffuse",
+        "zero_tail_bound_meta": {"applied": True, "states": [{}]},
+    }
+    calls: list[dict[str, object]] = []
+
+    def fake_tail_match(
+        r_arg: np.ndarray,
+        density: np.ndarray,
+        n0_arg: float,
+        *args: object,
+        **kwargs: object,
+    ) -> tuple[np.ndarray, dict[str, object]]:
+        del args
+        target = float(kwargs["charge_target"])
+        background = float(n0_arg) * g_ii
+        local = np.exp(-(np.asarray(r_arg) / 0.4) ** 2)
+        candidate = background + local * (
+            target - _charge(r_arg, background)
+        ) / _charge(r_arg, local)
+        calls.append(
+            {
+                "density": np.asarray(density, dtype=float).copy(),
+                "fit_rms_ratio_max": kwargs[
+                    "charge_constraint_fit_rms_ratio_max"
+                ],
+            }
+        )
+        return candidate, {
+            "charge_constraint_applied": True,
+            "charge_constraint_accepted": True,
+            "charge_constraint_residual": 0.0,
+        }
+
+    monkeypatch.setattr(full_external, "apply_tail_match", fake_tail_match)
+    cfg = FullExternalConfig(
+        element="H",
+        temperature_ev=5.0,
+        rho_g_cc=1.0,
+        r_ws_override_bohr=r_ws,
+    )
+
+    closed, meta = _apply_paired_pseudoatom_b3_charge_closure(
+        result,
+        cfg,
+        r_ws=r_ws,
+        rmax=float(r[-1]),
+    )
+
+    assert bool(meta["applied"]), meta
+    assert meta["density_target"] == "full"
+    assert float(meta["q_scr_rel_raw"]) < 1.0e-12
+    np.testing.assert_allclose(calls[0]["density"], n_full_pre)
+    assert calls[0]["fit_rms_ratio_max"] == 100.0
+    assert closed["n_full_tail_meta"]["target"] == "full"
+    np.testing.assert_allclose(closed["n_cont"], result["n_cont"])
+    np.testing.assert_allclose(closed["n_pa"], closed["n_full"] - closed["n_ext"])
+    np.testing.assert_allclose(closed["n_scr"], closed["n_pa"])
+    assert abs(_charge(r, closed["n_scr"]) - 1.0) < 1.0e-9
+    assert abs(float(closed["n_scr"][-1])) < 1.0e-14
+
+    result["meta"] = {
+        "temperature_ev": 5.0,
+        "rho_g_cc": 1.0,
+        "b3_tail_stage2_mode": "in_scf",
+        "b3_tail_target": "cont",
+        "b3_tail_fit_points": 20,
+        "b3_tail_local_fit_width_mult": 0.064,
+        "b3_tail_fit_window_mode": "local",
+        "b3_tail_blend_points": 10,
+        "b3_tail_model": "full",
+        "b3_tail_auto_rel_improve_tol": 0.2,
+        "b3_tail_auto_signal_rel_tol": 5.0e-5,
+        "full_r_fit_max_bohr": 5.0 * r_ws,
+        "full_r_cut_bohr": 4.0 * r_ws,
+        "ext_b3_tail_mode": "in_scf",
+        "ext_b3_tail_model": "",
+        "b3_charge_constraint_fit_rms_ratio_max": 10.0,
+        "b3_charge_constraint_profile_delta_rel_max": 10.0,
+        "b3_pseudoatom_charge_rel_tol": 5.0e-2,
+    }
+    upgraded, upgrade_meta = (
+        _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(result)
+    )
+    assert bool(upgrade_meta["legacy_qoz_compatibility_reclosure"])
+    assert upgrade_meta["density_target"] == "full"
+    assert abs(_charge(r, upgraded["n_scr"]) - 1.0) < 1.0e-9
 
 
 def test_b3_charge_row_survives_tiny_yukawa_basis_without_cancellation() -> None:

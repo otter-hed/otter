@@ -5,6 +5,20 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+### Changed
+
+- Made the bound-state sum and continuum integral meet at the asymptotic
+  `E=0` potential gauge by default, while retaining local-potential
+  thresholds as explicit finite-box sensitivity controls.
+
+### Fixed
+
+- Reclosed diffuse threshold-state pseudoatoms through paired total-full and
+  external-density B3 tails without changing the ordinary continuum-tail path.
+- Detected repeated bound-charge branch crossings in nominally converged
+  average-atom histories and refined them before common-chemical-potential
+  root acceptance.
+
 ## 0.2.2 - 2026-08-23
 
 ### Added

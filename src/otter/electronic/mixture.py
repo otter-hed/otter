@@ -436,15 +436,8 @@ def _threshold_refine_config(
     )
 
 
-def _is_threshold_sensitive_failure(
-    result: dict[str, Any],
-    reasons: tuple[str, ...],
-) -> bool:
-    """Identify a failed AA point whose shallow spectrum needs refinement."""
-    if "threshold_state_unresolved" in reasons:
-        return True
-    if "stage2_unconverged" not in reasons:
-        return False
+def _has_bound_charge_branch_flips(result: dict[str, Any]) -> bool:
+    """Return whether one SCF trace repeatedly changes bound-state branch."""
     history = list(result.get("history", []))
     bound_charge = np.asarray(
         [
@@ -482,6 +475,20 @@ def _is_threshold_sensitive_failure(
                     and np.count_nonzero(~high_branch) >= 3
                 ):
                     return True
+    return False
+
+
+def _is_threshold_sensitive_failure(
+    result: dict[str, Any],
+    reasons: tuple[str, ...],
+) -> bool:
+    """Identify a failed AA point whose shallow spectrum needs refinement."""
+    if "threshold_state_unresolved" in reasons:
+        return True
+    if "stage2_unconverged" not in reasons:
+        return False
+    if _has_bound_charge_branch_flips(result):
+        return True
     try:
         energy = float(result.get("shallowest_bound_energy_ha", np.nan))
     except (TypeError, ValueError):
@@ -1593,12 +1600,33 @@ class _MixtureEvaluator:
             refine_probe_eligible, refine_probe_reasons = _species_result_eligibility(
                 dict(refine_probe)
             )
+            # A small final SCF residual does not by itself prove that the
+            # orbital branch was unique.  At Te=23 eV for CH2, carbon reached
+            # the requested density/potential tolerances on two neighbouring
+            # solutions whose chemical potentials differed by about 0.018 Ha.
+            # Its trace nevertheless recorded repeated bound-charge crossings.
+            # Detect that evidence before the point enters the common-mu root
+            # table, then replace it with the same all-space threshold
+            # representation used for explicitly unresolved points.
+            converged_branch_flips = bool(
+                refine_probe_eligible
+                and str(cfg_species.bound_energy_cut_mode).strip().lower() == "zero"
+                and _has_bound_charge_branch_flips(dict(refine_probe))
+            )
+            refine_retry_initial_reasons = tuple(refine_probe_reasons)
+            if converged_branch_flips:
+                refine_retry_initial_reasons += ("bound_charge_branch_flips",)
             refine_retry_attempted = bool(
                 self.cfg.root_threshold_refine_retry
                 and not refine_latched
-                and not refine_probe_eligible
-                and _is_threshold_sensitive_failure(
-                    dict(refine_probe), tuple(refine_probe_reasons)
+                and (
+                    converged_branch_flips
+                    or (
+                        not refine_probe_eligible
+                        and _is_threshold_sensitive_failure(
+                            dict(refine_probe), tuple(refine_probe_reasons)
+                        )
+                    )
                 )
             )
             refine_retry_selected = False
@@ -1705,7 +1733,7 @@ class _MixtureEvaluator:
                 refine_retry_selected
             )
             result_species["mixture_threshold_refine_retry_initial_reasons"] = tuple(
-                refine_probe_reasons
+                refine_retry_initial_reasons
             )
             result_species["mixture_threshold_refine_retry_reasons"] = tuple(
                 refine_retry_reasons
