@@ -5,6 +5,8 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+## 0.2.3 - 2026-08-25
+
 ### Added
 
 - Added an optional one-component Rosenfeld--Ashcroft VMHNC closure with a
