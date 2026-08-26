@@ -17,6 +17,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 os.environ.setdefault(
     "MPLCONFIGDIR",
     str(ROOT / "applications/ch2_xrts_dataset/outputs/.matplotlib"),
@@ -27,6 +28,11 @@ from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 
 from otter.plotting import PALETTES, grid_figsize, save_figure, set_style  # noqa: E402
+from otter.numerics.transforms import (  # noqa: E402
+    precompute_dst_lattice_transform_like,
+    radial_forward,
+)
+from tools.otter_lammps_md import _read_rdf  # noqa: E402
 
 
 # ============================== Inputs =====================================
@@ -76,6 +82,59 @@ def load_arrays(
     with np.load(directory / "md/md_results.npz") as archive:
         md = {name: np.asarray(archive[name]) for name in archive.files}
     return hnc, md
+
+
+def rdf_structure_factors(
+    case: dict[str, object],
+    md: dict[str, np.ndarray],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Transform every RDF block, then average the resulting partial S(k)."""
+    rdf_path = _case_dir(case) / "md/rdf_blocks.dat"
+    r_rdf, g_blocks = _read_rdf(rdf_path, len(PAIR_INDICES))
+
+    # LAMMPS reports RDF values at bin centres.  Interpolate h=g-1 onto the
+    # strict r_i=i*dr DST-I lattice used by Otter and close the unresolved tail
+    # to h=0 at the next lattice point.
+    dr = float(np.mean(np.diff(r_rdf)))
+    r_lattice = dr * np.arange(1, r_rdf.size + 1, dtype=float)
+    transform = precompute_dst_lattice_transform_like(
+        r_lattice,
+        n_grid=r_rdf.size + 1,
+    )
+    h_lattice = np.empty(
+        (g_blocks.shape[0], len(PAIR_INDICES), transform.r.size),
+        dtype=float,
+    )
+    for block in range(g_blocks.shape[0]):
+        for pair in range(len(PAIR_INDICES)):
+            h_rdf = g_blocks[block, :, pair] - 1.0
+            h_lattice[block, pair] = np.interp(
+                transform.r,
+                r_rdf,
+                h_rdf,
+                left=float(h_rdf[0]),
+                right=0.0,
+            )
+
+    h_k = radial_forward(h_lattice, transform)
+    counts = np.asarray(md["md_particle_counts"], dtype=float)
+    box_length = float(md["md_box_length_bohr"])
+    partial_density = counts / box_length**3
+    pair_scale = np.asarray(
+        [
+            np.sqrt(partial_density[left] * partial_density[right])
+            for left, right in PAIR_INDICES
+        ]
+    )
+    diagonal = np.asarray([1.0 if left == right else 0.0
+                           for left, right in PAIR_INDICES])
+    s_blocks = (
+        diagonal[None, :, None]
+        + pair_scale[None, :, None] * h_k
+    )
+    s_mean = np.mean(s_blocks, axis=0).T
+    s_sem = np.std(s_blocks, axis=0, ddof=1).T / np.sqrt(s_blocks.shape[0])
+    return np.asarray(transform.k), s_mean, s_sem
 
 
 def _column_title(te_ev: float) -> str:
@@ -352,6 +411,203 @@ def plot_sij_difference(te_values: list[float], cases: list[dict[str, object]]) 
     save_figure(fig, RESULTS_DIR / "existing_hnc_md_sij_difference", close=True)
 
 
+def _estimator_legend_handles() -> list[object]:
+    handles = _alpha_handles()
+    handles.extend(
+        (
+            Line2D([], [], color="0.15", lw=2.0, label=r"RDF transform"),
+            Line2D(
+                [], [], color="0.15", lw=0.0, marker="o", ms=4.0,
+                label=r"density modes",
+            ),
+            Patch(
+                facecolor="0.35",
+                alpha=UNCERTAINTY_ALPHA,
+                edgecolor="none",
+                label=r"RDF transform $\pm2$ SEM",
+            ),
+        )
+    )
+    return handles
+
+
+def plot_md_sij_estimators(
+    te_values: list[float],
+    cases: list[dict[str, object]],
+) -> None:
+    """Compare the RDF transform with the direct periodic density modes."""
+    fig, axes = plt.subplots(
+        3, 3, figsize=grid_figsize(3, 3), sharex=True, sharey="row"
+    )
+    for column, te_ev in enumerate(te_values):
+        axes[0, column].set_title(_column_title(te_ev))
+        for case in cases:
+            if not np.isclose(float(case["te_ev"]), te_ev):
+                continue
+            _, md = load_arrays(case)
+            k_rdf, s_rdf, s_rdf_sem = rdf_structure_factors(case, md)
+            alpha = float(case["alpha"])
+            color = ALPHA_COLORS[alpha]
+            rdf_visible = (
+                (k_rdf >= K_RANGE_BOHR_INV[0])
+                & (k_rdf <= K_RANGE_BOHR_INV[1])
+            )
+            direct_visible = (
+                (md["md_k_bohr_inv"] >= K_RANGE_BOHR_INV[0])
+                & (md["md_k_bohr_inv"] <= K_RANGE_BOHR_INV[1])
+                & (md["md_vectors_per_k_bin"] >= MIN_VECTORS_PER_K_BIN)
+            )
+            for row in range(len(PAIR_INDICES)):
+                axes[row, column].plot(
+                    k_rdf[rdf_visible],
+                    s_rdf[rdf_visible, row],
+                    color=color,
+                    lw=1.8,
+                    alpha=0.82,
+                )
+                axes[row, column].fill_between(
+                    k_rdf[rdf_visible],
+                    s_rdf[rdf_visible, row]
+                    - UNCERTAINTY_SIGMA * s_rdf_sem[rdf_visible, row],
+                    s_rdf[rdf_visible, row]
+                    + UNCERTAINTY_SIGMA * s_rdf_sem[rdf_visible, row],
+                    color=color,
+                    alpha=UNCERTAINTY_ALPHA,
+                    linewidth=0,
+                )
+                axes[row, column].plot(
+                    md["md_k_bohr_inv"][direct_visible],
+                    md["md_sij_k"][direct_visible, row],
+                    color=color,
+                    lw=0.0,
+                    marker="o",
+                    ms=2.5,
+                    markevery=2,
+                    alpha=0.66,
+                )
+
+    for row, label in enumerate(PAIR_LABELS):
+        axes[row, 0].set_ylabel(rf"$S_{{{label}}}(k)$")
+    for axis in axes[-1]:
+        axis.set_xlabel(r"$k$ [Bohr$^{{-1}}$]")
+    for axis in axes.flat:
+        axis.set_xlim(*K_RANGE_BOHR_INV)
+        axis.margins(y=0.08)
+    _finish_grid(
+        fig,
+        r"CH$_2$ MD: $S_{ab}(k)$ from RDF and density modes",
+        _estimator_legend_handles(),
+    )
+    save_figure(fig, RESULTS_DIR / "existing_md_sij_rdf_vs_density", close=True)
+
+
+def plot_md_sij_estimator_difference(
+    te_values: list[float],
+    cases: list[dict[str, object]],
+) -> None:
+    fig, axes = plt.subplots(
+        3, 3, figsize=grid_figsize(3, 3), sharex=True, sharey="row"
+    )
+    plotted: list[list[np.ndarray]] = [[], [], []]
+    for column, te_ev in enumerate(te_values):
+        axes[0, column].set_title(_column_title(te_ev))
+        for case in cases:
+            if not np.isclose(float(case["te_ev"]), te_ev):
+                continue
+            _, md = load_arrays(case)
+            k_rdf, s_rdf, _ = rdf_structure_factors(case, md)
+            alpha = float(case["alpha"])
+            color = ALPHA_COLORS[alpha]
+            k_direct = md["md_k_bohr_inv"]
+            visible = (
+                (k_direct >= max(K_RANGE_BOHR_INV[0], float(k_rdf[0])))
+                & (k_direct <= min(K_RANGE_BOHR_INV[1], float(k_rdf[-1])))
+                & (md["md_vectors_per_k_bin"] >= MIN_VECTORS_PER_K_BIN)
+            )
+            k_compare = k_direct[visible]
+            for row in range(len(PAIR_INDICES)):
+                s_rdf_compare = np.interp(k_compare, k_rdf, s_rdf[:, row])
+                difference = s_rdf_compare - md["md_sij_k"][visible, row]
+                plotted[row].append(np.abs(difference))
+                axes[row, column].plot(
+                    k_compare,
+                    difference,
+                    color=color,
+                    lw=1.4,
+                    marker="o",
+                    ms=2.2,
+                    markevery=3,
+                    alpha=0.76,
+                )
+
+    for row, label in enumerate(PAIR_LABELS):
+        axes[row, 0].set_ylabel(
+            rf"$S^{{g}}_{{{label}}}-S^{{\rho}}_{{{label}}}$"
+        )
+        limit = 1.08 * max(float(np.max(values)) for values in plotted[row])
+        for axis in axes[row]:
+            axis.set_ylim(-limit, limit)
+    for axis in axes[-1]:
+        axis.set_xlabel(r"$k$ [Bohr$^{{-1}}$]")
+    for axis in axes.flat:
+        axis.axhline(0.0, color="0.35", lw=0.8, alpha=0.65)
+        axis.set_xlim(*K_RANGE_BOHR_INV)
+    _finish_grid(
+        fig,
+        r"CH$_2$ MD: RDF-transform minus density-mode $S_{ab}(k)$",
+        _alpha_handles(),
+    )
+    save_figure(fig, RESULTS_DIR / "existing_md_sij_rdf_minus_density", close=True)
+
+
+def write_sij_estimator_metrics(
+    cases: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for case in cases:
+        _, md = load_arrays(case)
+        k_rdf, s_rdf, s_rdf_sem = rdf_structure_factors(case, md)
+        k_direct = md["md_k_bohr_inv"]
+        visible = (
+            (k_direct >= max(K_RANGE_BOHR_INV[0], float(k_rdf[0])))
+            & (k_direct <= min(K_RANGE_BOHR_INV[1], float(k_rdf[-1])))
+            & (md["md_vectors_per_k_bin"] >= MIN_VECTORS_PER_K_BIN)
+        )
+        k_compare = k_direct[visible]
+        for pair_index, pair in enumerate(PAIR_LABELS):
+            s_rdf_compare = np.interp(k_compare, k_rdf, s_rdf[:, pair_index])
+            sem_rdf_compare = np.interp(
+                k_compare,
+                k_rdf,
+                s_rdf_sem[:, pair_index],
+            )
+            difference = s_rdf_compare - md["md_sij_k"][visible, pair_index]
+            rows.append(
+                {
+                    "te_ev": float(case["te_ev"]),
+                    "ti_ev": float(case["ti_ev"]),
+                    "ti_over_te": float(case["alpha"]),
+                    "pair": pair,
+                    "k_points": int(k_compare.size),
+                    "signed_mean": float(np.mean(difference)),
+                    "rmse": float(np.sqrt(np.mean(difference**2))),
+                    "mae": float(np.mean(np.abs(difference))),
+                    "max_abs": float(np.max(np.abs(difference))),
+                    "rdf_sem_mean": float(np.mean(sem_rdf_compare)),
+                    "density_sem_mean": float(
+                        np.mean(md["md_sij_frame_sem"][visible, pair_index])
+                    ),
+                }
+            )
+
+    path = RESULTS_DIR / "existing_md_sij_estimator_metrics.csv"
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    return rows
+
+
 def write_metrics(cases: list[dict[str, object]]) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for case in cases:
@@ -409,11 +665,30 @@ def main() -> None:
     plot_sij(te_values, cases)
     plot_gij_difference(te_values, cases)
     plot_sij_difference(te_values, cases)
+    plot_md_sij_estimators(te_values, cases)
+    plot_md_sij_estimator_difference(te_values, cases)
+    estimator_metrics = write_sij_estimator_metrics(cases)
     g_rmse = np.asarray([float(row["g_rmse"]) for row in metrics])
     s_rmse = np.asarray([float(row["s_rmse"]) for row in metrics])
     print(f"Plotted {len(cases)}/9 completed HNC--MD cases")
     print(f"g(r) RMSE range: {g_rmse.min():.3g}--{g_rmse.max():.3g}")
     print(f"S(k) RMSE range: {s_rmse.min():.3g}--{s_rmse.max():.3g}")
+    print("\nRDF-transform minus density-mode S_ab(k):")
+    for row in estimator_metrics:
+        print(
+            f"  Te={float(row['te_ev']):g}, Ti={float(row['ti_ev']):g} eV, "
+            f"{row['pair']}: mean={float(row['signed_mean']):+.3e}, "
+            f"RMSE={float(row['rmse']):.3e}, "
+            f"MAE={float(row['mae']):.3e}, "
+            f"max={float(row['max_abs']):.3e}"
+        )
+    estimator_rmse = np.asarray(
+        [float(row["rmse"]) for row in estimator_metrics]
+    )
+    print(
+        "RDF-vs-density RMSE range: "
+        f"{estimator_rmse.min():.3g}--{estimator_rmse.max():.3g}"
+    )
     print(f"Results: {RESULTS_DIR}")
 
 

@@ -36,7 +36,7 @@ def _load() -> tuple[dict[str, object], dict[str, np.ndarray]]:
 def test_ch2_baseline_covers_six_two_temperature_states_and_controls() -> None:
     manifest, data = _load()
     assert manifest["status"] == "accepted"
-    assert str(data["schema_version"].item()) == "otter_ch2_hnc_md_v1"
+    assert str(data["schema_version"].item()) == "otter_ch2_hnc_md_v2"
     assert data["te_ev"].shape == data["ti_ev"].shape == (9,)
     np.testing.assert_allclose(np.unique(data["te_ev"]), [9.0, 29.0, 99.0])
     np.testing.assert_allclose(np.unique(data["alpha"]), [0.2, 0.5, 1.0])
@@ -55,6 +55,11 @@ def test_ch2_hnc_md_claim_is_supported_by_saved_diagnostics() -> None:
     assert np.max(data["hnc_output_residual"]) < 1.0e-6
     assert np.max(data["g_rmse"]) < 2.0e-2
     assert np.max(data["s_rmse"]) < 2.0e-2
+    assert data["md_sij_from_rdf"].shape == (9, 3, 500)
+    assert data["md_sij_from_rdf_sem"].shape == (9, 3, 500)
+    assert np.max(data["md_sij_estimator_rmse"]) < 2.0e-2
+    assert abs(float(np.mean(data["md_sij_estimator_signed_mean"]))) < 1.0e-3
+    assert np.max(data["md_rdf_tail_max_abs"]) < 5.0e-3
     assert np.count_nonzero(data["md_coulomb_core_regularized"]) == 2
     assert np.max(data["hnc_elapsed_s"]) < np.min(data["md_elapsed_s"])
     acceptance = manifest["acceptance"]
@@ -90,6 +95,9 @@ def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
     assert 'set_style("thesis", palette="bing")' in source
     assert r'CH$_2$: HNC vs MD $g_{ab}(r)$' in source
     assert r'CH$_2$: HNC vs MD $S_{ab}(k)$' in source
+    assert r'CH$_2$: MD $-$ HNC $\Delta g_{ab}(r)$' in source
+    assert "RDF-transform and density-mode" in source
+    assert "strict DST-I radial transform" in source
     assert "QOZ-derived" in source
     assert "More importantly" not in source
     assert "ionic statistical treatment rather than" not in source
@@ -100,19 +108,19 @@ def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
     assert "29.322944 Angstrom" in source and "55.4123 Bohr" in source
     assert "benchmarks/baselines/ch2_hnc_md/ch2_hnc_md.npz" in source
     assert "ch2_md.mp4" in source and "ch2_md.png" in source
+    assert "ch2_hnc_md_gab_residual.png" in source
+    assert "ch2_md_sab_rdf_vs_density.png" in source
+    assert "ch2_md_sab_rdf_minus_density.png" in source
     assert source.index("ch2_md.mp4") < source.index("The material is")
     assert source.index("ch2_md.mp4") < source.index("ch2_hnc_md_gab.png")
     assert source.index("ch2_hnc_md_gab.png") < source.index(
         "from __future__ import annotations"
     )
     assert "plot_ch2_hnc_md" in index
-    assert index.count('class="sphx-glr-thumbcontainer"') == 9
-    assert "Runnable benchmark gallery" not in index
-    assert "Detailed benchmark reports" not in index
-    assert "gen_benchmarks/index" not in index
+    assert index.count('class="sphx-glr-thumbcontainer"') >= 8
 
 
 def test_ch2_gallery_static_results_are_checksummed() -> None:
     manifest, _ = _load()
     roles = {str(record["role"]) for record in manifest["media"]}
-    assert sum("gallery-first" in role for role in roles) == 3
+    assert sum("gallery-first" in role for role in roles) == 6

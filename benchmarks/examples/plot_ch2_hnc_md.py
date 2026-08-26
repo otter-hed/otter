@@ -136,6 +136,32 @@ rigorous confidence interval.  Only radial bins containing at least 12
 periodic wavevectors are plotted; the omitted smallest-:math:`k` bins are the
 most direction-starved in the finite simulation cell.
 
+As an independent estimator, every one of the 20 LAMMPS RDF blocks is also
+transformed using Otter's strict DST-I radial transform,
+
+.. math::
+
+   S_{ab}^{g}(k)=\delta_{ab}
+   +\sqrt{n_an_b}\,\mathcal{F}\!\left[g_{ab}(r)-1\right].
+
+Each RDF block averages 50 production samples, so this estimator uses 1000
+RDF samples rather than the 21 saved coordinate frames used by the direct
+density modes.  LAMMPS reports :math:`g_{ab}` at radial-bin centres; the
+corresponding :math:`h_{ab}=g_{ab}-1` is linearly interpolated to the strict
+:math:`r_i=i\,\Delta r` lattice and closed to zero at the first DST point
+beyond the final RDF centre.  Its shaded band is :math:`\pm2` SEM across the
+20 independently transformed RDF blocks.
+
+Over the common plotted :math:`k` points, the RDF-transform and density-mode
+estimators have pairwise RMSE :math:`0.00629\text{--}0.0162` and an aggregate
+signed mean difference of :math:`-6.07\times10^{-5}`.  Their main peak shapes
+therefore agree without a systematic offset.  The RDF-transform SEM is about
+17--22% of the density-mode SEM because the RDF is sampled much more densely.
+This smaller statistical band does not include the systematic effect of the
+finite :math:`0.48L` RDF cutoff or the imposed :math:`h_{ab}=0` tail; the
+largest estimator differences remain at the smallest resolved :math:`k`,
+especially for :math:`S_{HH}`.
+
 Data and reproduction
 ---------------------
 
@@ -144,8 +170,7 @@ The public, checksummed plotting arrays are stored in
 the adjacent ``manifest.json``.  The reusable conversion from Otter
 :math:`V_{ab}(r)` to LAMMPS inputs and the subsequent :math:`g_{ab}(r)` and
 :math:`S_{ab}(k)` analysis are implemented in ``tools/otter_lammps_md.py``.
-Full trajectories and working files are
-written locally under
+Full trajectories and working files are written locally under
 ``applications/ch2_xrts_dataset/outputs/ch2_hnc_md_comparison`` by
 ``compare_hnc_md.py``; they are too large for the public baseline and are not
 rerun during documentation builds.
@@ -157,12 +182,24 @@ Results
    :alt: CH2 HNC and same-potential MD partial pair distributions
    :width: 100%
 
+.. image:: /_static/benchmarks/ch2_hnc_md/ch2_hnc_md_gab_residual.png
+   :alt: CH2 MD minus HNC partial pair-distribution residuals
+   :width: 100%
+
 .. image:: /_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab.png
    :alt: CH2 HNC and same-potential MD partial structure factors
    :width: 100%
 
 .. image:: /_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab_residual.png
    :alt: CH2 MD minus HNC partial structure-factor residuals
+   :width: 100%
+
+.. image:: /_static/benchmarks/ch2_hnc_md/ch2_md_sab_rdf_vs_density.png
+   :alt: CH2 MD partial structure factors from RDF transforms and density modes
+   :width: 100%
+
+.. image:: /_static/benchmarks/ch2_hnc_md/ch2_md_sab_rdf_minus_density.png
+   :alt: CH2 RDF-transform minus density-mode partial structure factors
    :width: 100%
 """
 
@@ -245,7 +282,7 @@ def load_baseline() -> dict[str, np.ndarray]:
             raise RuntimeError(f"Checksum mismatch for {media_path}.")
     with np.load(path, allow_pickle=False) as archive:
         payload = {key: np.asarray(archive[key]) for key in archive.files}
-    if str(payload["schema_version"].item()) != "otter_ch2_hnc_md_v1":
+    if str(payload["schema_version"].item()) != "otter_ch2_hnc_md_v2":
         raise ValueError("Obsolete CH2 HNC--MD baseline schema.")
     if payload["te_ev"].shape != (9,) or np.count_nonzero(
         ~np.isclose(payload["alpha"], 1.0)
@@ -277,6 +314,21 @@ def comparison_handles() -> list[object]:
         Patch(
             facecolor="0.35", alpha=UNCERTAINTY_ALPHA, edgecolor="none",
             label=r"MD $\pm2$ SEM",
+        ),
+    ]
+
+
+def estimator_handles() -> list[object]:
+    """Return the RDF-transform and direct-density estimator legend."""
+    return alpha_handles() + [
+        Line2D([], [], color="0.15", lw=2.0, label="RDF transform"),
+        Line2D(
+            [], [], color="0.15", lw=0.0, marker="o", ms=4.0,
+            label="density modes",
+        ),
+        Patch(
+            facecolor="0.35", alpha=UNCERTAINTY_ALPHA, edgecolor="none",
+            label=r"RDF transform $\pm2$ SEM",
         ),
     ]
 
@@ -333,6 +385,69 @@ for axis in axes.flat:
     axis.set(xlim=R_RANGE_BOHR, ylim=(-0.04, 1.25))
 finish_grid(fig_g, r"CH$_2$: HNC vs MD $g_{ab}(r)$", comparison_handles())
 _ = save_figure(fig_g, FIGURE_DIR / "ch2_hnc_md_gab", close=True)
+
+
+# %%
+# Pair-distribution residuals
+# ---------------------------
+
+fig_gd, axes = plt.subplots(
+    3, 3, figsize=grid_figsize(3, 3), sharex=True, sharey="row"
+)
+g_residual_extent: list[list[np.ndarray]] = [[], [], []]
+g_visible = data["md_r_bohr"] <= R_RANGE_BOHR[1]
+for column, te_ev in enumerate(TE_VALUES):
+    axes[0, column].set_title(rf"$T_e={te_ev:g}$ eV")
+    for state in np.flatnonzero(np.isclose(data["te_ev"], te_ev)):
+        alpha = float(data["alpha"][state])
+        color = ALPHA_COLORS[alpha]
+        for pair, label in enumerate(PAIR_LABELS):
+            hnc = np.interp(
+                data["md_r_bohr"], data["hnc_r_bohr"][state],
+                data["hnc_gij_r"][state, pair],
+            )
+            delta = data["md_gij_r"][state, pair] - hnc
+            sem = data["md_gij_sem"][state, pair]
+            g_residual_extent[pair].append(
+                np.abs(delta[g_visible]) + UNCERTAINTY_SIGMA * sem[g_visible]
+            )
+            axes[pair, column].plot(
+                data["md_r_bohr"], delta, color=color, lw=1.5, alpha=0.78,
+            )
+            axes[pair, column].fill_between(
+                data["md_r_bohr"],
+                delta - UNCERTAINTY_SIGMA * sem,
+                delta + UNCERTAINTY_SIGMA * sem,
+                color=color, alpha=UNCERTAINTY_ALPHA, linewidth=0.0,
+            )
+for row, label in enumerate(PAIR_LABELS):
+    axes[row, 0].set_ylabel(
+        r"$g_{%s}^{\mathrm{MD}}-g_{%s}^{\mathrm{HNC}}$" % (label, label)
+    )
+    row_limit = 1.08 * max(
+        float(np.max(values)) for values in g_residual_extent[row]
+    )
+    for axis in axes[row]:
+        axis.set_ylim(-row_limit, row_limit)
+for axis in axes[-1]:
+    axis.set_xlabel(r"$r$ [Bohr]")
+for axis in axes.flat:
+    axis.axhline(0.0, color="0.35", lw=0.8, alpha=0.65)
+    axis.set_xlim(*R_RANGE_BOHR)
+finish_grid(
+    fig_gd,
+    r"CH$_2$: MD $-$ HNC $\Delta g_{ab}(r)$",
+    alpha_handles() + [
+        Line2D([], [], color="0.15", lw=1.6, label="MD $-$ HNC"),
+        Patch(
+            facecolor="0.35", alpha=UNCERTAINTY_ALPHA, edgecolor="none",
+            label=r"MD $\pm2$ SEM",
+        ),
+    ],
+)
+_ = save_figure(
+    fig_gd, FIGURE_DIR / "ch2_hnc_md_gab_residual", close=True
+)
 
 
 # %%
@@ -436,6 +551,112 @@ finish_grid(
 _ = save_figure(fig_d, FIGURE_DIR / "ch2_hnc_md_sab_residual", close=True)
 
 
+# %%
+# MD structure-factor estimators
+# ------------------------------
+
+fig_e, axes = plt.subplots(
+    3, 3, figsize=grid_figsize(3, 3), sharex=True, sharey="row"
+)
+rdf_visible = data["md_rdf_k_bohr_inv"] <= K_RANGE_BOHR_INV[1]
+for column, te_ev in enumerate(TE_VALUES):
+    axes[0, column].set_title(rf"$T_e={te_ev:g}$ eV")
+    for state in np.flatnonzero(np.isclose(data["te_ev"], te_ev)):
+        alpha = float(data["alpha"][state])
+        color = ALPHA_COLORS[alpha]
+        for pair, label in enumerate(PAIR_LABELS):
+            s_rdf = data["md_sij_from_rdf"][state, pair]
+            sem_rdf = data["md_sij_from_rdf_sem"][state, pair]
+            axes[pair, column].plot(
+                data["md_rdf_k_bohr_inv"][rdf_visible],
+                s_rdf[rdf_visible], color=color, lw=1.8, alpha=0.82,
+            )
+            axes[pair, column].fill_between(
+                data["md_rdf_k_bohr_inv"][rdf_visible],
+                s_rdf[rdf_visible] - UNCERTAINTY_SIGMA * sem_rdf[rdf_visible],
+                s_rdf[rdf_visible] + UNCERTAINTY_SIGMA * sem_rdf[rdf_visible],
+                color=color, alpha=UNCERTAINTY_ALPHA, linewidth=0.0,
+            )
+            axes[pair, column].plot(
+                data["md_k_bohr_inv"][reliable],
+                data["md_sij_k"][state, pair, reliable],
+                color=color, lw=0.0, marker="o", ms=2.5,
+                markevery=2, alpha=0.66,
+            )
+for row, label in enumerate(PAIR_LABELS):
+    axes[row, 0].set_ylabel(rf"$S_{{{label}}}(k)$")
+for axis in axes[-1]:
+    axis.set_xlabel(r"$k$ [Bohr$^{-1}$]")
+for axis in axes.flat:
+    axis.set_xlim(*K_RANGE_BOHR_INV)
+    axis.margins(y=0.08)
+finish_grid(
+    fig_e,
+    r"CH$_2$ MD: $S_{ab}(k)$ from RDF and density modes",
+    estimator_handles(),
+)
+_ = save_figure(
+    fig_e, FIGURE_DIR / "ch2_md_sab_rdf_vs_density", close=True
+)
+
+
+# %%
+# Difference between the MD estimators
+# ------------------------------------
+
+fig_ed, axes = plt.subplots(
+    3, 3, figsize=grid_figsize(3, 3), sharex=True, sharey="row"
+)
+estimator_extent: list[list[np.ndarray]] = [[], [], []]
+estimator_visible = (
+    reliable
+    & (data["md_k_bohr_inv"] >= data["md_rdf_k_bohr_inv"][0])
+    & (data["md_k_bohr_inv"] <= K_RANGE_BOHR_INV[1])
+)
+for column, te_ev in enumerate(TE_VALUES):
+    axes[0, column].set_title(rf"$T_e={te_ev:g}$ eV")
+    for state in np.flatnonzero(np.isclose(data["te_ev"], te_ev)):
+        alpha = float(data["alpha"][state])
+        color = ALPHA_COLORS[alpha]
+        k_compare = data["md_k_bohr_inv"][estimator_visible]
+        for pair, label in enumerate(PAIR_LABELS):
+            s_rdf = np.interp(
+                k_compare,
+                data["md_rdf_k_bohr_inv"],
+                data["md_sij_from_rdf"][state, pair],
+            )
+            difference = (
+                s_rdf - data["md_sij_k"][state, pair, estimator_visible]
+            )
+            estimator_extent[pair].append(np.abs(difference))
+            axes[pair, column].plot(
+                k_compare, difference, color=color, lw=1.4, marker="o",
+                ms=2.2, markevery=3, alpha=0.76,
+            )
+for row, label in enumerate(PAIR_LABELS):
+    axes[row, 0].set_ylabel(
+        r"$S_{%s}^{g}-S_{%s}^{\rho}$" % (label, label)
+    )
+    row_limit = 1.08 * max(
+        float(np.max(values)) for values in estimator_extent[row]
+    )
+    for axis in axes[row]:
+        axis.set_ylim(-row_limit, row_limit)
+for axis in axes[-1]:
+    axis.set_xlabel(r"$k$ [Bohr$^{-1}$]")
+for axis in axes.flat:
+    axis.axhline(0.0, color="0.35", lw=0.8, alpha=0.65)
+    axis.set_xlim(*K_RANGE_BOHR_INV)
+finish_grid(
+    fig_ed,
+    r"CH$_2$ MD: RDF-transform minus density-mode $S_{ab}(k)$",
+    alpha_handles(),
+)
+_ = save_figure(
+    fig_ed, FIGURE_DIR / "ch2_md_sab_rdf_minus_density", close=True
+)
+
+
 print(
     "HNC seconds: "
     f"{np.min(data['hnc_elapsed_s']):.3f}--{np.max(data['hnc_elapsed_s']):.3f}; "
@@ -447,6 +668,14 @@ print(
     "Pairwise RMSE ranges: "
     f"g={np.min(data['g_rmse']):.5f}--{np.max(data['g_rmse']):.5f}; "
     f"S={np.min(data['s_rmse']):.5f}--{np.max(data['s_rmse']):.5f}."
+)
+print(
+    "RDF-transform versus density-mode S(k): "
+    f"RMSE={np.min(data['md_sij_estimator_rmse']):.5f}--"
+    f"{np.max(data['md_sij_estimator_rmse']):.5f}; "
+    "aggregate signed mean="
+    f"{np.mean(data['md_sij_estimator_signed_mean']):+.3e}; "
+    f"max abs={np.max(data['md_sij_estimator_max_abs']):.5f}."
 )
 
 if "agg" not in plt.get_backend().lower():

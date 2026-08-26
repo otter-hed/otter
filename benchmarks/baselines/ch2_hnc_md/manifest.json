@@ -15,12 +15,28 @@
     "source_driver": "applications/ch2_xrts_dataset/compare_hnc_md.py",
     "source_driver_sha256_at_packaging": "2dc3dcd07c2c619d5cacb801156334b936951d7cc7e0de639041e3886770d2db",
     "gallery_script": "benchmarks/examples/plot_ch2_hnc_md.py",
-    "gallery_script_sha256": "660a30e30474aa886fdb3f1e57bbf1cf3bd31150c730999fb8d5e45b69b7f24a",
+    "gallery_script_sha256": "a4d08e95c062ec5bdab0addebc672b7d8490e23e41672eb45d628b908f8c561d",
     "git_commit_at_packaging": "78c51ad5d4f671f89428a62053538da8b11423db",
     "worktree_dirty_at_packaging": true,
     "md_driver_sha256_by_state": {
       "first_seven_states": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
       "te99_ti49p5_and_ti99": "45f0c687ca9364811e7af35446687fc2d293f3ce478f7c34902a630c68513b39"
+    },
+    "rdf_structure_factor_derivation": {
+      "source_script": "applications/ch2_xrts_dataset/plot_existing_hnc_md.py",
+      "source_script_sha256_at_packaging": "417262ec81bb2c81c0ca2ccdc0ba2510d4a57415043c450b46d196acc034e3c3",
+      "worktree_dirty_at_packaging": true,
+      "source_rdf_sha256_by_state": {
+        "ch2_te9_ti1.8": "89c47fa60f9bf29e4a1259dd012ccfa09b1f8b46fbbea89b048787fb1867ba74",
+        "ch2_te9_ti4.5": "3aad8b9a6402dc9e299f7c150aa701251f7ba7d6e54fd864dace84b8dcebc98a",
+        "ch2_te9_ti9": "ffd2cc9b8a0100be5d287c0f27b54b61dc4ca92da0a2272fdc8985f1db98d5e1",
+        "ch2_te29_ti5.8": "81b77368db1c707833f5a33b9e313c5ab8f10976c2838ad9f0a080b974622ec1",
+        "ch2_te29_ti14.5": "e4ac8224e361086995c1a29cd1ded26dee223382ecbe67964a6ddae83da8e64f",
+        "ch2_te29_ti29": "ccd3d0b6f2719a0234f0e9aa0a572424e028308c4b3b39feebd4c24b7ec4bd56",
+        "ch2_te99_ti19.8": "f0847e1abb87c65d11653e8727a83cc0cb335027af648db3658be96ff32b0d40",
+        "ch2_te99_ti49.5": "125508cf1d7348f9d7dc193520eae8e2d9e95a36479247afb6dc02eea155b0be",
+        "ch2_te99_ti99": "ce612d741227745800fea3013a75db51080bb9eaa4d832f249525e2ca08eea59"
+      }
     }
   },
   "method_publications": [
@@ -113,6 +129,16 @@
       "structure_factor_estimator": "complete periodic reciprocal-shell and trajectory-frame average",
       "rdf_uncertainty": "SEM across independent RDF sampling blocks",
       "structure_factor_uncertainty": "SEM across shell-averaged saved production frames",
+      "rdf_structure_factor_estimator": {
+        "definition": "delta_ab + sqrt(n_a*n_b) * radial_forward(g_ab - 1)",
+        "transform": "Otter strict DST-I radial_forward",
+        "rdf_samples": 1000,
+        "rdf_blocks": 20,
+        "rdf_samples_per_block": 50,
+        "dst_input": "linear interpolation from LAMMPS bin centres to r_i=i*dr",
+        "tail_closure": "h_ab=0 at the first DST point beyond the final RDF centre",
+        "uncertainty": "SEM across the 20 independently transformed RDF blocks"
+      },
       "hot_core_regularization": {
         "states": ["ch2_te99_ti49.5", "ch2_te99_ti99"],
         "analytic_core_end_bohr": 0.3,
@@ -133,6 +159,10 @@
     "maximum_hnc_output_residual": 3.4817022048528483e-08,
     "pairwise_g_rmse_range": [0.002807062844960556, 0.018255400143250246],
     "pairwise_s_rmse_range": [0.006318247655633024, 0.016940849315049574],
+    "rdf_vs_density_mode_s_rmse_range": [0.006288608823856307, 0.016156461291492907],
+    "rdf_vs_density_mode_s_signed_mean": -6.0748739612414846e-05,
+    "rdf_vs_density_mode_s_max_abs": 0.09242927357578312,
+    "rdf_tail_max_abs_range": [0.0006216999999999473, 0.004483849999999956],
     "hnc_elapsed_s_range": [0.37649702597991563, 1.1641979110136162],
     "md_elapsed_s_range": [514.3252659979917, 13457.237488774],
     "hnc_elapsed_s_sum": 6.742759518994717,
@@ -140,7 +170,7 @@
   },
   "baseline": {
     "path": "ch2_hnc_md.npz",
-    "sha256": "e42d94187fffd832c0e81a7167d995a3d529e4102e37b01e96b695e8e3352e4f"
+    "sha256": "9751f2f16dc6ab8b72434dccc58b29ecbccfed6f61b6fd98847a15a83e0391fc"
   },
   "media": [
     {
@@ -155,18 +185,33 @@
     },
     {
       "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_gab.png",
-      "sha256": "af4b830eedb79459a71d298e2ea90d6320298f49ec2ca5b0f191bc3685ec86d1",
+      "sha256": "db71b294ff5430bce87bc0138affd20596dba51a6787eda18d492b72c4b246e0",
       "role": "gallery-first rendering of the accepted pair distributions"
     },
     {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_gab_residual.png",
+      "sha256": "2d64b7ab5a00125a15781be37d05a1c5286a8b5b93a48a40e01de80844961a24",
+      "role": "gallery-first rendering of the accepted pair-distribution residuals"
+    },
+    {
       "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab.png",
-      "sha256": "98c06be15fa0013fa5c8c790348710982bb8ae9b1b3f87fc9460709ee4de8c71",
+      "sha256": "425671b5e0be2072bc7ec3a3340c3692d74aabe66eb25ba0421aa1b8cd7b721f",
       "role": "gallery-first rendering of the accepted partial structure factors"
     },
     {
       "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab_residual.png",
-      "sha256": "dfb9c77cb4338a50c5df261e9577a7b3e4992634c87f3f9e191f93a4ecf7883a",
+      "sha256": "ababff6c4c69cb702d934c51e5a056375b37f359d05adf7f8fe39d28a57c6cba",
       "role": "gallery-first rendering of the accepted structure-factor residuals"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_md_sab_rdf_vs_density.png",
+      "sha256": "c448d1411de36e19239db164ffaef4086ee7f84be6b6e686874f3fffa1c28ff6",
+      "role": "gallery-first rendering of RDF-transform and density-mode structure factors"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_md_sab_rdf_minus_density.png",
+      "sha256": "f264ba48a874527f7417050dd9e2186c18d1ad1954cefecc79f69fddf488870c",
+      "role": "gallery-first rendering of the RDF-transform minus density-mode residuals"
     }
   ]
 }
