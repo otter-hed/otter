@@ -652,8 +652,9 @@ def main() -> None:
                     if bool(controls["thermal_limited"])
                     else np.asarray(prepared.qoz.vij_r, dtype=float)
                 )
-                potentials = md.pair_potentials_from_matrix(
-                    tuple(prepared.species), prepared.r, md_potential_matrix
+                potentials = md.pair_potentials_from_otter(
+                    prepared,
+                    potential_matrix_ha=md_potential_matrix,
                 )
                 md_started = time.perf_counter()
                 stop = threading.Event()

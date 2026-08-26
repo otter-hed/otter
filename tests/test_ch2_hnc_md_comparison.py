@@ -85,4 +85,5 @@ def test_script_does_not_mislabel_one_component_vmhnc_as_a_ch2_bridge() -> None:
     assert module.BRIDGE_STATUS == "not_implemented_for_multicomponent_ch2"
     assert "scalar hard-sphere bridge" in source
     assert 'hnc_bridge_model="rosenfeld_ashcroft"' not in source
+    assert "pair_potentials_from_otter" in source
     assert "run_otter_lammps_md" in source

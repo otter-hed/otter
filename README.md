@@ -165,7 +165,7 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu and Dominik Kraus, *Otter*, version 0.2.3, computer software (2026),
+> Chongbing Qu and Dominik Kraus, *Otter*, version 0.2.4, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
@@ -173,7 +173,7 @@ If you use Otter in a scientific publication, please cite:
   author  = {Qu, Chongbing and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
-  note    = {Computer software, version 0.2.3},
+  note    = {Computer software, version 0.2.4},
   url     = {https://github.com/otter-hed/otter}
 }
 ```

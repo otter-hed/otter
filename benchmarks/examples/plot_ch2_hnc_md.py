@@ -103,17 +103,48 @@ the cost of the two ionic-structure treatments after the common electronic
 potential is available; it does not include that shared electronic/QOZ
 preparation in either column.
 
-The MD :math:`S_{ab}(k)` is evaluated directly from periodic density modes,
-not from a truncated transform of the RDF.  Shaded regions show
-:math:`\pm2` SEM.  Only reciprocal shells containing at least 12 vectors are
-plotted.
+How the MD structure factors are estimated
+------------------------------------------
+
+The MD :math:`S_{ab}(k)` is evaluated directly from the saved NVE trajectory,
+not by Fourier transforming the finite-range :math:`g_{ab}(r)`.  For every
+saved frame :math:`t` and nonzero periodic wavevector
+:math:`\mathbf{k}=2\pi\mathbf{n}/L`, the species density mode is
+
+.. math::
+
+   \rho_a(\mathbf{k},t)=\sum_{j\in a}
+   \exp\!\left[i\mathbf{k}\cdot\mathbf{r}_j(t)\right].
+
+The Ashcroft--Langreth partial structure factor is estimated as
+
+.. math::
+
+   S_{ab}(k)=\left\langle
+   \frac{\operatorname{Re}\!\left[
+   \rho_a(\mathbf{k},t)\rho_b^*(\mathbf{k},t)\right]}
+   {\sqrt{N_aN_b}}
+   \right\rangle_{t,\,|\mathbf{k}|\ \mathrm{bin}} .
+
+Thus all independent periodic vectors in the same radial :math:`k` bin are
+averaged in each frame, followed by an average over the 21 saved production
+frames.  The shaded band is :math:`\pm2\,\mathrm{SEM}_{\rm frame}`, where the
+reported frame SEM is the standard deviation of the per-frame shell averages
+divided by :math:`\sqrt{21}`.  It does not apply an autocorrelation-time
+correction, so it should be read as a sampling diagnostic rather than a
+rigorous confidence interval.  Only radial bins containing at least 12
+periodic wavevectors are plotted; the omitted smallest-:math:`k` bins are the
+most direction-starved in the finite simulation cell.
 
 Data and reproduction
 ---------------------
 
 The public, checksummed plotting arrays are stored in
 ``benchmarks/baselines/ch2_hnc_md/ch2_hnc_md.npz`` with their provenance in
-the adjacent ``manifest.json``.  Full trajectories and working files are
+the adjacent ``manifest.json``.  The reusable conversion from Otter
+:math:`V_{ab}(r)` to LAMMPS inputs and the subsequent :math:`g_{ab}(r)` and
+:math:`S_{ab}(k)` analysis are implemented in ``tools/otter_lammps_md.py``.
+Full trajectories and working files are
 written locally under
 ``applications/ch2_xrts_dataset/outputs/ch2_hnc_md_comparison`` by
 ``compare_hnc_md.py``; they are too large for the public baseline and are not

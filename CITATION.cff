@@ -3,8 +3,8 @@ message: >-
   If you use Otter in a scientific publication, please cite this software.
 title: Otter
 type: software
-version: 0.2.3
-date-released: 2026-08-25
+version: 0.2.4
+date-released: 2026-08-26
 authors:
   - family-names: Qu
     given-names: Chongbing
@@ -23,8 +23,8 @@ keywords:
 preferred-citation:
   type: software
   title: Otter
-  version: 0.2.3
-  date-released: 2026-08-25
+  version: 0.2.4
+  date-released: 2026-08-26
   authors:
     - family-names: Qu
       given-names: Chongbing

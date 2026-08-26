@@ -5,6 +5,21 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+## 0.2.4 - 2026-08-26
+
+### Added
+
+- Added a complete user guide for converting Otter QOZ pair potentials from
+  in-memory workflows or portable NPZ states into reproducible single- and
+  multicomponent LAMMPS simulations.
+
+### Changed
+
+- Exposed pair-potential extraction from prepared QOZ objects, workflow
+  results, and state archives, labeled saved partial-pair columns, and
+  documented the direct periodic-density-mode estimator and sampling
+  uncertainty for `S_ab(k)`.
+
 ## 0.2.3 - 2026-08-25
 
 ### Added

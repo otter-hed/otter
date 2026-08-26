@@ -13,3 +13,4 @@ examples and the detailed API reference.
    al_rayleigh_weight
    carbon_lfc_sensitivity
    state_exports
+   lammps_md

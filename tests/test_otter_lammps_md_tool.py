@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -133,6 +134,71 @@ def test_otter_potential_matrix_conversion() -> None:
         ("C", "H"),
         ("H", "H"),
     ]
+
+
+def test_extract_pair_potentials_from_prepared_qoz() -> None:
+    radius = np.linspace(0.1, 2.0, 8)
+    matrix = np.empty((2, 2, radius.size))
+    matrix[0, 0] = 3.0 / radius
+    matrix[0, 1] = matrix[1, 0] = 2.0 / radius
+    matrix[1, 1] = 1.0 / radius
+    prepared = SimpleNamespace(
+        species=("C", "H"),
+        r=radius,
+        qoz=SimpleNamespace(vij_r=matrix),
+    )
+
+    pairs = md.pair_potentials_from_otter(prepared)
+
+    assert [(item.left, item.right) for item in pairs] == [
+        ("C", "C"),
+        ("C", "H"),
+        ("H", "H"),
+    ]
+    np.testing.assert_array_equal(pairs[1].potential_ha, matrix[0, 1])
+
+
+def test_extract_pair_potentials_from_workflow_and_exported_state(
+    tmp_path: Path,
+) -> None:
+    radius = np.linspace(0.1, 2.0, 8)
+    matrix = (1.0 / radius)[None, None, :]
+    workflow = {
+        "ion": {"species": ["Be"], "r": radius, "vij_r": matrix[0, 0]}
+    }
+    export_path = tmp_path / "state.npz"
+    np.savez(
+        export_path,
+        species_symbols=np.asarray(["Be"]),
+        r_bohr=radius,
+        vij_r=matrix,
+    )
+
+    workflow_pair = md.pair_potentials_from_otter(workflow)[0]
+    with np.load(export_path) as exported:
+        exported_pair = md.pair_potentials_from_otter(exported)[0]
+
+    assert (workflow_pair.left, workflow_pair.right) == ("Be", "Be")
+    np.testing.assert_array_equal(workflow_pair.potential_ha, matrix[0, 0])
+    np.testing.assert_array_equal(exported_pair.potential_ha, matrix[0, 0])
+
+
+def test_pair_potential_override_is_explicit() -> None:
+    radius = np.linspace(0.1, 2.0, 8)
+    native = (1.0 / radius)[None, None, :]
+    override = (2.0 / radius)[None, None, :]
+    prepared = SimpleNamespace(
+        species=("Be",),
+        r=radius,
+        qoz=SimpleNamespace(vij_r=native),
+    )
+
+    pair = md.pair_potentials_from_otter(
+        prepared,
+        potential_matrix_ha=override,
+    )[0]
+
+    np.testing.assert_array_equal(pair.potential_ha, override[0, 0])
 
 
 def test_parallel_structure_factor_matches_serial(tmp_path: Path) -> None:

@@ -1,10 +1,21 @@
 """Run reproducible classical MD from Otter ion--ion pair potentials.
 
-The public entry point :func:`run_otter_lammps_md` supports one or many ion
-species.  It writes every LAMMPS input artifact, performs NVT equilibration
-followed by an NVE sampling run, and returns total/partial RDF and structure-
-factor estimates with standard errors.  Pair potentials are shifted in both
-energy and force at the finite MD cutoff.
+Use :func:`pair_potentials_from_otter` to extract every unique ``V_ab(r)``
+from a prepared QOZ object, a workflow result, or an exported Otter state.
+Then :func:`run_otter_lammps_md` writes every LAMMPS input artifact, performs
+NVT equilibration followed by NVE sampling, and saves the sampled ``g_ab(r)``
+and directly estimated ``S_ab(k)`` to ``md_results.npz``.  Both functions
+support one or many ion species.
+
+A complete call is intentionally only two lines after constructing
+``MDConfig``::
+
+    potentials = pair_potentials_from_otter(prepared_qoz)
+    result = run_otter_lammps_md(config, potentials)
+
+The pair columns in ``result["md_gij_r"]`` and ``result["md_sij_k"]`` are
+identified by ``result["md_pair_labels"]``.  Pair potentials are shifted in
+both energy and force at the finite MD cutoff.
 
 When species carry nonzero ``charge_e``, LAMMPS evaluates the exact
 ``q_i q_j/r`` core and the table contains only the finite screened remainder.
@@ -25,7 +36,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import time
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 from scipy.interpolate import PchipInterpolator
@@ -106,6 +117,60 @@ def pair_potentials_from_matrix(
         for left in range(len(symbols))
         for right in range(left, len(symbols))
     ]
+
+
+def pair_potentials_from_otter(
+    source: object,
+    *,
+    potential_matrix_ha: np.ndarray | None = None,
+) -> list[PairPotential]:
+    """Extract ``V_ab(r)`` from a native or saved Otter ion-structure state.
+
+    ``source`` may be a ``PreparedMulticomponentIonStructure``, a complete
+    workflow result, its ``result["ion"]`` mapping, or an ``NpzFile`` produced
+    by Otter's state exporter.  ``potential_matrix_ha`` is an explicit
+    override for studies that intentionally modify the native QOZ potential.
+    """
+    qoz = getattr(source, "qoz", None)
+    if qoz is not None:
+        symbols = tuple(str(value) for value in getattr(source, "species"))
+        radius = np.asarray(getattr(source, "r"), dtype=float)
+        native_matrix = np.asarray(getattr(qoz, "vij_r"), dtype=float)
+    else:
+        record: Any = source
+        if hasattr(record, "files"):
+            keys = set(record.files)  # NpzFile
+        elif hasattr(record, "keys"):
+            keys = set(record.keys())
+        else:
+            raise TypeError(
+                "Expected a prepared QOZ object, workflow/ion result, or "
+                "exported Otter state containing species, r, and vij_r."
+            )
+        if "ion" in keys:
+            record = record["ion"]
+            keys = set(record.keys())
+        if {"species_symbols", "r_bohr", "vij_r"} <= keys:
+            symbols = tuple(str(value) for value in record["species_symbols"])
+            radius = np.asarray(record["r_bohr"], dtype=float)
+        elif {"species", "r", "vij_r"} <= keys:
+            symbols = tuple(str(value) for value in record["species"])
+            radius = np.asarray(record["r"], dtype=float)
+        else:
+            raise TypeError(
+                "Expected a prepared QOZ object, workflow/ion result, or "
+                "exported Otter state containing species, r, and vij_r."
+            )
+        native_matrix = np.asarray(record["vij_r"], dtype=float)
+
+    matrix = (
+        native_matrix
+        if potential_matrix_ha is None
+        else np.asarray(potential_matrix_ha, dtype=float)
+    )
+    if len(symbols) == 1 and matrix.ndim == 1:
+        matrix = matrix[None, None, :]
+    return pair_potentials_from_matrix(symbols, radius, matrix)
 
 
 def _pair_key(left: str, right: str) -> tuple[str, str]:
@@ -694,6 +759,13 @@ def run_otter_lammps_md(
         "md_type_pairs": np.asarray(
             [(left, right) for left in range(1, len(config.species) + 1)
              for right in range(left, len(config.species) + 1)], dtype=int
+        ),
+        "md_pair_labels": np.asarray(
+            [
+                f"{config.species[left].symbol}-{config.species[right].symbol}"
+                for left in range(len(config.species))
+                for right in range(left, len(config.species))
+            ]
         ),
         "md_particle_counts": np.asarray(
             [item.count for item in config.species], dtype=int
