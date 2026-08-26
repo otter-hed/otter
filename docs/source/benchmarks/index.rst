@@ -187,6 +187,22 @@ only like-for-like two-temperature states.
       <div class="sphx-glr-thumbnail-title">Johnson 2025 two-temperature aluminium</div>
     </div>
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Nine CH2 equilibrium and two-temperature states comparing multicomponent HNC with same-QOZ-potential LAMMPS MD.">
+
+.. only:: html
+
+   .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_ch2_hnc_md_thumb.png
+      :alt: CH2 HNC and same-potential MD benchmark
+
+   :doc:`gen_benchmarks/plot_ch2_hnc_md`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">CH2 HNC versus same-potential MD</div>
+    </div>
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -230,8 +246,14 @@ reference for every panel.
 
     </div>
 
+Detailed benchmark reports
+--------------------------
+
+The cards above group comparisons by observable and thermodynamic regime.
+The reports below contain the longer physical interpretation and provenance;
+the runnable gallery contains the corresponding downloadable Python scripts.
+
 .. toctree::
-   :hidden:
    :maxdepth: 1
 
    starrett_et_al_2014_mixtures_fig3
@@ -240,8 +262,14 @@ reference for every panel.
    johnson_et_al_2025_two_temperature_al
    argha_roy_carbon_sii
    schorner_et_al_2022_al_sii
+
+Runnable benchmark gallery
+--------------------------
+
+.. toctree::
+   :maxdepth: 1
+
    gen_benchmarks/index
-   validation_policy
 
 Validation and data governance
 ------------------------------
@@ -254,3 +282,9 @@ clearly distinguished from native author data.  See
 the complete :doc:`runnable scientific benchmark gallery
 <gen_benchmarks/index>` to browse and download every Python script and
 notebook.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   validation_policy

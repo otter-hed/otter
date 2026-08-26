@@ -45,6 +45,7 @@ def test_prepare_single_component_run(tmp_path: Path) -> None:
     input_text = (tmp_path / "in.otter_md").read_text(encoding="utf-8")
     assert "pair_coeff      1 1 pair_potentials.table V_BE_BE" in input_text
     assert "compute         rdf_all all rdf 500 1 1" in input_text
+    assert "density time dt" in input_text
     assert "unfix           thermostat" in input_text
     assert "fix             integrator all nve" in input_text
 
@@ -92,6 +93,32 @@ def test_missing_mixture_cross_potential_is_rejected(tmp_path: Path) -> None:
             config,
             [_potential("C", "C"), _potential("H", "H")],
         )
+
+
+def test_charged_species_use_analytic_coulomb_plus_tabulated_remainder(
+    tmp_path: Path,
+) -> None:
+    species = (
+        md.MDSpecies("C", 12.011, 10, 4.0),
+        md.MDSpecies("H", 1.008, 20, 1.0),
+    )
+    config = _config(tmp_path, species)
+    radius = np.linspace(0.05, 20.0, 512)
+    potentials = [
+        md.PairPotential("C", "C", radius, 16.0 / radius - 0.4),
+        md.PairPotential("C", "H", radius, 4.0 / radius - 0.2),
+        md.PairPotential("H", "H", radius, 1.0 / radius - 0.1),
+    ]
+    audit = md.prepare_lammps_run(config, potentials)
+
+    data = (tmp_path / "atoms.data").read_text(encoding="utf-8")
+    script = (tmp_path / "in.otter_md").read_text(encoding="utf-8")
+    assert "Atoms # charge" in data
+    assert "atom_style      charge" in script
+    assert "pair_style      hybrid/overlay coul/cut" in script
+    assert "pair_coeff      * * coul/cut" in script
+    assert "pair_coeff      1 2 table pair_potentials.table V_C_H" in script
+    assert max(abs(value) for value in audit["table_endpoint"].values()) < 1.0e-12
 
 
 def test_otter_potential_matrix_conversion() -> None:

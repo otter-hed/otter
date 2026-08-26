@@ -62,7 +62,9 @@ Curated packages currently included are:
   DFT-MD data provided by Dr. Argha Roy (private communication; unpublished);
 - `baselines/schorner_et_al_2022_al_sii`: equilibrium aluminium LDA/PBE HNC,
   VMHNC, and same-potential MD paired with the corrected Figure 2 DFT-MD
-  curves of Schörner et al. (2022); and
+  curves of Schörner et al. (2022);
+- `baselines/ch2_hnc_md`: nine equilibrium and two-temperature CH2 states
+  comparing multicomponent HNC with same-QOZ-potential LAMMPS MD; and
 - `baselines/al_full_workflow_1ev`: the complete Otter Al
   electronic-to-QOZ/HNC gallery state.
 

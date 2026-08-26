@@ -1,0 +1,126 @@
+{
+  "schema_version": "otter_benchmark_manifest_v1",
+  "benchmark_id": "ch2_hnc_md",
+  "title": "CH2 HNC versus same-potential molecular dynamics",
+  "status": "accepted",
+  "data_rights": {
+    "baseline_origin_type": "project_generated_numerical_output",
+    "media_origin_type": "project_generated_visualization",
+    "external_reference_data": false,
+    "public_release_gate": "resolved"
+  },
+  "producer": {
+    "project": "Otter",
+    "project_version": "0.2.2",
+    "source_driver": "applications/ch2_xrts_dataset/compare_hnc_md.py",
+    "source_driver_sha256_at_packaging": "2dc3dcd07c2c619d5cacb801156334b936951d7cc7e0de639041e3886770d2db",
+    "gallery_script": "benchmarks/examples/plot_ch2_hnc_md.py",
+    "gallery_script_sha256": "48bd7cb207b4ca597edcad24b7aed1871266c8ce65f910443d5de6578bd076a8",
+    "git_commit_at_packaging": "78c51ad5d4f671f89428a62053538da8b11423db",
+    "worktree_dirty_at_packaging": true,
+    "md_driver_sha256_by_state": {
+      "first_seven_states": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
+      "te99_ti49p5_and_ti99": "45f0c687ca9364811e7af35446687fc2d293f3ce478f7c34902a630c68513b39"
+    }
+  },
+  "method_publications": [
+    {
+      "citation_key": "StarrettSaumon2013",
+      "doi": "10.1103/PhysRevE.87.013104",
+      "role": "pseudoatom electronic construction"
+    },
+    {
+      "citation_key": "StarrettSaumon2014",
+      "doi": "10.1016/j.hedp.2013.12.001",
+      "role": "QOZ/HNC ion structure"
+    },
+    {
+      "citation_key": "ThompsonEtAl2022",
+      "doi": "10.1016/j.cpc.2021.108171",
+      "role": "LAMMPS simulation engine"
+    }
+  ],
+  "configuration": {
+    "composition": "C1H2",
+    "mass_density_g_cm3": 0.946,
+    "electron_temperatures_ev": [9.0, 29.0, 99.0],
+    "ion_to_electron_temperature_ratios": [0.2, 0.5, 1.0],
+    "electronic_model": "qm",
+    "structure_model": "IS",
+    "electronic_reuse": "one converged electronic result per electron temperature",
+    "ionic_closure": "ordinary multicomponent HNC",
+    "bridge_model": "none",
+    "same_qoz_pair_potential_for_hnc_and_md": true,
+    "qoz_potential_max_abs_delta_within_each_te": 5.684341886080802e-14,
+    "compact_baseline_transform": {
+      "hnc_interpolation": "linear",
+      "hnc_r_grid_bohr": [0.0, 10.0, 2001],
+      "hnc_k_grid_bohr_inv": [0.0, 4.5, 1801],
+      "md_grids_modified": false
+    },
+    "same_potential_md": {
+      "engine": "LAMMPS (7 Feb 2024 - Update 1)",
+      "atoms": 3072,
+      "carbon_atoms": 1024,
+      "hydrogen_atoms": 2048,
+      "ensemble_sequence": "NVT->NVE",
+      "timestep_omega_p_inv_default": 0.005,
+      "equilibration_omega_p_inv": 50.0,
+      "production_omega_p_inv": 500.0,
+      "rdf_bins": 500,
+      "rdf_blocks": 20,
+      "trajectory_frames": 21,
+      "structure_factor_estimator": "complete periodic reciprocal-shell and trajectory-frame average",
+      "rdf_uncertainty": "SEM across independent RDF sampling blocks",
+      "structure_factor_uncertainty": "SEM across shell-averaged saved production frames",
+      "hot_core_regularization": {
+        "states": ["ch2_te99_ti49.5", "ch2_te99_ti99"],
+        "analytic_core_end_bohr": 0.3,
+        "blend_end_bohr": 0.5,
+        "resolved_qoz_potential_refitted": false
+      }
+    }
+  },
+  "acceptance": {
+    "successful_states": 9,
+    "two_temperature_states": 6,
+    "equilibrium_controls": 3,
+    "maximum_abs_nve_relative_energy_drift": 0.0006565607938387239,
+    "maximum_hnc_output_residual": 3.4817022048528483e-08,
+    "pairwise_g_rmse_range": [0.002807062844960556, 0.018255400143250246],
+    "pairwise_s_rmse_range": [0.006318247655633024, 0.016940849315049574],
+    "hnc_elapsed_s_range": [0.37649702597991563, 1.1641979110136162],
+    "md_elapsed_s_range": [514.3252659979917, 13457.237488774]
+  },
+  "baseline": {
+    "path": "ch2_hnc_md.npz",
+    "sha256": "e42d94187fffd832c0e81a7167d995a3d529e4102e37b01e96b695e8e3352e4f"
+  },
+  "media": [
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_md.png",
+      "sha256": "d2d904b1b2db0900820dfdf46d6a1856763427689d7c8cf7f1a9a47cf17145b9",
+      "role": "video poster and static fallback"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_md.mp4",
+      "sha256": "21b9f036442f028a2ae5b72e8f035b40f82cba258279d1f2e502febeb75adcc4",
+      "role": "illustrative OVITO trajectory rendering"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_gab.png",
+      "sha256": "af4b830eedb79459a71d298e2ea90d6320298f49ec2ca5b0f191bc3685ec86d1",
+      "role": "gallery-first rendering of the accepted pair distributions"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab.png",
+      "sha256": "98c06be15fa0013fa5c8c790348710982bb8ae9b1b3f87fc9460709ee4de8c71",
+      "role": "gallery-first rendering of the accepted partial structure factors"
+    },
+    {
+      "path": "docs/source/_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab_residual.png",
+      "sha256": "dfb9c77cb4338a50c5df261e9577a7b3e4992634c87f3f9e191f93a4ecf7883a",
+      "role": "gallery-first rendering of the accepted structure-factor residuals"
+    }
+  ]
+}

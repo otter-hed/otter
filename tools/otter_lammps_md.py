@@ -6,6 +6,11 @@ followed by an NVE sampling run, and returns total/partial RDF and structure-
 factor estimates with standard errors.  Pair potentials are shifted in both
 energy and force at the finite MD cutoff.
 
+When species carry nonzero ``charge_e``, LAMMPS evaluates the exact
+``q_i q_j/r`` core and the table contains only the finite screened remainder.
+This avoids interpolating the Coulomb singularity while preserving the full
+Otter potential and its shifted-force cutoff.
+
 This module deliberately has no command-line parser: benchmark and user
 scripts keep their physical settings in readable Python code.
 """
@@ -23,6 +28,7 @@ import time
 from typing import Iterable
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
 
 BOHR_TO_ANGSTROM = 0.529177210903
@@ -37,6 +43,7 @@ class MDSpecies:
     symbol: str
     mass_u: float
     count: int
+    charge_e: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -115,6 +122,8 @@ def _validate(
 ) -> dict[tuple[str, str], PairPotential]:
     if not config.species or any(item.count <= 0 for item in config.species):
         raise ValueError("Every MD species must have a positive particle count.")
+    if any(not np.isfinite(item.charge_e) for item in config.species):
+        raise ValueError("Every MD species charge must be finite.")
     symbols = [item.symbol for item in config.species]
     if len(set(symbols)) != len(symbols):
         raise ValueError("MD species symbols must be unique.")
@@ -122,6 +131,8 @@ def _validate(
         raise ValueError("Ion density and temperature must be positive.")
     if config.table_points < 4 or not 0.0 < config.cutoff_box_fraction < 0.5:
         raise ValueError("Invalid table size or cutoff/box fraction.")
+    if not np.isfinite(config.r_min_bohr) or config.r_min_bohr <= 0.0:
+        raise ValueError("The table inner radius must be finite and positive.")
     if config.structure_factor_workers < 1:
         raise ValueError("structure_factor_workers must be positive.")
 
@@ -191,6 +202,7 @@ def _write_data(
     types: np.ndarray,
     box_length: float,
 ) -> None:
+    charged = any(item.charge_e != 0.0 for item in config.species)
     lines = [
         "LAMMPS data generated from Otter pair potentials",
         "",
@@ -201,15 +213,25 @@ def _write_data(
         f"0.0 {box_length:.12e} ylo yhi",
         f"0.0 {box_length:.12e} zlo zhi",
         "",
-        "Atoms # atomic",
+        "Atoms # charge" if charged else "Atoms # atomic",
         "",
     ]
-    lines.extend(
-        f"{index} {atom_type} {x:.12e} {y:.12e} {z:.12e}"
-        for index, (atom_type, (x, y, z)) in enumerate(
-            zip(types, positions), start=1
+    if charged:
+        lines.extend(
+            f"{index} {atom_type} "
+            f"{config.species[atom_type - 1].charge_e:.12e} "
+            f"{x:.12e} {y:.12e} {z:.12e}"
+            for index, (atom_type, (x, y, z)) in enumerate(
+                zip(types, positions), start=1
+            )
         )
-    )
+    else:
+        lines.extend(
+            f"{index} {atom_type} {x:.12e} {y:.12e} {z:.12e}"
+            for index, (atom_type, (x, y, z)) in enumerate(
+                zip(types, positions), start=1
+            )
+        )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -219,9 +241,15 @@ def _write_table(
     potentials: dict[tuple[str, str], PairPotential],
     box_length: float,
 ) -> tuple[float, dict[str, float]]:
-    r_min = max(
-        config.r_min_bohr,
-        max(float(np.asarray(item.r_bohr)[0]) for item in potentials.values()),
+    charge_by_symbol = {item.symbol: item.charge_e for item in config.species}
+    charged = any(value != 0.0 for value in charge_by_symbol.values())
+    r_min = (
+        float(config.r_min_bohr)
+        if charged
+        else max(
+            config.r_min_bohr,
+            max(float(np.asarray(item.r_bohr)[0]) for item in potentials.values()),
+        )
     )
     r_cut = min(
         config.cutoff_box_fraction * box_length / BOHR_TO_ANGSTROM,
@@ -237,12 +265,31 @@ def _write_table(
     endpoint: dict[str, float] = {}
     for key in sorted(potentials):
         item = potentials[key]
-        energy = np.interp(
-            radius_bohr,
-            np.asarray(item.r_bohr, dtype=float),
-            np.asarray(item.potential_ha, dtype=float),
-        ) * HARTREE_TO_EV
-        force = -np.gradient(energy, radius_angstrom, edge_order=2)
+        source_r = np.asarray(item.r_bohr, dtype=float)
+        source_v = np.asarray(item.potential_ha, dtype=float)
+        coefficient = charge_by_symbol[key[0]] * charge_by_symbol[key[1]]
+        if charged:
+            source_v = source_v - coefficient / source_r
+        interpolator = PchipInterpolator(source_r, source_v, extrapolate=False)
+        interpolation_r = np.maximum(radius_bohr, source_r[0])
+        energy = (
+            np.asarray(interpolator(interpolation_r), dtype=float)
+            * HARTREE_TO_EV
+        )
+        force = (
+            -np.asarray(interpolator.derivative()(interpolation_r), dtype=float)
+            * HARTREE_TO_EV
+            / BOHR_TO_ANGSTROM
+        )
+        force[radius_bohr < source_r[0]] = 0.0
+        if charged:
+            energy = energy + coefficient / radius_bohr * HARTREE_TO_EV
+            force = force + (
+                coefficient
+                / radius_bohr**2
+                * HARTREE_TO_EV
+                / BOHR_TO_ANGSTROM
+            )
         cutoff_force = float(force[-1])
         energy = (
             energy
@@ -250,9 +297,25 @@ def _write_table(
             + (radius_angstrom - radius_angstrom[-1]) * cutoff_force
         )
         force = force - cutoff_force
+        coulomb_energy = np.zeros_like(energy)
+        coulomb_force = np.zeros_like(force)
+        if charged:
+            coulomb_energy = coefficient / radius_bohr * HARTREE_TO_EV
+            coulomb_force = (
+                coefficient
+                / radius_bohr**2
+                * HARTREE_TO_EV
+                / BOHR_TO_ANGSTROM
+            )
+            energy = energy - coulomb_energy
+            force = force - coulomb_force
         name = _section(*key)
-        endpoint[f"{name}_energy_ev"] = float(energy[-1])
-        endpoint[f"{name}_force_ev_per_angstrom"] = float(force[-1])
+        endpoint[f"{name}_energy_ev"] = float(
+            energy[-1] + coulomb_energy[-1]
+        )
+        endpoint[f"{name}_force_ev_per_angstrom"] = float(
+            force[-1] + coulomb_force[-1]
+        )
         lines.extend((name, f"N {config.table_points}", ""))
         lines.extend(
             f"{index} {r:.12e} {v:.12e} {f:.12e}"
@@ -271,14 +334,18 @@ def _write_input(path: Path, config: MDConfig, cutoff_angstrom: float) -> None:
         for left in range(len(config.species))
         for right in range(left, len(config.species))
     ]
+    charged = any(item.charge_e != 0.0 for item in config.species)
     pair_coeff_lines: list[str] = []
+    if charged:
+        pair_coeff_lines.append("pair_coeff      * * coul/cut")
     for left, right in pairs:
         section = _section(
             config.species[left - 1].symbol,
             config.species[right - 1].symbol,
         )
+        table_style = "table " if charged else ""
         pair_coeff_lines.append(
-            f"pair_coeff      {left} {right} pair_potentials.table "
+            f"pair_coeff      {left} {right} {table_style}pair_potentials.table "
             f"{section} {cutoff_angstrom:.12e}"
         )
     pair_coeff = "\n".join(pair_coeff_lines)
@@ -289,21 +356,28 @@ def _write_input(path: Path, config: MDConfig, cutoff_angstrom: float) -> None:
     rdf_pairs = " ".join(f"{left} {right}" for left, right in pairs)
     temperature_k = config.ion_temperature_ev * EV_TO_KELVIN
     rdf_block_steps = config.rdf_every * config.rdf_repeat
+    atom_style = "charge" if charged else "atomic"
+    pair_style = (
+        f"hybrid/overlay coul/cut {cutoff_angstrom:.12e} "
+        f"table linear {config.table_points}"
+        if charged
+        else f"table linear {config.table_points}"
+    )
     text = f"""# NVT -> NVE same-potential MD generated by tools/otter_lammps_md.py
 units           metal
 dimension       3
 boundary        p p p
-atom_style      atomic
+atom_style      {atom_style}
 read_data       atoms.data
 {masses}
-pair_style      table linear {config.table_points}
+pair_style      {pair_style}
 {pair_coeff}
 neighbor        2.0 bin
 neigh_modify    delay 0 every 1 check yes
 velocity        all create {temperature_k:.8f} {config.random_seed} mom yes rot no dist gaussian
 timestep        {config.timestep_ps:.12e}
 thermo          1000
-thermo_style    custom step temp pe ke etotal press density
+thermo_style    custom step temp pe ke etotal press density time dt
 thermo_modify   flush yes
 fix             thermostat all nvt temp {temperature_k:.8f} {temperature_k:.8f} {config.thermostat_damp_ps:.12e}
 run             {config.equilibration_steps}
@@ -476,27 +550,44 @@ def _direct_structure_factors(
     )
 
 
-def _nve_audit(path: Path) -> tuple[float, float, str]:
+def _nve_audit(path: Path) -> tuple[float, float, str, float, float, float]:
     lines = path.read_text(encoding="utf-8").splitlines()
     headers = [index for index, line in enumerate(lines)
                if line.split()[:5] == ["Step", "Temp", "PotEng", "KinEng", "TotEng"]]
     if len(headers) < 2:
         raise RuntimeError("LAMMPS log does not contain the NVE thermo block.")
+    header = lines[headers[-1]].split()
     rows: list[list[float]] = []
     for line in lines[headers[-1] + 1:]:
         if line.startswith("Loop time"):
             break
         try:
-            values = [float(value) for value in line.split()[:7]]
+            values = [float(value) for value in line.split()[: len(header)]]
         except ValueError:
             continue
-        if len(values) == 7:
+        if len(values) == len(header):
             rows.append(values)
     if len(rows) < 2:
         raise RuntimeError("LAMMPS NVE thermo block is incomplete.")
     drift = (rows[-1][4] - rows[0][4]) / abs(rows[0][4])
     version = next((line for line in lines if line.startswith("LAMMPS ")), "unknown")
-    return float(drift), float(np.mean([row[1] for row in rows])), version
+    index = {name: position for position, name in enumerate(header)}
+    elapsed_ps = (
+        rows[-1][index["Time"]] - rows[0][index["Time"]]
+        if "Time" in index
+        else np.nan
+    )
+    sampled_dt = np.asarray(
+        [row[index["Dt"]] for row in rows], dtype=float
+    ) if "Dt" in index else None
+    return (
+        float(drift),
+        float(np.mean([row[1] for row in rows])),
+        version,
+        float(elapsed_ps),
+        float(np.min(sampled_dt)) if sampled_dt is not None else np.nan,
+        float(np.max(sampled_dt)) if sampled_dt is not None else np.nan,
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -580,7 +671,14 @@ def run_otter_lammps_md(
     k, sk, sk_sem, partial_sk, partial_sk_sem, vectors_per_bin = (
         _direct_structure_factors(positions, types, box_length, config)
     )
-    drift, mean_temperature, version = _nve_audit(log_path)
+    (
+        drift,
+        mean_temperature,
+        version,
+        nve_elapsed_ps,
+        sampled_min_dt_ps,
+        sampled_max_dt_ps,
+    ) = _nve_audit(log_path)
     analysis_elapsed = time.perf_counter() - analysis_started
     result = {
         "md_r_bohr": r,
@@ -602,6 +700,9 @@ def run_otter_lammps_md(
         ),
         "md_box_length_bohr": np.asarray(box_length),
         "md_nve_relative_energy_drift": np.asarray(drift),
+        "md_nve_elapsed_ps": np.asarray(nve_elapsed_ps),
+        "md_thermo_sampled_min_timestep_ps": np.asarray(sampled_min_dt_ps),
+        "md_thermo_sampled_max_timestep_ps": np.asarray(sampled_max_dt_ps),
         "md_mean_temperature_k": np.asarray(mean_temperature),
         "md_nve_mean_temperature_k": np.asarray(mean_temperature),
         "md_atoms": np.asarray(types.size),
