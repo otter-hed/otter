@@ -1,22 +1,42 @@
 r"""
-CH2: HNC versus same-potential MD
-=================================
+Polypropylene (PP/CH2): HNC versus same-potential MD
+====================================================
 
-This benchmark tests whether ordinary multicomponent HNC is an adequate fast
-ion-structure approximation for CH2 at :math:`\rho=0.946` g cm\ :sup:`-3`.
-It compares Otter QOZ/HNC with classical LAMMPS MD
-:cite:p:`ThompsonEtAl2022` at
-:math:`T_e=9,29,99` eV and :math:`T_i/T_e=0.2,0.5,1.0`.  Six of the nine
-states are explicitly two-temperature states; the three
-:math:`T_i/T_e=1` cases are equilibrium controls.
+.. raw:: html
+
+   <video controls loop muted playsinline preload="metadata"
+          poster="../../_static/benchmarks/ch2_hnc_md/ch2_md.png"
+          style="display:block; width:min(100%,760px); margin:0 auto;">
+     <source src="../../_static/benchmarks/ch2_hnc_md/ch2_md.mp4"
+             type="video/mp4">
+     Your browser does not support embedded MP4 video.
+   </video>
+
+.. only:: not html
+
+   .. image:: /_static/benchmarks/ch2_hnc_md/ch2_md.png
+      :alt: OVITO rendering of the PP CH2 same-potential MD trajectory
+
+The material is polypropylene (PP), represented in this ion-structure model
+by its reduced C:H composition, CH2, at :math:`\rho=0.946` g cm\ :sup:`-3`.
+The calculation compares Otter multicomponent QOZ/HNC with classical LAMMPS
+MD :cite:p:`ThompsonEtAl2022` at :math:`T_e=9,29,99` eV and
+:math:`T_i/T_e=0.2,0.5,1.0`.  Six of the nine states are explicitly
+two-temperature states; the three :math:`T_i/T_e=1` cases are equilibrium
+controls.  The animation above is an illustrative OVITO rendering of one
+3072-ion trajectory and is not used in the numerical comparison.
 
 At each electron temperature, one converged IS electronic result is reused
-for all three ion temperatures.  For each state, HNC and MD use the same
-QOZ-derived :math:`V_{ab}^{\mathrm{eff}}(r)`, so their difference comes from
-the ionic statistical treatment rather than a different electronic
-structure.  For the two hottest MD runs only, the analytically known Coulomb
-core is restored below 0.3 Bohr and blended back to the unchanged QOZ
-potential by 0.5 Bohr; the resolved first-shell potential is not refitted.
+for all three ion temperatures.  For each state, HNC and MD start from the
+same QOZ-derived :math:`V_{ab}^{\mathrm{eff}}(r)`.  Ordinary HNC imposes the
+closure :math:`B_{ab}(r)=0` and therefore omits bridge diagrams, whereas MD
+samples the classical many-ion distribution without imposing that closure.
+Systematic HNC--MD differences at fixed pair potential therefore primarily
+test the neglected bridge correlations.  Finite cell size, timestep error,
+and MD sampling uncertainty can also contribute.  For the two hottest MD
+runs only, the analytically known Coulomb core is restored below 0.3 Bohr and
+blended back to the unchanged QOZ potential by 0.5 Bohr; the resolved
+first-shell potential is not refitted.
 
 Across the tested window, the pairwise HNC--MD RMSE is
 :math:`0.00281\text{--}0.0183` for :math:`g_{ab}(r)` and
@@ -26,12 +46,78 @@ Across the tested window, the pairwise HNC--MD RMSE is
 specific density and temperature range tested here; this is not a universal
 claim for chemically bonded or more strongly coupled mixtures.
 
+Runtime and MD protocol
+-----------------------
+
+Both timings start after the shared :math:`V_{ab}^{\mathrm{eff}}` has been
+prepared: the HNC column is the closure-solver time, while the MD column is
+the LAMMPS run plus RDF and direct :math:`S_{ab}(k)` analysis.  Every MD case
+uses 1024 C and 2048 H ions, NVT equilibration followed by NVE production,
+and fixed physical durations of :math:`50\,\omega_p^{-1}` and
+:math:`500\,\omega_p^{-1}`.  The thermal timestep guard reduces the two
+hottest timesteps and increases their step counts accordingly.  LAMMPS used
+16 MPI ranks with one OpenMP thread per rank (16 concurrent CPU execution
+threads, reported as a :math:`2\times2\times4` processor grid).  Direct
+:math:`S_{ab}(k)` post-processing used eight workers.  The HNC driver and its
+BLAS backends were limited to one thread.  All states use the same cubic
+periodic cell with side length 29.322944 Angstrom (55.4123 Bohr) and volume
+25,212.895 Angstrom\ :sup:`3`.  The pair-potential cutoff is 14.075013
+Angstrom, or :math:`0.48L`, below the minimum-image limit :math:`L/2`.
+
+.. list-table:: Measured protocol and wall time
+   :header-rows: 1
+   :widths: 22 14 15 14 15 14 16
+
+   * - States (eV)
+     - :math:`\Delta t\,\omega_p`
+     - :math:`\Delta t` (ps)
+     - NVT steps
+     - NVE steps
+     - HNC
+     - MD + analysis
+   * - First seven: all :math:`T_e=9,29`; :math:`(T_e,T_i)=(99,19.8)`
+     - 0.005
+     - :math:`1.3330\times10^{-5}`
+     - 10,000
+     - 100,000
+     - 0.539--1.164 s
+     - 8.57--9.38 min
+   * - :math:`(99,49.5)`
+     - :math:`4.9945\times10^{-4}`
+     - :math:`1.3316\times10^{-6}`
+     - 100,110
+     - 1,001,098
+     - 0.378 s
+     - 179.55 min
+   * - :math:`(99,99)`
+     - :math:`3.5317\times10^{-4}`
+     - :math:`9.4155\times10^{-7}`
+     - 141,577
+     - 1,415,766
+     - 0.376 s
+     - 224.29 min
+
+Summed over the nine independent states, the measured HNC closure time is
+6.74 s and the MD-plus-analysis time is 7.76 h.  This comparison quantifies
+the cost of the two ionic-structure treatments after the common electronic
+potential is available; it does not include that shared electronic/QOZ
+preparation in either column.
+
 The MD :math:`S_{ab}(k)` is evaluated directly from periodic density modes,
 not from a truncated transform of the RDF.  Shaded regions show
 :math:`\pm2` SEM.  Only reciprocal shells containing at least 12 vectors are
-plotted.  The accepted arrays are compact, checksummed outputs of
-``applications/ch2_xrts_dataset/compare_hnc_md.py``; documentation builds do
-not rerun the 6.7-hour MD scan.
+plotted.
+
+Data and reproduction
+---------------------
+
+The public, checksummed plotting arrays are stored in
+``benchmarks/baselines/ch2_hnc_md/ch2_hnc_md.npz`` with their provenance in
+the adjacent ``manifest.json``.  Full trajectories and working files are
+written locally under
+``applications/ch2_xrts_dataset/outputs/ch2_hnc_md_comparison`` by
+``compare_hnc_md.py``; they are too large for the public baseline and are not
+rerun during documentation builds.
 
 Results
 -------
@@ -47,26 +133,6 @@ Results
 .. image:: /_static/benchmarks/ch2_hnc_md/ch2_hnc_md_sab_residual.png
    :alt: CH2 MD minus HNC partial structure-factor residuals
    :width: 100%
-
-Representative OVITO rendering of the 3072-ion CH2 trajectory
-----------------------------------------------------------------
-
-The animation is illustrative and is not used for the numerical comparison.
-
-.. raw:: html
-
-   <video controls loop muted playsinline preload="metadata"
-          poster="../../_static/benchmarks/ch2_hnc_md/ch2_md.png"
-          style="display:block; width:min(100%,760px); margin:0 auto;">
-     <source src="../../_static/benchmarks/ch2_hnc_md/ch2_md.mp4"
-             type="video/mp4">
-     Your browser does not support embedded MP4 video.
-   </video>
-
-.. only:: not html
-
-   .. image:: /_static/benchmarks/ch2_hnc_md/ch2_md.png
-      :alt: OVITO rendering of the CH2 same-potential MD trajectory
 """
 
 # sphinx_gallery_thumbnail_path = '_static/benchmarks/ch2_hnc_md/ch2_hnc_md_gab.png'

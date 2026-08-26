@@ -57,6 +57,27 @@ def test_ch2_hnc_md_claim_is_supported_by_saved_diagnostics() -> None:
     assert np.max(data["s_rmse"]) < 2.0e-2
     assert np.count_nonzero(data["md_coulomb_core_regularized"]) == 2
     assert np.max(data["hnc_elapsed_s"]) < np.min(data["md_elapsed_s"])
+    acceptance = manifest["acceptance"]
+    np.testing.assert_allclose(
+        acceptance["hnc_elapsed_s_sum"], np.sum(data["hnc_elapsed_s"])
+    )
+    np.testing.assert_allclose(
+        acceptance["md_elapsed_s_sum"], np.sum(data["md_elapsed_s"])
+    )
+    protocols = config["same_potential_md"]["measured_protocol_groups"]
+    md_config = config["same_potential_md"]
+    assert md_config["mpi_processes"] == 16
+    assert md_config["openmp_threads_per_mpi_task"] == 1
+    assert md_config["structure_factor_workers"] == 8
+    np.testing.assert_allclose(md_config["box_length_angstrom"], 29.32294404316832)
+    np.testing.assert_allclose(md_config["box_length_bohr"], 55.412333409315)
+    np.testing.assert_allclose(md_config["cutoff_box_fraction"], 0.48)
+    assert config["hnc_cpu_configuration"]["blas_threads"] == 1
+    assert [(item["nvt_steps"], item["nve_steps"]) for item in protocols] == [
+        (10_000, 100_000),
+        (100_110, 1_001_098),
+        (141_577, 1_415_766),
+    ]
 
 
 def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
@@ -71,11 +92,24 @@ def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
     assert r'CH$_2$: HNC vs MD $S_{ab}(k)$' in source
     assert "QOZ-derived" in source
     assert "More importantly" not in source
+    assert "ionic statistical treatment rather than" not in source
+    assert "polypropylene (PP)" in source
+    assert r"B_{ab}(r)=0" in source
+    assert "6.74 s" in source and "7.76 h" in source
+    assert "16 MPI ranks" in source and "eight workers" in source
+    assert "29.322944 Angstrom" in source and "55.4123 Bohr" in source
+    assert "benchmarks/baselines/ch2_hnc_md/ch2_hnc_md.npz" in source
     assert "ch2_md.mp4" in source and "ch2_md.png" in source
+    assert source.index("ch2_md.mp4") < source.index("The material is")
+    assert source.index("ch2_md.mp4") < source.index("ch2_hnc_md_gab.png")
     assert source.index("ch2_hnc_md_gab.png") < source.index(
         "from __future__ import annotations"
     )
     assert "plot_ch2_hnc_md" in index
+    assert index.count('class="sphx-glr-thumbcontainer"') == 9
+    assert "Runnable benchmark gallery" not in index
+    assert "Detailed benchmark reports" not in index
+    assert "gen_benchmarks/index" not in index
 
 
 def test_ch2_gallery_static_results_are_checksummed() -> None:

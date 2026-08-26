@@ -1,29 +1,36 @@
+:tocdepth: 1
+
 Scientific benchmarks
 =====================
 
-Benchmarks are part of Otter's scientific interface.  They record the plasma
-state, model choices, source reference, numerical tolerances, software
-revision, and quantitative comparison metrics.
+This page is the complete benchmark catalogue.  Each card opens a runnable
+benchmark report containing its physical state, model choices, provenance,
+quantitative diagnostics, and downloadable Python source.  Expensive quantum
+or molecular-dynamics calculations are represented by compact, checksummed
+accepted data; a documentation build never silently recomputes them.
 
-Published pages plot compact, curated arrays.  They do not rerun the
-expensive quantum electronic solver during a documentation build.  Select a
-card for its physical definition, literature provenance, quantitative audit,
-and reproducible plotting or recomputation entry point.
+The categories below are only a reading aid.  Every benchmark appears exactly
+once, and the left navigation links directly to the individual reports rather
+than passing through separate ``detailed`` and ``gallery`` index levels.
 
-All gallery figures use :mod:`otter.plotting` and are exported twice when a
-script runs: a high-resolution PNG for the web and a vector PDF for papers or
-slides.  The PDF paths are printed by each script and live under the
-corresponding ``benchmarks/outputs/<benchmark>/figures`` directory.
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+   :titlesonly:
 
-Carbon mean ionization
-----------------------
+   gen_benchmarks/plot_bethkenhagen_et_al_2020_carbon_ionization
+   gen_benchmarks/plot_starrett_saumon_2013_electronic
+   gen_benchmarks/plot_starrett_et_al_2014_mixtures_fig3
+   gen_benchmarks/plot_starrett_single_species_2013_2014
+   gen_benchmarks/plot_argha_roy_carbon_sii
+   gen_benchmarks/plot_schorner_et_al_2022_al_sii
+   gen_benchmarks/plot_johnson_et_al_2025_two_temperature_al
+   gen_benchmarks/plot_ch2_hnc_md
+   gen_benchmarks/plot_ion_structure_library
+   validation_policy
 
-Otter's :math:`\bar Z` and :math:`Z^*` are plotted with the model-dependent
-:math:`Z^{\rm free}` curves from Figure 3(a) of
-:cite:t:`BethkenhagenEtAl2020`.  These quantities use different electron
-partitions, so only their density dependence is compared.  The second figure
-tracks the carbon orbital energies.  Provenance for the digitized literature
-curves is given on the dedicated Bethkenhagen benchmark page.
+Electronic structure and ionization
+------------------------------------
 
 .. raw:: html
 
@@ -33,18 +40,34 @@ curves is given on the dedicated Bethkenhagen benchmark page.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Carbon mean ionization and pressure-ionization levels, with literature curves from Bethkenhagen et al. (2020).">
+    <div class="sphx-glr-thumbcontainer" tooltip="Carbon ionization diagnostics compared with the model-dependent curves in Bethkenhagen et al. (2020).">
 
 .. only:: html
 
-   .. image:: /gen_examples/images/thumb/sphx_glr_plot_carbon_ionization_levels_thumb.png
-      :alt: Otter carbon ionization and pressure-ionization levels
+   .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_bethkenhagen_et_al_2020_carbon_ionization_thumb.png
+      :alt: Bethkenhagen et al. carbon-ionization benchmark
 
-   :doc:`/gen_examples/plot_carbon_ionization_levels`
+   :doc:`gen_benchmarks/plot_bethkenhagen_et_al_2020_carbon_ionization`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Carbon ionization and pressure-ionization levels</div>
+      <div class="sphx-glr-thumbnail-title">Bethkenhagen 2020 carbon ionization</div>
+    </div>
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Otter IS and SC electronic levels, pressure-ionization weights, and mean ionization compared with Starrett and Saumon (2013).">
+
+.. only:: html
+
+   .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_starrett_saumon_2013_electronic_thumb.png
+      :alt: Starrett and Saumon electronic levels and ionization benchmark
+
+   :doc:`gen_benchmarks/plot_starrett_saumon_2013_electronic`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Starrett--Saumon electronic levels and ionization</div>
     </div>
 
 .. thumbnail-parent-div-close
@@ -53,17 +76,11 @@ curves is given on the dedicated Bethkenhagen benchmark page.
 
     </div>
 
-The literature-only comparison and its checksummed reference-data audit are
-available at
-:doc:`Bethkenhagen et al. (2020) carbon ionization
-<gen_benchmarks/plot_bethkenhagen_et_al_2020_carbon_ionization>`.
+Equilibrium ion structure
+-------------------------
 
-Equilibrium pair distributions: :math:`g_{ii}(r)`
---------------------------------------------------
-
-These pages compare radial pair distributions at
-:math:`T_e=T_i`.  Published curves are markers; Otter calculations are
-continuous lines.
+These reports compare :math:`g_{ab}(r)` or :math:`S_{ab}(k)` at
+:math:`T_e=T_i` with published or attributed reference data.
 
 .. raw:: html
 
@@ -73,12 +90,12 @@ continuous lines.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Nine-state CH1.36 pair-distribution comparison with the digitized IS-QM curves in Starrett et al. (2014), Figure 3.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Nine-state CH1.36 pair-distribution comparison with Figure 3 of Starrett et al. (2014).">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_starrett_et_al_2014_mixtures_fig3_thumb.png
-      :alt: Starrett et al. 2014 CH1.36 mixture benchmark
+      :alt: Starrett et al. CH1.36 mixture benchmark
 
    :doc:`gen_benchmarks/plot_starrett_et_al_2014_mixtures_fig3`
 
@@ -89,7 +106,7 @@ continuous lines.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Single-species pair-distribution comparisons with Starrett and Saumon, High Energy Density Physics 10, 35–42 (2014).">
+    <div class="sphx-glr-thumbcontainer" tooltip="Single-species pair-distribution comparisons with Starrett and Saumon (2014).">
 
 .. only:: html
 
@@ -103,54 +120,36 @@ continuous lines.
       <div class="sphx-glr-thumbnail-title">Starrett--Saumon single species</div>
     </div>
 
-.. thumbnail-parent-div-close
-
 .. raw:: html
 
-    </div>
-
-Equilibrium structure factors: :math:`S_{ii}(k)`
--------------------------------------------------
-
-These carbon and aluminium pages are equilibrium :math:`S_{ii}` comparisons:
-:math:`T_e=T_i` is stated for every displayed curve.
-
-.. raw:: html
-
-    <div class="sphx-glr-thumbnails">
-
-.. thumbnail-parent-div-open
-
-.. raw:: html
-
-    <div class="sphx-glr-thumbcontainer" tooltip="Current Otter PA-HNC carbon structure factors compared with DFT-MD data provided by Dr. Argha Roy at five equilibrium temperatures.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Otter PA-HNC carbon structure factors compared with DFT-MD data provided by Dr. Argha Roy.">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_argha_roy_carbon_sii_thumb.png
-      :alt: Current Otter PA-HNC and DFT-MD comparison using data provided by Dr. Argha Roy
+      :alt: Otter carbon structure factors and Argha Roy DFT-MD data
 
    :doc:`gen_benchmarks/plot_argha_roy_carbon_sii`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Carbon Otter PA-HNC and Dr. Argha Roy DFT-MD data</div>
+      <div class="sphx-glr-thumbnail-title">Carbon PA-HNC and DFT-MD</div>
     </div>
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Equilibrium aluminium LDA-PW92/PBE HNC, VMHNC, and same-potential MD structure factors compared with corrected Figure 2 DFT-MD curves from Schörner et al. (2022).">
+    <div class="sphx-glr-thumbcontainer" tooltip="Equilibrium aluminium LDA/PBE HNC, VMHNC, and same-potential MD compared with Schörner et al. (2022).">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_schorner_et_al_2022_al_sii_thumb.png
-      :alt: Schörner et al. 2022 aluminium HNC, VMHNC, and MD benchmark
+      :alt: Schörner et al. aluminium HNC VMHNC and MD benchmark
 
    :doc:`gen_benchmarks/plot_schorner_et_al_2022_al_sii`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Schörner 2022 aluminium bridges and MD</div>
+      <div class="sphx-glr-thumbnail-title">Schörner 2022 aluminium structure factors</div>
     </div>
 
 .. thumbnail-parent-div-close
@@ -159,11 +158,12 @@ These carbon and aluminium pages are equilibrium :math:`S_{ii}` comparisons:
 
     </div>
 
-Two-temperature / non-equilibrium ionic structure
---------------------------------------------------
+Two-temperature and method validation
+-------------------------------------
 
-Here :math:`T_e\ne T_i`; the page reports both temperatures and compares
-only like-for-like two-temperature states.
+These reports test explicitly labelled :math:`T_e\ne T_i` states or compare
+different ionic-structure treatments while holding the electronic pair
+potential fixed.
 
 .. raw:: html
 
@@ -173,12 +173,12 @@ only like-for-like two-temperature states.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Two-temperature aluminium pair distributions compared with Johnson, Shaffer, and Murillo (2025), Figure 2.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Two-temperature aluminium pair distributions compared with Johnson, Shaffer, and Murillo (2025).">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_johnson_et_al_2025_two_temperature_al_thumb.png
-      :alt: Johnson et al. 2025 two-temperature aluminium benchmark
+      :alt: Johnson et al. two-temperature aluminium benchmark
 
    :doc:`gen_benchmarks/plot_johnson_et_al_2025_two_temperature_al`
 
@@ -189,18 +189,18 @@ only like-for-like two-temperature states.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Nine CH2 equilibrium and two-temperature states comparing multicomponent HNC with same-QOZ-potential LAMMPS MD.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Nine PP (CH2) equilibrium and two-temperature states comparing multicomponent HNC with same-potential LAMMPS MD.">
 
 .. only:: html
 
    .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_ch2_hnc_md_thumb.png
-      :alt: CH2 HNC and same-potential MD benchmark
+      :alt: PP CH2 HNC and same-potential MD benchmark
 
    :doc:`gen_benchmarks/plot_ch2_hnc_md`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">CH2 HNC versus same-potential MD</div>
+      <div class="sphx-glr-thumbnail-title">PP (CH2): HNC versus same-potential MD</div>
     </div>
 
 .. thumbnail-parent-div-close
@@ -212,12 +212,6 @@ only like-for-like two-temperature states.
 Cross-observable literature library
 -----------------------------------
 
-This library is intentionally separate from the three homogeneous categories
-above.  It contains both :math:`g_{ii}(r)` and :math:`S_{ii}(k)`, and includes
-equilibrium and explicitly labelled two-temperature states.  Its page records
-the observable, :math:`T_e`, :math:`T_i`, coordinate units, source figure, and
-reference for every panel.
-
 .. raw:: html
 
     <div class="sphx-glr-thumbnails">
@@ -226,7 +220,7 @@ reference for every panel.
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Audited Otter gii and Sii comparisons with Al, Be, and C literature curves. Equilibrium and two-temperature panels are labelled separately.">
+    <div class="sphx-glr-thumbcontainer" tooltip="Audited Otter gii and Sii comparisons with aluminium, beryllium, and carbon literature curves.">
 
 .. only:: html
 
@@ -246,45 +240,8 @@ reference for every panel.
 
     </div>
 
-Detailed benchmark reports
---------------------------
-
-The cards above group comparisons by observable and thermodynamic regime.
-The reports below contain the longer physical interpretation and provenance;
-the runnable gallery contains the corresponding downloadable Python scripts.
-
-.. toctree::
-   :maxdepth: 1
-
-   starrett_et_al_2014_mixtures_fig3
-   ion_structure_library
-   starrett_single_species_2013_2014
-   johnson_et_al_2025_two_temperature_al
-   argha_roy_carbon_sii
-   schorner_et_al_2022_al_sii
-
-Runnable benchmark gallery
---------------------------
-
-.. toctree::
-   :maxdepth: 1
-
-   gen_benchmarks/index
-
 Validation and data governance
 ------------------------------
 
-Visual agreement is useful but insufficient.  Benchmark reports should include
-machine-readable errors, peak positions, charge closure, SCF/HNC residuals, and
-the exact physical-model configuration.  Digitized literature data must be
-clearly distinguished from native author data.  See
-:doc:`validation_policy` for the acceptance and public-release rules, or open
-the complete :doc:`runnable scientific benchmark gallery
-<gen_benchmarks/index>` to browse and download every Python script and
-notebook.
-
-.. toctree::
-   :hidden:
-   :maxdepth: 1
-
-   validation_policy
+The :doc:`validation policy <validation_policy>` defines acceptance metrics,
+reference-data provenance, and public-release rules.

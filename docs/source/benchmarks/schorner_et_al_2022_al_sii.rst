@@ -1,3 +1,5 @@
+:orphan:
+
 Schörner et al. (2022) aluminium structure factors
 ===================================================
 

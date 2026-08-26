@@ -1,3 +1,5 @@
+:orphan:
+
 Carbon PA-HNC and DFT-MD comparison
 ===================================
 

@@ -1,7 +1,8 @@
-# CH2 HNC versus same-potential MD baseline
+# Polypropylene (PP/CH2) HNC versus same-potential MD baseline
 
-This compact archive contains nine project-generated CH2 ion-structure
-comparisons at `rho = 0.946 g/cm^3`:
+This compact archive contains nine project-generated ion-structure
+comparisons for polypropylene (PP), represented by its reduced C:H
+composition, CH2, at `rho = 0.946 g/cm^3`:
 
 - `Te = 9, 29, 99 eV`;
 - `Ti/Te = 0.2, 0.5, 1.0`.
@@ -9,18 +10,34 @@ comparisons at `rho = 0.946 g/cm^3`:
 Six states are two-temperature calculations and three are equilibrium
 controls.  At each `Te`, one converged IS mixture electronic result is reused
 for all three ion temperatures.  Each HNC/MD pair uses the QOZ effective pair
-potential derived from that electronic result.  The two hottest MD states
+potential derived from that electronic result.  Ordinary HNC sets the bridge
+function `B_ab(r) = 0`; MD samples the classical many-ion distribution without
+that closure.  Their systematic difference at fixed potential therefore
+primarily tests the bridge correlations omitted by HNC, with finite-size,
+timestep, and MD sampling errors as additional contributions.  The two
+hottest MD states
 (`Te = 99 eV`, `Ti = 49.5, 99 eV`) restore the analytic Coulomb core below
 `0.3 Bohr` and blend back to the unmodified QOZ potential by `0.5 Bohr`; this
 removes a finite-grid ringing artifact without refitting the resolved
 first-shell interaction.
 
 The source calculation used 1024 C and 2048 H ions in LAMMPS, with NVT
-equilibration followed by NVE production.  The RDF uncertainty is the SEM
-across 20 sampling blocks.  The partial structure factors are direct periodic
-density-mode estimates, and their uncertainty is the SEM across 21 saved
-shell-averaged frames.  The gallery plots twice these SEM values and excludes
-reciprocal shells containing fewer than 12 vectors.
+equilibration followed by NVE production.  LAMMPS used 16 MPI ranks with one
+OpenMP thread per rank (16 concurrent CPU execution threads and a `2x2x4`
+processor grid); direct structure-factor analysis used eight workers.  The
+HNC driver and BLAS backends were restricted to one thread.  All nine states
+used the same cubic periodic box: side length `29.322944 Angstrom = 55.4123
+Bohr`, volume `25212.895 Angstrom^3`, and pair-potential cutoff `14.075013
+Angstrom = 0.48 L`, below the minimum-image limit `L/2`.  Seven states used
+`dt*omega_p = 0.005` and `10,000 + 100,000` steps.  The `(Te, Ti) =
+(99, 49.5) eV` state used `dt*omega_p = 4.9945e-4` and
+`100,110 + 1,001,098` steps; `(99, 99) eV` used
+`dt*omega_p = 3.5317e-4` and `141,577 + 1,415,766` steps.  In every case the
+NVT and NVE durations are `50` and `500 omega_p^-1`.  The RDF uncertainty is
+the SEM across 20 sampling blocks.  The partial structure factors are direct
+periodic density-mode estimates, and their uncertainty is the SEM across 21
+saved shell-averaged frames.  The gallery plots twice these SEM values and
+excludes reciprocal shells containing fewer than 12 vectors.
 
 The accepted pairwise RMSE ranges over `r <= 10 Bohr` and reliable
 `k <= 4 Bohr^-1` are:
@@ -29,7 +46,10 @@ The accepted pairwise RMSE ranges over `r <= 10 Bohr` and reliable
 - `S_ab(k)`: `0.006318--0.016941`.
 
 HNC took `0.376--1.164 s` per state.  MD plus analysis took
-`8.57--224.29 min`.  These results support HNC as a fast approximation only
+`8.57--224.29 min`.  Summing the nine independent ionic solves gives `6.74 s`
+for HNC and `7.76 h` for MD plus analysis.  Both timings start after the
+shared QOZ pair potential is available.  These results support HNC as a fast
+approximation only
 for the tested CH2 state window; they do not establish accuracy for arbitrary
 densities, chemically bonded regimes, or stronger coupling.
 

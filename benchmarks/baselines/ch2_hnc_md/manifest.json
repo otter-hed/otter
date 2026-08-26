@@ -1,7 +1,7 @@
 {
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "ch2_hnc_md",
-  "title": "CH2 HNC versus same-potential molecular dynamics",
+  "title": "Polypropylene (PP/CH2) HNC versus same-potential molecular dynamics",
   "status": "accepted",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
@@ -15,7 +15,7 @@
     "source_driver": "applications/ch2_xrts_dataset/compare_hnc_md.py",
     "source_driver_sha256_at_packaging": "2dc3dcd07c2c619d5cacb801156334b936951d7cc7e0de639041e3886770d2db",
     "gallery_script": "benchmarks/examples/plot_ch2_hnc_md.py",
-    "gallery_script_sha256": "48bd7cb207b4ca597edcad24b7aed1871266c8ce65f910443d5de6578bd076a8",
+    "gallery_script_sha256": "660a30e30474aa886fdb3f1e57bbf1cf3bd31150c730999fb8d5e45b69b7f24a",
     "git_commit_at_packaging": "78c51ad5d4f671f89428a62053538da8b11423db",
     "worktree_dirty_at_packaging": true,
     "md_driver_sha256_by_state": {
@@ -41,6 +41,7 @@
     }
   ],
   "configuration": {
+    "material_label": "polypropylene (PP), represented by reduced atomic composition CH2",
     "composition": "C1H2",
     "mass_density_g_cm3": 0.946,
     "electron_temperatures_ev": [9.0, 29.0, 99.0],
@@ -60,6 +61,16 @@
     },
     "same_potential_md": {
       "engine": "LAMMPS (7 Feb 2024 - Update 1)",
+      "mpi_processes": 16,
+      "openmp_threads_per_mpi_task": 1,
+      "lammps_processor_grid": [2, 2, 4],
+      "structure_factor_workers": 8,
+      "boundary_conditions": "cubic periodic",
+      "box_length_angstrom": 29.32294404316832,
+      "box_length_bohr": 55.412333409315,
+      "box_volume_angstrom3": 25212.894980056502,
+      "pair_potential_cutoff_angstrom": 14.075013139720793,
+      "cutoff_box_fraction": 0.48,
       "atoms": 3072,
       "carbon_atoms": 1024,
       "hydrogen_atoms": 2048,
@@ -67,6 +78,35 @@
       "timestep_omega_p_inv_default": 0.005,
       "equilibration_omega_p_inv": 50.0,
       "production_omega_p_inv": 500.0,
+      "measured_protocol_groups": [
+        {
+          "states": "all Te=9 and 29 eV states; Te=99 eV, Ti=19.8 eV",
+          "timestep_omega_p_inv": 0.005,
+          "timestep_ps": 1.3330154149423721e-05,
+          "nvt_steps": 10000,
+          "nve_steps": 100000,
+          "hnc_elapsed_s_range": [0.5393386429932434, 1.1641979110136162],
+          "md_plus_analysis_elapsed_s_range": [514.3252659979917, 562.9698621330026]
+        },
+        {
+          "state": "Te=99 eV, Ti=49.5 eV",
+          "timestep_omega_p_inv": 0.0004994518331957285,
+          "timestep_ps": 1.3315539853422648e-06,
+          "nvt_steps": 100110,
+          "nve_steps": 1001098,
+          "hnc_elapsed_s": 0.37809670498245396,
+          "md_plus_analysis_elapsed_s": 10773.073195161996
+        },
+        {
+          "state": "Te=99 eV, Ti=99 eV",
+          "timestep_omega_p_inv": 0.000353165778128752,
+          "timestep_ps": 9.415508525514881e-07,
+          "nvt_steps": 141577,
+          "nve_steps": 1415766,
+          "hnc_elapsed_s": 0.37649702597991563,
+          "md_plus_analysis_elapsed_s": 13457.237488774
+        }
+      ],
       "rdf_bins": 500,
       "rdf_blocks": 20,
       "trajectory_frames": 21,
@@ -79,6 +119,10 @@
         "blend_end_bohr": 0.5,
         "resolved_qoz_potential_refitted": false
       }
+    },
+    "hnc_cpu_configuration": {
+      "driver_processes": 1,
+      "blas_threads": 1
     }
   },
   "acceptance": {
@@ -90,7 +134,9 @@
     "pairwise_g_rmse_range": [0.002807062844960556, 0.018255400143250246],
     "pairwise_s_rmse_range": [0.006318247655633024, 0.016940849315049574],
     "hnc_elapsed_s_range": [0.37649702597991563, 1.1641979110136162],
-    "md_elapsed_s_range": [514.3252659979917, 13457.237488774]
+    "md_elapsed_s_range": [514.3252659979917, 13457.237488774],
+    "hnc_elapsed_s_sum": 6.742759518994717,
+    "md_elapsed_s_sum": 27944.785070653015
   },
   "baseline": {
     "path": "ch2_hnc_md.npz",

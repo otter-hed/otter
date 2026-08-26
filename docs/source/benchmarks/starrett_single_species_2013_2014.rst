@@ -1,3 +1,5 @@
+:orphan:
+
 Starrett--Saumon single-species ion structure
 ==============================================
 
