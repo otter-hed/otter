@@ -29,23 +29,22 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow  # noqa: E402
 
 
-# User-editable calculation controls.  Four simultaneous states with four
-# continuum workers each use at most 16 of a 24-core workstation.
+# Four independent states; each AA inherits the single-worker default.
 TEMPERATURES_EV = (1.0, 15.0, 50.0, 100.0)
 RHO_G_CC = 8.1
 MODELS = ("qm", "tf")
 MAX_STATE_WORKERS = 4
-CONTINUUM_WORKERS_PER_STATE = 4
-QOZ_N_POINTS = 4096
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
 OUTPUT_DIR = ROOT / "benchmarks" / "outputs" / "al_qm_tf" / "recomputed"
 SCHEMA = "otter_al_qm_tf_state_v2"
+STORAGE_PROFILE = "benchmark_analysis"
 
 
 def _git_commit() -> str:
@@ -108,16 +107,13 @@ def _producer_metadata() -> dict[str, Any]:
 
 def _configuration(temperature_ev: float, model: str) -> PlasmaWorkflowConfig:
     """Return one fully specified, reproducible Otter workflow."""
+    model_override = {} if model == "qm" else {"electronic_model": model}
     return PlasmaWorkflowConfig(
         elements=["Al"],
         temperature_ev=float(temperature_ev),
         ion_temperature_ev=float(temperature_ev),
         rho_g_cc=float(RHO_G_CC),
-        electronic_model=str(model),
-        aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-        },
+        **model_override,
         hnc_tol=HNC_TOL,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
         hnc_max_iter=1000,
@@ -248,38 +244,22 @@ def _solve_one(temperature_ev: float, model: str) -> dict[str, Any]:
         electronic["n_full"],
         R_RETAIN_MAX_BOHR,
     )
-    _, n_ext = _trim(electronic["r"], electronic["n_ext"], R_RETAIN_MAX_BOHR)
-    _, n_pa = _trim(electronic["r"], electronic["n_pa"], R_RETAIN_MAX_BOHR)
-    _, n_bound = _trim(
-        electronic["r"],
-        electronic["n_bound"],
-        R_RETAIN_MAX_BOHR,
-    )
-    _, n_cont = _trim(electronic["r"], electronic["n_cont"], R_RETAIN_MAX_BOHR)
     _, n_ion = _trim(electronic["r"], electronic["n_ion"], R_RETAIN_MAX_BOHR)
     _, n_scr = _trim(electronic["r"], electronic["n_scr"], R_RETAIN_MAX_BOHR)
-    _, v_full = _trim(electronic["r"], electronic["v_full"], R_RETAIN_MAX_BOHR)
     r_i, gii = _trim(ion["r"], ion["gii_r"], R_RETAIN_MAX_BOHR)
     k, sii = _trim(ion["k"], ion["sii_k"], K_RETAIN_MAX_BOHR_INV)
-    _, vii_k = _trim(ion["k"], ion["vii_k"], K_RETAIN_MAX_BOHR_INV)
     return {
         "model": str(model),
         "temperature_ev": float(temperature_ev),
         "elapsed_s": float(elapsed_s),
         "r_e": r_e,
         "n_full": n_full,
-        "n_ext": n_ext,
-        "n_pa": n_pa,
-        "n_bound": n_bound,
-        "n_cont": n_cont,
         "n_ion": n_ion,
         "n_scr": n_scr,
-        "v_full": v_full,
         "r_i": r_i,
         "k": k,
         "gii": gii,
         "sii": sii,
-        "vii_k": vii_k,
         "n0": float(electronic["n0"]),
         "zbar_aa": float(electronic["zbar"]),
         "zbar_partition": float(ion["zbar_partition"]),
@@ -321,12 +301,10 @@ def _combined_payload(
     k = np.asarray(reference["k"], dtype=float)
     gii = []
     sii = []
-    vii_k = []
     for model in MODELS:
         state = by_model[model]
         gii.append(_interpolate(r_ion, state["r_i"], state["gii"]))
         sii.append(_interpolate(k, state["k"], state["sii"]))
-        vii_k.append(_interpolate(k, state["k"], state["vii_k"]))
 
     signature = {
         "state": {
@@ -338,12 +316,14 @@ def _combined_payload(
         "electronic_models": list(MODELS),
         "structure_model": "IS",
         "aa_n_points": 4096,
-        "continuum_workers_per_state": CONTINUUM_WORKERS_PER_STATE,
+        "continuum_workers_per_state": FullExternalConfig.cont_n_jobs,
         "bound_occ_mode": "fd",
         "bound_rmax_mult": None,
         "bound_zero_tail_refine": False,
         "b3_tail_model": "full",
-        "qoz_n_points_before_padding": QOZ_N_POINTS,
+        "qoz_n_points_before_padding": int(
+            _configuration(temperature_ev, "qm").qoz_linear_n_points
+        ),
         "lfc_model": "chabrier1990",
         "hnc_tolerance": HNC_TOL,
         "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
@@ -352,6 +332,7 @@ def _combined_payload(
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "benchmark_id": np.asarray("al_qm_tf"),
+        "storage_profile": np.asarray(STORAGE_PROFILE),
         "element_symbol": np.asarray("Al"),
         "rho_g_cc": np.asarray(RHO_G_CC),
         "temperature_ev": np.asarray(float(temperature_ev)),
@@ -372,19 +353,12 @@ def _combined_payload(
         "k_bohr_inv": k,
         "gii_r": np.asarray(gii),
         "sii_k": np.asarray(sii),
-        "vii_k_ha_bohr3": np.asarray(vii_k),
         "zbar_aa_ws": np.asarray([by_model[m]["zbar_aa"] for m in MODELS]),
         "zbar_partition": np.asarray(
             [by_model[m]["zbar_partition"] for m in MODELS]
         ),
         "mu_ha": np.asarray([by_model[m]["mu"] for m in MODELS]),
         "r_ws_bohr": np.asarray([by_model[m]["r_ws"] for m in MODELS]),
-        # ``hnc_residual`` remains as a v2 compatibility alias, but it is
-        # explicitly the residual of the archived output rather than merely
-        # the best iterate seen at some earlier iteration.
-        "hnc_residual": np.asarray(
-            [by_model[m]["hnc_output_residual"] for m in MODELS]
-        ),
         "hnc_output_residual": np.asarray(
             [by_model[m]["hnc_output_residual"] for m in MODELS]
         ),
@@ -414,23 +388,15 @@ def _combined_payload(
     for model in MODELS:
         state = by_model[model]
         payload[f"r_{model}_bohr"] = np.asarray(state["r_e"], dtype=float)
-        for key in (
-            "n_full",
-            "n_ext",
-            "n_pa",
-            "n_bound",
-            "n_cont",
-            "n_ion",
-            "n_scr",
-        ):
+        # These are the only electronic profiles consumed by the gallery and
+        # its numerical metrics.  Potentials, orbital-resolved densities, and
+        # unused partition channels remain available through Otter's public
+        # ``complete`` state export, but do not belong in this benchmark.
+        for key in ("n_full", "n_ion", "n_scr"):
             payload[f"{key}_{model}_bohr3"] = np.asarray(
                 state[key],
                 dtype=float,
             )
-        payload[f"v_full_{model}_ha"] = np.asarray(
-            state["v_full"],
-            dtype=float,
-        )
     for key, value in payload.items():
         array = np.asarray(value)
         if array.dtype.hasobject:
@@ -506,6 +472,7 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
         "producer": producer,
         "configuration": {
             "rho_g_cc": RHO_G_CC,
+            "storage_profile": STORAGE_PROFILE,
             "temperatures_ev": list(TEMPERATURES_EV),
             "models": list(MODELS),
             "structure_model": "IS",
@@ -514,7 +481,9 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
             "bound_rmax_mult": None,
             "bound_zero_tail_refine": False,
             "b3_tail_model": "full",
-            "qoz_n_points_before_padding": QOZ_N_POINTS,
+            "qoz_n_points_before_padding": int(
+                _configuration(TEMPERATURES_EV[0], "qm").qoz_linear_n_points
+            ),
             "lfc_model": "chabrier1990",
             "hnc_tolerance": HNC_TOL,
             "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
@@ -539,8 +508,6 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
             "radius": "Bohr",
             "wavenumber": "Bohr^-1",
             "electronic_density": "Bohr^-3",
-            "effective_pair_potential_r": "Hartree",
-            "effective_pair_potential_k": "Hartree Bohr^3",
             "temperature": "eV",
             "mass_density": "g cm^-3",
             "gii_and_sii": "dimensionless",

@@ -51,9 +51,8 @@ RHO_G_CC = 8.1
 TEMPERATURES_EV = (1.0, 15.0, 50.0, 100.0)
 ELECTRONIC_MODELS = ("qm", "tf")
 
-# Four state workers x four continuum workers use at most about 16 workers.
+# Four independent state workers; each AA uses the single-worker default.
 MAX_STATE_WORKERS = 4
-CONTINUUM_WORKERS_PER_STATE = 4
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 R_RETAIN_MAX_BOHR = 20.0
@@ -130,16 +129,13 @@ def load_precomputed_states() -> list[dict[str, np.ndarray]]:
 
 def workflow_config(temperature_ev: float, model: str) -> PlasmaWorkflowConfig:
     """Build the complete public Otter calculation for one model/state."""
+    model_override = {} if model == "qm" else {"electronic_model": model}
     return PlasmaWorkflowConfig(
         elements=["Al"],
         temperature_ev=float(temperature_ev),
         ion_temperature_ev=float(temperature_ev),
         rho_g_cc=float(RHO_G_CC),
-        electronic_model=str(model),
-        aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-        },
+        **model_override,
         hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=1000,

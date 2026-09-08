@@ -25,6 +25,10 @@ def _run_synthetic(monkeypatch: pytest.MonkeyPatch, evaluator, **overrides):
         energy = float(args[4])
         l_max = int(args[5])
         density, phases = evaluator(energy, l_max)
+        if kwargs.get("_phase_channel") is not None:
+            selected = np.zeros(l_max + 1)
+            selected[kwargs["_phase_channel"]] = phases[kwargs["_phase_channel"]]
+            return None, selected
         return np.full_like(grid.r, float(density)), np.asarray(phases, dtype=float)
 
     monkeypatch.setattr(quantum, "_scattering_density_and_phase", _fake_scattering)
@@ -52,6 +56,99 @@ def _run_synthetic(monkeypatch: pytest.MonkeyPatch, evaluator, **overrides):
     }
     options.update(overrides)
     return quantum.continuum_density_scattering_adaptive(**options)
+
+
+@pytest.mark.parametrize("adaptive_mode", ["simpson", "bisection", "phase-root"])
+def test_workers_preserve_serial_adaptive_nodes_and_density(monkeypatch, adaptive_mode) -> None:
+    """Worker count must change scheduling, not the discretized AA map.
+
+    Inline workers exercise the batching path without OS-specific fork or
+    pickling requirements. Real parallel AA comparisons live in the runner.
+    """
+    from types import SimpleNamespace
+
+    class InlinePool:
+        def __init__(self, *, processes, initializer, initargs):
+            initializer(*initargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def map(self, function, values):
+            return list(map(function, values))
+
+    monkeypatch.setattr(quantum.mp, "get_context", lambda method: SimpleNamespace(Pool=InlinePool))
+
+    def spectrum(energy, l_max):
+        return 1.0 + np.exp(-((energy - 0.63) / 0.06)**2), np.zeros(l_max + 1)
+
+    cache = {}
+    serial, serial_meta = _run_synthetic(
+        monkeypatch, spectrum, energy_cache=cache, n_jobs=1, adaptive_mode=adaptive_mode
+    )
+    for mode, workers, shards, policy in (
+        ("batch", 2, 12, "egrid"), ("batch", 4, 12, "egrid"),
+        ("shard", 2, 1, "egrid"), ("shard", 4, 12, "egrid"),
+        ("shard", 2, 256, "cost"), ("shard", 4, 3, "cost"),
+    ):
+        parallel_cache = {}
+        parallel, parallel_meta = _run_synthetic(
+            monkeypatch, spectrum, energy_cache=parallel_cache,
+            n_jobs=workers, adaptive_parallel_mode=mode, adaptive_mode=adaptive_mode,
+            adaptive_shards=shards, adaptive_shard_policy=policy,
+        )
+        assert sorted(cache) == sorted(parallel_cache)
+        np.testing.assert_allclose(parallel, serial, rtol=1e-14, atol=1e-14)
+        assert serial_meta["quadrature_energies"] == parallel_meta["quadrature_energies"]
+        np.testing.assert_allclose(serial_meta["quadrature_weights"],
+                                   parallel_meta["quadrature_weights"], rtol=1e-14)
+
+
+@pytest.mark.parametrize("mode", ["simpson", "bisection", "phase-root"])
+def test_reused_basis_retains_the_accepted_quadrature(monkeypatch, mode):
+    """Basis reuse must integrate with the rule actually tested for accuracy."""
+    def spectrum(energy, l_max):
+        return 1 + energy**2, np.zeros(l_max + 1)
+
+    cache = {}
+    value, meta = _run_synthetic(
+        monkeypatch, spectrum, adaptive_mode=mode, energy_cache=cache, e_tol=0.1,
+    )
+    nodes = np.asarray(meta["quadrature_energies"])
+    weights = np.asarray(meta["quadrature_weights"])
+    assert weights.sum() == pytest.approx(1.0)
+    assert np.all(weights > 0)
+    reused = weights @ np.stack([cache[e][0] for e in nodes])
+    exact = 1 + (1.1**3 - 0.1**3)/3
+    np.testing.assert_allclose(reused, value, rtol=1e-14)
+    np.testing.assert_allclose(reused, exact, rtol=1e-14)
+    # This is the former bug: merely reusing the same nodes is not enough.
+    assert abs(np.trapezoid(1 + nodes**2, nodes) - exact) > 1e-5
+
+
+def test_simpson_does_not_refine_arbitrary_pi_phase_sign(monkeypatch):
+    def phases(energy, l_max):
+        delta = np.full(l_max + 1, -0.1 if energy < 0.53 else np.pi - 0.1)
+        return 1.0, delta
+
+    _, meta = _run_synthetic(monkeypatch, phases, delta_tol=np.pi/2)
+    assert meta["delta_hits"] == 0
+    assert meta["max_depth"] == 0
+
+
+def test_bisection_retains_a_sampled_physical_pi_wide_resonance(monkeypatch):
+    def resonance(energy, l_max):
+        delta = np.zeros(l_max+1)
+        delta[1] = np.arctan2(0.02, 0.725-energy)
+        return 1.0, delta
+
+    _, meta = _run_synthetic(monkeypatch, resonance, adaptive_mode="bisection",
+                             delta_tol=np.pi/2)
+    assert meta["bisection_intervals"] > 0
+    assert meta["n_windows"] > 0
 
 
 def test_phase_root_scout_integrates_subgrid_l1_resonance(
@@ -156,6 +253,79 @@ def test_phase_root_scout_rejects_equivalent_pi_phase_branch(
     assert float(value[0]) == pytest.approx(1.0)
     assert meta["theta_roots"] == []
     assert bool(meta["theta_fallback"])
+
+
+def test_density_only_zero_potential_omits_noisy_regular_roots(monkeypatch):
+    def noisy_free(energy, l_max):
+        phases = np.full(l_max + 1, 1e-10*np.sin(31*energy))
+        return 1.0 + 0.05*energy**2, phases
+
+    baseline, old = _run_synthetic(monkeypatch, noisy_free, adaptive_mode="phase-root")
+    actual, new = _run_synthetic(monkeypatch, noisy_free, adaptive_mode="phase-root",
+                                 _density_only=True)
+    np.testing.assert_array_equal(actual, baseline)
+    assert old["theta_candidates"] > 0 and not old["theta_free_reference_skipped"]
+    assert new["theta_free_reference_skipped"] and new["theta_root_evals"] == 0
+    assert new["n_eval"] < old["n_eval"]
+    for key in ("quadrature_energies", "quadrature_weights", "quadrature_panels", "theta_roots"):
+        assert new[key] == old[key]
+
+
+@pytest.mark.parametrize("potential", [-1e-100, 1e-100])
+def test_density_only_hint_never_suppresses_nonzero_potential_resonance(monkeypatch, potential):
+    # Even a tiny but nonzero V must not be classified as a free reference.
+    def resonant(energy, l_max):
+        phases = np.zeros(l_max + 1)
+        phases[1] = np.arctan2(1e-5, 0.531234-energy)
+        return 1.0 + 0.2e-5/np.pi/((energy-0.531234)**2 + 1e-10), phases
+
+    options = dict(v_eff=np.full(48, potential), adaptive_mode="phase-root",
+                   resonance_theta_root_tol=1e-10, resonance_theta_refine_depth=22)
+    expected, old = _run_synthetic(monkeypatch, resonant, **options)
+    actual, new = _run_synthetic(monkeypatch, resonant, **options,
+                                 _density_only=True)
+    np.testing.assert_array_equal(actual, expected)
+    assert not new["theta_free_reference_skipped"]
+    assert len(new["theta_roots"]) == 1 and new == old
+
+
+@pytest.mark.parametrize("cache", [None, {}])
+def test_density_wrapper_preserves_requested_transport_cache(monkeypatch, cache):
+    seen = []
+    def adaptive(v, r, *args, **kwargs):
+        seen.append(kwargs)
+        return np.ones_like(r), {}
+    monkeypatch.setattr(quantum, "continuum_density_scattering_adaptive", adaptive)
+    r = create_sqrt_grid(rmax=2., N=48).r
+    quantum.QuantumContinuumScattering().density(r, 0., 1., params={
+        "v_eff": np.zeros_like(r), "energy_cache": cache, "tail_match": False,
+    })
+    assert seen[0]["_density_only"] is (cache is None)
+    assert seen[0]["energy_cache"] is cache
+
+
+def test_partial_probe_cache_cannot_replace_density_or_transport(monkeypatch):
+    def resonant(energy, l_max):
+        phases = np.zeros(l_max + 1)
+        phases[1] = np.arctan2(1e-5, .531234-energy)
+        return 1. + .2e-5/np.pi/((energy-.531234)**2 + 1e-10), phases
+    options = dict(v_eff=np.full(48, .1), adaptive_mode="phase-root",
+                   resonance_theta_root_tol=1e-10, resonance_theta_refine_depth=22)
+    expected, old = _run_synthetic(monkeypatch, resonant, **options)
+    actual, new = _run_synthetic(monkeypatch, resonant, **options,
+                                 energy_cache=None, _density_only=True)
+    np.testing.assert_array_equal(actual, expected)
+    assert new["n_phase_eval"] > 0 and len(new["theta_roots"]) == 1
+    for key in ("quadrature_energies", "quadrature_weights", "quadrature_panels",
+                "theta_roots", "theta_candidates", "theta_rejected", "theta_root_evals"):
+        assert new[key] == old[key]
+    # An explicit cache promises complete spectra, regardless of the hint.
+    cache = {}
+    complete, cached = _run_synthetic(monkeypatch, resonant, **options,
+                                      energy_cache=cache, _density_only=True)
+    np.testing.assert_array_equal(complete, expected)
+    assert cached["n_phase_eval"] == 0 and cached["n_eval"] == old["n_eval"]
+    assert all(n is not None for n, _ in cache.values())
 
 
 def test_multiresolution_scout_resolves_off_anchor_even_root_pair(
@@ -281,10 +451,10 @@ def test_coincident_multichannel_roots_share_one_usable_window(
     assert {int(item["cluster_id"]) for item in meta["theta_roots"]} == {0}
 
 
-def test_phase_root_shard_request_is_forced_to_global_batch(
+def test_phase_root_shards_keep_boundary_centred_global_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Independent energy shards cannot safely own boundary-centred roots."""
+    """A root at an old shard edge still owns a symmetric global panel."""
     e_root = 0.6  # exactly on the requested two-shard boundary
     gamma = 2.0e-5
 
@@ -294,21 +464,22 @@ def test_phase_root_shard_request_is_forced_to_global_batch(
         lorentzian = (gamma / np.pi) / ((energy - e_root) ** 2 + gamma**2)
         return 1.0 + 0.2 * lorentzian, phases
 
-    with pytest.warns(RuntimeWarning, match="forcing adaptive_parallel_mode='batch'"):
-        _, meta = _run_synthetic(
-            monkeypatch,
-            evaluator,
-            adaptive_mode="phase-root",
-            n_jobs=2,
-            adaptive_parallel_mode="shard",
-            adaptive_shards=2,
-            resonance_theta_root_tol=1.0e-10,
-            resonance_theta_refine_depth=22,
-        )
+    value, meta = _run_synthetic(
+        monkeypatch,
+        evaluator,
+        adaptive_mode="phase-root",
+        n_jobs=2,
+        adaptive_parallel_mode="shard",
+        adaptive_shards=2,
+        resonance_theta_root_tol=1.0e-10,
+        resonance_theta_refine_depth=22,
+    )
 
     assert meta["adaptive_parallel_mode_requested"] == "shard"
-    assert meta["adaptive_parallel_mode"] == "batch"
-    assert bool(meta["theta_shard_mode_forced_batch"])
+    assert meta["adaptive_parallel_mode"] == "shard"
+    assert meta["adaptive_mesh_policy"] == "global_shared"
+    assert not meta["theta_shard_mode_forced_batch"]
+    assert float(value[0]) == pytest.approx(1.2, rel=3e-3)
     assert len(meta["theta_roots"]) == 1
     assert int(meta["n_windows"]) == 1
 

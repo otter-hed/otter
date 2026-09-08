@@ -3,18 +3,22 @@
   "benchmark_id": "carbon_lfc_sensitivity",
   "status": "accepted",
   "metrics_file": "metrics.csv",
-  "metrics_sha256": "dbbf841670edc65c5040666aae3c53b9a388fab8c454040c6ec4a9736688d881",
+  "metrics_sha256": "7f7947e2eec7191d892cc670f1bfd476c41f7bb6fb0c7095165e0d29a511093c",
   "title": "Carbon finite-temperature LFC sensitivity at 5 g cm^-3",
   "producer": {
     "project": "Otter",
-    "git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9",
+    "git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
     "script_relative_path": "benchmarks/runners/regenerate_carbon_lfc_sensitivity.py",
-    "script_sha256": "d5d23771df62c09193332c462867ff88d385090e132e36b0c8d775c8f7f956d2",
-    "script_sha256_at_generation": "d5d23771df62c09193332c462867ff88d385090e132e36b0c8d775c8f7f956d2",
-    "script_sha256_current": "d5d23771df62c09193332c462867ff88d385090e132e36b0c8d775c8f7f956d2",
+    "script_sha256": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
+    "script_sha256_at_generation": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
+    "script_sha256_current": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
     "worktree_clean_at_generation": false,
-    "git_status_porcelain_sha256": "2796b72036b6ba2038eb771ffb93f2c81b8836b44f39d559aeb349c18c3261e6",
-    "note": "git_commit identifies HEAD only. When worktree_clean_at_generation is false, script_sha256 and the status hash disclose that uncommitted source participated."
+    "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
+    "note": "git_commit identifies HEAD only. When worktree_clean_at_generation is false, script_sha256 and the status hash disclose that uncommitted source participated.",
+    "revision_identification": "Recovered from the immutable campaign source SHA-256 inventory; producer ran from a Git archive without .git.",
+    "git_reported_at_generation": "unknown",
+    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+    "source_inventory": "../validation_20260908.json"
   },
   "data_rights": {
     "origin_type": "project_generated_numerical_output",
@@ -71,6 +75,7 @@
   },
   "configuration": {
     "rho_g_cc": 5.0,
+    "storage_profile": "benchmark_analysis",
     "temperatures_ev": [
       2.0,
       100.0
@@ -106,21 +111,25 @@
       "rho_g_cc": 5.0,
       "temperature_ev": 2.0,
       "data_file": "C_rho5gcc_T2eV_lfc.npz",
-      "data_sha256": "3801d95e0b6fab1620f95a3ecdb3f22824bcf8cf48d05fbfbe92b2ff5968a729",
-      "zbar_partition": 4.000010553039886,
+      "data_sha256": "77a019aa638a9615cf8c611e9bf62cb281e8da46ade3f526371ead1868389b38",
+      "zbar_partition": 4.000010545463363,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 5875
+      "n_model_points": 5875,
+      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
     },
     {
       "rho_g_cc": 5.0,
       "temperature_ev": 100.0,
       "data_file": "C_rho5gcc_T100eV_lfc.npz",
-      "data_sha256": "9a191f8b4945122c8c8f654c688425d47980eb497b5d983433e329492916883c",
-      "zbar_partition": 4.546742347627054,
+      "data_sha256": "4d26781d7daa4f3afa396b92c6006992a5297b7c25a32ddac1c414e59f12c02d",
+      "zbar_partition": 4.547246805418974,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "zero_tail_matched",
-      "n_model_points": 5875
+      "n_model_points": 5875,
+      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
     }
-  ]
+  ],
+  "validation_scope": "completed_is_campaign",
+  "validation_inventory": "../validation_20260908.json"
 }

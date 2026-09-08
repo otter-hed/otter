@@ -40,6 +40,8 @@ from otter.io import save_mixture_data
 from otter.electronic.full_external import (
     FullExternalConfig,
     _resolve_outer_geometry,
+    _threshold_refine_cont_rmax_mult,
+    _threshold_energy_refinement,
     solve_full_only,
     solve_full_then_external,
 )
@@ -293,6 +295,14 @@ def _species_result_eligibility(
     result_meta = dict(result_meta) if isinstance(result_meta, dict) else {}
     b3_mode = str(result_meta.get("b3_tail_stage2_mode", "")).strip().lower()
     b3_target = str(result_meta.get("b3_tail_target", "")).strip().lower()
+    zero_tail = result.get("zero_tail_bound_meta", {})
+    diffuse_threshold_with_cont_b3 = bool(
+        str(result.get("threshold_state_localization", "none")).strip().lower()
+        == "diffuse"
+        and isinstance(zero_tail, dict)
+        and zero_tail.get("applied", False)
+        and b3_target == "cont"
+    )
     full_tail_meta = result.get("n_full_tail_meta", None)
     if (
         b3_mode == "in_scf"
@@ -303,6 +313,8 @@ def _species_result_eligibility(
         reasons.append("b3_full_tail_unapplied")
 
     if require_external:
+        if diffuse_threshold_with_cont_b3:
+            reasons.append("diffuse_threshold_requires_full_b3")
         b3_post_diagnostic = (
             result.get("b3_post_self_consistent", None) is False
             or str(result_meta.get("b3_tail_stage2_mode", "")).strip().lower() == "post"
@@ -364,17 +376,24 @@ def _threshold_refine_config(
         # A pressure-ionized orbital can be completely absent from the final
         # SCF frame.  In that case ``shallowest`` only reports the next deeper
         # surviving shell and cannot reveal the angular momentum of the state
-        # that was flipping earlier in the history (Te=23 C is the concrete
-        # example).  The retry is already guarded by a diagnosed threshold
-        # failure, so scout every low-l channel in the element's configured
-        # bound basis.  Channels without a negative-energy pole are unchanged.
+        # that was flipping earlier in the history (CH2 carbon is the concrete
+        # example).  For an automatic basis, scout through the highest
+        # physically occupied angular channel but not the additional ``l_pad``
+        # channels included only to audit basis completeness.  Explicit manual
+        # bases retain their requested full angular coverage.
         try:
             configured_l = np.asarray(
                 threshold_result.get("bound_basis_l_list", []), dtype=float
             )
             configured_l = configured_l[np.isfinite(configured_l)]
             if configured_l.size:
-                refine_l_max = max(refine_l_max, int(np.max(configured_l)))
+                configured_l_max = int(np.max(configured_l))
+                if not cfg_species._use_manual_bound_basis():
+                    configured_l_max = max(
+                        configured_l_max - int(cfg_species.bound_auto_l_pad),
+                        0,
+                    )
+                refine_l_max = max(refine_l_max, configured_l_max)
         except (TypeError, ValueError):
             pass
         diagnostics = threshold_result.get("bound_state_diagnostics", {})
@@ -399,7 +418,7 @@ def _threshold_refine_config(
             nuclear_charge = -1
         if 0 < nuclear_charge <= 2:
             refine_l_max = max(int(cfg_species.bound_zero_tail_l_max), shallow_l, 0)
-    return replace(
+    return _threshold_energy_refinement(replace(
         cfg_species,
         v_full_init=(None if cold_start else cfg_species.v_full_init),
         continuation_stage2_from_init=bool(
@@ -409,6 +428,8 @@ def _threshold_refine_config(
         bound_energy_cut_mode="zero",
         bound_zero_tail_refine=True,
         bound_zero_tail_l_max=int(refine_l_max),
+        cont_rmax_mult=_threshold_refine_cont_rmax_mult(cfg_species),
+        cont_parallel_mode="batch",
         # An s state transfers through the ordinary threshold mesh.  For
         # l>=1 the centrifugal barrier produces a shape resonance, so locate
         # its invariant phase root explicitly while it crosses E=0.
@@ -426,14 +447,12 @@ def _threshold_refine_config(
             _ROOT_THRESHOLD_RETRY_MAX_ITER,
         ),
         scf_dn_tol=min(
-            float(cfg_species.scf_dn_tol),
-            _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
+            float(cfg_species.scf_dn_tol), _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
         ),
         scf_dv_tol=min(
-            float(cfg_species.scf_dv_tol),
-            _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
+            float(cfg_species.scf_dv_tol), _ROOT_THRESHOLD_RETRY_CHANGE_TOL,
         ),
-    )
+    ))
 
 
 def _has_bound_charge_branch_flips(result: dict[str, Any]) -> bool:
@@ -764,6 +783,7 @@ def _local_theta_refine(
     root_tol: float,
     max_nfev: int,
     half_width: float = 0.20,
+    residual_tol: float | None = None,
 ) -> np.ndarray | None:
     """
     Apply one small local direct refinement around an existing mixture point.
@@ -780,6 +800,10 @@ def _local_theta_refine(
         Maximum additional evaluator calls.
     half_width
         Symmetric trust-region half-width in each theta coordinate.
+    residual_tol
+        Optional physical common-chemical-potential target.  Stop as soon as
+        the true AA residual reaches this value instead of continuing to the
+        tighter numerical coordinate tolerance.
 
     Returns
     -------
@@ -797,9 +821,25 @@ def _local_theta_refine(
     lower = theta0 - float(half_width)
     upper = theta0 + float(half_width)
     tol = max(float(root_tol), 1.0e-8)
+
+    class _ResidualToleranceReached(Exception):
+        def __init__(self, theta: np.ndarray) -> None:
+            super().__init__()
+            self.theta = np.asarray(theta, dtype=float).copy()
+
+    def _residual(theta: np.ndarray) -> np.ndarray:
+        values = np.asarray(evaluator.residual(theta), dtype=float)
+        if (
+            residual_tol is not None
+            and np.all(np.isfinite(values))
+            and float(np.max(np.abs(values))) <= float(residual_tol)
+        ):
+            raise _ResidualToleranceReached(theta)
+        return values
+
     try:
         opt = least_squares(
-            evaluator.residual,
+            _residual,
             theta0,
             bounds=(lower, upper),
             method="trf",
@@ -808,6 +848,8 @@ def _local_theta_refine(
             gtol=tol,
             max_nfev=max(int(max_nfev), 4),
         )
+    except _ResidualToleranceReached as reached:
+        return reached.theta
     except Exception:
         return None
     if not np.all(np.isfinite(opt.x)):
@@ -815,181 +857,35 @@ def _local_theta_refine(
     return np.asarray(opt.x, dtype=float)
 
 
-def _scalar_theta_bracket_refine(
-    evaluator: "_MixtureEvaluator",
-    *,
-    theta_center: np.ndarray,
+def _adaptive_local_root_tolerances(
     root_tol: float,
-    max_nfev: int,
-    half_widths: tuple[float, ...] = (0.01, 0.02, 0.04, 0.08, 0.16, 0.28),
-) -> np.ndarray | None:
-    """
-    Refine one binary-mixture theta by bracketing a sign change in the direct residual.
-
-    Notes
-    -----
-    For binary mixtures the common-`mu` closure is one-dimensional. On hard
-    cases the direct residual can still show a local sign change near the
-    physically correct branch even when a local least-squares polish stalls.
-    A small direct `brentq` pass on the true AA residual is more robust in
-    that situation than continuing with a broad surrogate reseed.
-    """
-    theta0 = np.asarray(theta_center, dtype=float).reshape(-1)
-    if theta0.size != 1:
-        return None
-
-    xtol = max(float(root_tol), 1.0e-8)
-    center = float(theta0[0])
-    f_center = float(np.asarray(evaluator.residual(theta0), dtype=float).reshape(-1)[0])
-    if not np.isfinite(f_center):
-        return None
-    if abs(f_center) <= xtol:
-        return theta0.copy()
-
-    def _f(theta_val: float) -> float:
-        return float(
-            np.asarray(evaluator.residual(np.asarray([float(theta_val)], dtype=float)), dtype=float).reshape(-1)[0]
-        )
-
-    for half_width in tuple(float(val) for val in half_widths):
-        left = float(center - half_width)
-        right = float(center + half_width)
-        f_left = _f(left)
-        if not np.isfinite(f_left):
-            continue
-        if abs(f_left) <= xtol:
-            return np.asarray([left], dtype=float)
-        if np.sign(f_left) != np.sign(f_center):
-            try:
-                theta_star = float(
-                    brentq(
-                        _f,
-                        left,
-                        center,
-                        xtol=xtol,
-                        rtol=xtol,
-                        maxiter=max(1, int(max_nfev)),
-                    )
-                )
-            except Exception:
-                theta_star = np.nan
-            if np.isfinite(theta_star):
-                return np.asarray([theta_star], dtype=float)
-
-        f_right = _f(right)
-        if not np.isfinite(f_right):
-            continue
-        if abs(f_right) <= xtol:
-            return np.asarray([right], dtype=float)
-        if np.sign(f_center) != np.sign(f_right):
-            try:
-                theta_star = float(
-                    brentq(
-                        _f,
-                        center,
-                        right,
-                        xtol=xtol,
-                        rtol=xtol,
-                        maxiter=max(1, int(max_nfev)),
-                    )
-                )
-            except Exception:
-                theta_star = np.nan
-            if np.isfinite(theta_star):
-                return np.asarray([theta_star], dtype=float)
-
-        if np.sign(f_left) != np.sign(f_right):
-            try:
-                theta_star = float(
-                    brentq(
-                        _f,
-                        left,
-                        right,
-                        xtol=xtol,
-                        rtol=xtol,
-                        maxiter=max(1, int(max_nfev)),
-                    )
-                )
-            except Exception:
-                theta_star = np.nan
-            if np.isfinite(theta_star):
-                return np.asarray([theta_star], dtype=float)
-    return None
-
-
-def _scalar_theta_scan_bracket_refine(
-    evaluator: "_MixtureEvaluator",
     *,
-    theta_min: float,
-    theta_max: float,
-    n_points: int,
-    root_tol: float,
-    max_nfev: int,
-) -> tuple[np.ndarray | None, tuple[float, float] | None]:
+    floor: float = 1.0e-6,
+) -> tuple[float, ...]:
+    """Return tighter decade-wise fallback tolerances down to one floor.
+
+    The configured tolerance has already been used by the primary solve, so
+    the public default yields only ``(1e-5, 1e-6)``.  An explicit tolerance at
+    or below the floor has no tighter fallback.  These are numerical
+    theta-solver tolerances; production acceptance remains governed by
+    ``mu_e_tol``.
     """
-    Scan one binary-mixture theta interval and refine the best sign-change bracket.
-
-    Notes
-    -----
-    This is the robust fallback for hard binary common-mu points. It evaluates
-    the true AA residual on one small 1D grid, identifies adjacent sign-change
-    intervals, and then applies `brentq` on the direct residual inside the best
-    bracket. No surrogate continuity is assumed beyond the local bracket.
-    """
-    n_grid = max(int(n_points), 3)
-    theta_grid = np.linspace(float(theta_min), float(theta_max), n_grid, dtype=float)
-    f_grid = np.asarray(
-        [
-            float(
-                np.asarray(evaluator.residual(np.asarray([float(theta)], dtype=float)), dtype=float).reshape(-1)[0]
-            )
-            for theta in theta_grid
-        ],
-        dtype=float,
-    )
-    if np.any(~np.isfinite(f_grid)):
-        return None, None
-
-    xtol = max(float(root_tol), 1.0e-8)
-    idx_exact = np.flatnonzero(np.abs(f_grid) <= xtol)
-    if idx_exact.size > 0:
-        return np.asarray([float(theta_grid[int(idx_exact[0])])], dtype=float), (
-            float(theta_grid[int(idx_exact[0])]),
-            float(theta_grid[int(idx_exact[0])]),
-        )
-
-    sign_change_idx = np.flatnonzero(np.signbit(f_grid[:-1]) != np.signbit(f_grid[1:]))
-    if sign_change_idx.size == 0:
-        return None, None
-
-    idx_best = int(
-        min(
-            sign_change_idx,
-            key=lambda idx: max(abs(float(f_grid[int(idx)])), abs(float(f_grid[int(idx) + 1]))),
-        )
-    )
-    left = float(theta_grid[idx_best])
-    right = float(theta_grid[idx_best + 1])
-
-    def _f(theta_val: float) -> float:
-        return float(
-            np.asarray(evaluator.residual(np.asarray([float(theta_val)], dtype=float)), dtype=float).reshape(-1)[0]
-        )
-
-    try:
-        theta_star = float(
-            brentq(
-                _f,
-                left,
-                right,
-                xtol=xtol,
-                rtol=xtol,
-                maxiter=max(1, int(max_nfev)),
-            )
-        )
-    except Exception:
-        return None, (left, right)
-    return np.asarray([theta_star], dtype=float), (left, right)
+    current = float(root_tol)
+    floor_value = float(floor)
+    if not np.isfinite(current) or current <= 0.0:
+        raise ValueError("root_tol must be finite and positive.")
+    if not np.isfinite(floor_value) or floor_value <= 0.0:
+        raise ValueError("floor must be finite and positive.")
+    tolerances: list[float] = []
+    while current > floor_value * (1.0 + 1.0e-12):
+        tightened = max(floor_value, current * 0.1)
+        if tightened <= floor_value * (1.0 + 1.0e-12):
+            tightened = floor_value
+        if np.isclose(tightened, current, rtol=0.0, atol=0.0):
+            break
+        tolerances.append(float(tightened))
+        current = float(tightened)
+    return tuple(tolerances)
 
 
 def _solve_species_from_config(cfg_species: FullExternalConfig) -> dict[str, Any]:
@@ -1176,6 +1072,9 @@ class MixtureConfig(CitationMixin):
     species_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     mu_e_tol: float = 1e-4
+    # Numerical theta/surrogate tolerance.  If an otherwise valid N>2 solve
+    # stalls above mu_e_tol, local refinement tightens this by decades to
+    # 1e-6 and stops immediately once the physical dmu target is met.
     root_tol: float = 1e-4
     # Primary seed/surrogate budget.  For a binary this bounds accepted AA
     # samples before the separate Brent allowance below.  For N>2 it bounds
@@ -1334,6 +1233,7 @@ class _MixtureEvaluator:
         self._species_threshold_cold_retries: int = 0
         self._species_threshold_refine_retries: int = 0
         self._species_threshold_refine_latched: dict[str, int] = {}
+        self._threshold_refine_generation = 0
         self._species_threshold_b3_a_only_retries: int = 0
         self._species_threshold_b3_root_surrogates: int = 0
         if species_init_cache is not None:
@@ -1489,6 +1389,24 @@ class _MixtureEvaluator:
             cfg_species.v_full_init = np.asarray(v_full_init, dtype=float)
         return cfg_species
 
+    def _latch_threshold_refinement(self, symbol: str, l_max: int) -> None:
+        """Invalidate short-domain function values when the spectrum is refined."""
+        previous = self._species_threshold_refine_latched.get(symbol, -1)
+        if int(l_max) <= previous:
+            return
+        self._species_threshold_refine_latched[symbol] = int(l_max)
+        self._threshold_refine_generation += 1
+        self.cache.clear()
+        self._species_result_cache = {
+            key: value for key, value in self._species_result_cache.items()
+            if key[0] != symbol
+        }
+        # An exact-radius old potential would otherwise win the nearest-seed
+        # lookup when an invalidated endpoint is revisited. Retain only seeds
+        # generated on the recovered setup; the current recovered result is
+        # inserted below after it passes the ordinary eligibility checks.
+        self._species_init_cache[symbol] = []
+
     def evaluate(self, theta: np.ndarray) -> dict[str, Any]:
         theta_arr = np.asarray(theta, dtype=float)
         cache_key = tuple(np.round(theta_arr, int(self.cfg.cache_round_digits)))
@@ -1555,6 +1473,21 @@ class _MixtureEvaluator:
             initial_eligible, initial_reasons = _species_result_eligibility(
                 dict(result_species)
             )
+            automatic_retry = result_species.get("threshold_state_refine_retry", {})
+            automatic_retry = (
+                automatic_retry if isinstance(automatic_retry, dict) else {}
+            )
+            if initial_eligible and automatic_retry.get("applied", False):
+                # The single-species driver can refine before returning to the
+                # mixture. Retain that spectrum for later radii and external AA.
+                retry_l = int(result_species.get("meta", {}).get(
+                    "bound_zero_tail_l_max", automatic_retry.get("shallow_l", 0)
+                ))
+                self._latch_threshold_refinement(symbol, retry_l)
+                cfg_species = _threshold_refine_config(
+                    cfg_species, l_max=retry_l, cold_start=False,
+                )
+                refine_latched = True
             # A continuation potential from another R_ws can occasionally fail
             # although a fresh solve at the same point is regular.  An ordinary
             # failure before the shallow-state representation is latched must,
@@ -1646,8 +1579,8 @@ class _MixtureEvaluator:
                 if refine_eligible:
                     result_species = refine_result
                     refine_retry_selected = True
-                    self._species_threshold_refine_latched[symbol] = int(
-                        cfg_refine.bound_zero_tail_l_max
+                    self._latch_threshold_refinement(
+                        symbol, int(cfg_refine.bound_zero_tail_l_max)
                     )
 
             # Starrett & Saumon (2014), Appendix B, require convergence with
@@ -1746,6 +1679,10 @@ class _MixtureEvaluator:
                     symbol, cfg_species.bound_zero_tail_l_max
                 )
             )
+            result_species["mixture_threshold_refine_cont_rmax_mult"] = float(
+                cfg_species.rmax_mult if refine_latched or refine_retry_selected
+                else cfg_species.cont_rmax_mult
+            )
             result_species["mixture_threshold_b3_a_only_retry_attempted"] = bool(
                 tail_retry_attempted
             )
@@ -1797,6 +1734,7 @@ class _MixtureEvaluator:
 
         residual = mu_values[:-1] - mu_values[-1]
         record = {
+            "threshold_refine_generation": self._threshold_refine_generation,
             "theta": theta_arr.copy(),
             "weights": weights.copy(),
             "volumes_bohr3": volumes.copy(),
@@ -1828,6 +1766,7 @@ class _MixtureEvaluator:
         self._eval_counter += 1
         hist_row: dict[str, Any] = {
             "iter": int(self._eval_counter),
+            "threshold_refine_generation": self._threshold_refine_generation,
             "theta_norm": float(np.linalg.norm(theta_arr)),
             "mu_span_ha": float(np.max(mu_values) - np.min(mu_values)),
             "root_eligible": bool(point_converged),
@@ -2116,6 +2055,18 @@ def solve_mixture_full_only(
         primary_root_maxfev = int(cfg.root_maxfev)
         observed_binary_points: list[tuple[float, float]] = []
         invalid_binary_points: list[tuple[float, float]] = []
+        local_refinement_tolerances: list[float] = []
+        local_refinement_nfev: list[int] = []
+        local_refinement_residuals: list[float] = []
+        sample_generation = 0
+        representation_restarts = 0
+        seed_recovery_evaluations = 0
+
+        class _RootRepresentationChanged(Exception):
+            """Discard scipy's private function values after an AA basis change."""
+
+            def __init__(self, interval: tuple[float, float]) -> None:
+                self.interval = interval
 
         def _primary_method_budget_exhausted() -> bool:
             if is_binary:
@@ -2162,6 +2113,7 @@ def solve_mixture_full_only(
             theta_l = float(bracket_interval[0])
             theta_r = float(bracket_interval[1])
             bracket_budget = int(cfg.root_brent_maxiter)
+            brent_generation = sample_generation
 
             class _ResidualToleranceReached(Exception):
                 """Stop scipy's theta-root refinement once the physical dmu target is met."""
@@ -2185,6 +2137,11 @@ def solve_mixture_full_only(
                 # brentq can pass through an excellent common-mu state and then
                 # discard it when scipy raises on theta maxiter.
                 residual_max_here = _consider(record)
+                if sample_generation != brent_generation:
+                    # Clearing our sample table cannot clear Brent's internal
+                    # endpoints/interpolation history. Never give that running
+                    # invocation a residual from a different spectral setup.
+                    raise _RootRepresentationChanged((theta_l, theta_r))
                 if not np.isfinite(residual_max_here):
                     # Returning the raw dmu here would allow brentq to treat an
                     # unconverged/discontinuous inner-AA branch as a physical
@@ -2310,6 +2267,8 @@ def solve_mixture_full_only(
                         maxiter=int(bracket_budget),
                     )
                 )
+            except _RootRepresentationChanged:
+                raise
             except _ResidualToleranceReached:
                 root_method = "binary_observed_bracket_mu_tolerance"
                 root_message = (
@@ -2368,7 +2327,7 @@ def solve_mixture_full_only(
                 )
                 _consider(evaluator.evaluate(np.asarray([theta_star], dtype=float)))
                 return True
-            except Exception:
+            except (ValueError, RuntimeError) as exc:
                 if best_residual_max <= tol:
                     root_method = "binary_observed_bracket_mu_tolerance"
                     root_message = (
@@ -2378,8 +2337,8 @@ def solve_mixture_full_only(
                     return True
                 root_method = "binary_observed_bracket_brentq_failed"
                 root_message = (
-                    "The binary common-mu solve found one observed sign-change bracket, but brentq did not "
-                    "reach a root within the remaining iteration budget."
+                    "The binary observed-bracket solve failed: "
+                    f"{type(exc).__name__}: {exc}"
                 )
                 return False
             root_method = "binary_observed_bracket_brentq"
@@ -2391,6 +2350,20 @@ def solve_mixture_full_only(
 
         def _consider(record: dict[str, Any]) -> float:
             nonlocal best_final, best_residual_max
+            nonlocal sample_generation, bracket_found, bracket_interval
+            nonlocal reported_bracket_interval
+            generation = int(record.get("threshold_refine_generation", 0))
+            if generation != sample_generation:
+                # Interpolation and Brent brackets must refer to one spectral
+                # setup, not a mix of pre- and post-refinement chemical potentials.
+                for samples in species_samples:
+                    samples.clear()
+                observed_binary_points.clear()
+                invalid_binary_points.clear()
+                best_final, best_residual_max = None, np.inf
+                bracket_found, bracket_interval = False, None
+                reported_bracket_interval = None
+                sample_generation = generation
             residual_try = np.asarray(record["mu_residual_ha"], dtype=float)
             residual_max = float(np.max(np.abs(residual_try)))
             if not _record_species_results_are_converged(record):
@@ -2422,6 +2395,61 @@ def solve_mixture_full_only(
                 best_residual_max = residual_max
                 best_final = record
             return residual_max
+
+        def _consider_primary(record: dict[str, Any]) -> float:
+            """Revalidate nearby old coordinates before spending further seeds.
+
+            A seed can recover the AA spectrum after a promising point was
+            already sampled. Its old chemical potentials are still discarded
+            by _consider; only its coordinate survives as a search hint. The
+            evaluator recomputes changed species there, while unchanged-species
+            exact-radius cache entries remain usable. Brent keeps its separate
+            representation-change restart path below.
+            """
+            nonlocal seed_eval_count, seed_recovery_evaluations
+            if not is_binary:
+                return _consider(record)
+
+            pending_coordinates: list[float] = []
+            while True:
+                previous_generation = sample_generation
+                previous_coordinates = [theta for theta, _ in observed_binary_points]
+                _consider(record)
+                if sample_generation != previous_generation:
+                    theta_current = float(np.asarray(record["theta"]).reshape(-1)[0])
+                    # Keep no old residuals, even for hint ranking. Nearby old
+                    # points are cheap potential bracket partners on the new
+                    # setup; any remaining original seeds are the fallback.
+                    pending_coordinates = sorted(
+                        dict.fromkeys(previous_coordinates + pending_coordinates),
+                        key=lambda theta: abs(theta - theta_current),
+                    )
+
+                # Refreshes consume the existing primary AA-evaluation budget.
+                # Also cap attempts across generations, so even cache revisits
+                # or repeated representation changes cannot cycle indefinitely.
+                if (
+                    best_residual_max <= tol
+                    or bracket_found
+                    or _primary_method_budget_exhausted()
+                    or seed_recovery_evaluations >= primary_root_maxfev
+                ):
+                    break
+                current_keys = {
+                    round(theta, int(cfg.cache_round_digits))
+                    for theta, _ in observed_binary_points + invalid_binary_points
+                }
+                pending_coordinates = [
+                    theta for theta in pending_coordinates
+                    if round(theta, int(cfg.cache_round_digits)) not in current_keys
+                ]
+                if not pending_coordinates:
+                    break
+                coordinate = pending_coordinates.pop(0)
+                seed_recovery_evaluations += 1
+                seed_eval_count += 1
+                record = evaluator.evaluate(np.asarray([coordinate], dtype=float))
+            return best_residual_max
 
         def _probe_binary_invalid_edges() -> bool:
             """Probe toward rejected binary AA points using only valid values.
@@ -2527,70 +2555,6 @@ def solve_mixture_full_only(
                     return True
             return attempted
 
-        # For N>2 we keep the broader legacy surrogate/local-refine strategy.
-        # For binary mixtures we deliberately switch to one bracketed scalar
-        # fallback within the configured total evaluation budget instead of relying
-        # on repeated local surrogate reseeds.
-        if explicit_init is not None and not is_binary:
-            explicit_theta = _weights_to_theta(explicit_init)
-            seed_eval_count += 1
-            _consider(evaluator.evaluate(explicit_theta))
-            if best_residual_max > tol:
-                for half_width, max_nfev in (
-                    (0.04, 10),
-                    (0.08, 14),
-                    (0.16, 20),
-                    (0.28, 28),
-                ):
-                    theta_center = (
-                        np.asarray(best_final["theta"], dtype=float)
-                        if best_final is not None
-                        else explicit_theta
-                    )
-                    theta_refined = _local_theta_refine(
-                        evaluator,
-                        theta_init=theta_center,
-                        root_tol=min(float(cfg.root_tol), 1.0e-6),
-                        max_nfev=max_nfev,
-                        half_width=float(half_width),
-                    )
-                    if theta_refined is None:
-                        continue
-                    residual_max = _consider(evaluator.evaluate(theta_refined))
-                    if residual_max <= tol:
-                        break
-            if best_residual_max > tol:
-                theta_bracketed = _scalar_theta_bracket_refine(
-                    evaluator,
-                    theta_center=(
-                        np.asarray(best_final["theta"], dtype=float)
-                        if best_final is not None
-                        else explicit_theta
-                    ),
-                    root_tol=min(float(cfg.root_tol), 1.0e-6),
-                    max_nfev=min(max(int(cfg.root_maxfev), 12), 32),
-                )
-                if theta_bracketed is not None:
-                    _consider(evaluator.evaluate(theta_bracketed))
-            if best_residual_max > tol:
-                theta_scanned, bracket = _scalar_theta_scan_bracket_refine(
-                    evaluator,
-                    theta_min=float(explicit_theta[0]) - 0.05,
-                    theta_max=float(explicit_theta[0]) + 0.05,
-                    n_points=33,
-                    root_tol=min(float(cfg.root_tol), 1.0e-6),
-                    max_nfev=min(max(int(cfg.root_maxfev), 16), 64),
-                )
-                if bracket is not None:
-                    bracket_found = True
-                    bracket_interval = (float(bracket[0]), float(bracket[1]))
-                    root_method = "binary_direct_scan_brentq"
-                    root_message = (
-                        "Converged via direct binary-theta bracket scan around the explicit warm-start."
-                    )
-                if theta_scanned is not None:
-                    _consider(evaluator.evaluate(theta_scanned))
-
         def _run_surrogate_refine(max_iters: int) -> bool:
             nonlocal surrogate_iters, best_residual_max
             local_iters = 0
@@ -2615,14 +2579,17 @@ def solve_mixture_full_only(
                     fractions=evaluator.x,
                     vbar_bohr3=float(evaluator.vbar_bohr3),
                 )
-                _consider(evaluator.evaluate(_weights_to_theta(weights_try)))
+                recovery_evaluations_before = seed_recovery_evaluations
+                _consider_primary(evaluator.evaluate(_weights_to_theta(weights_try)))
+                if bracket_found and seed_recovery_evaluations > recovery_evaluations_before:
+                    break
             return ran_refine
 
         for seed in seed_weights[:n_seed_target]:
             if _primary_method_budget_exhausted():
                 break
             seed_eval_count += 1
-            residual_max = _consider(evaluator.evaluate(_weights_to_theta(seed)))
+            residual_max = _consider_primary(evaluator.evaluate(_weights_to_theta(seed)))
             if residual_max <= tol or (is_binary and bracket_found):
                 break
 
@@ -2638,7 +2605,7 @@ def solve_mixture_full_only(
             if seed_cursor >= len(seed_weights):
                 break
             seed_eval_count += 1
-            _consider(evaluator.evaluate(_weights_to_theta(seed_weights[seed_cursor])))
+            _consider_primary(evaluator.evaluate(_weights_to_theta(seed_weights[seed_cursor])))
             seed_cursor += 1
 
         # An explicit binary warm start deliberately begins with a narrow
@@ -2670,7 +2637,7 @@ def solve_mixture_full_only(
                     continue
                 seed_keys_seen.add(seed_key)
                 seed_eval_count += 1
-                residual_max = _consider(evaluator.evaluate(_weights_to_theta(seed)))
+                residual_max = _consider_primary(evaluator.evaluate(_weights_to_theta(seed)))
                 if residual_max <= tol or bracket_found:
                     break
 
@@ -2683,7 +2650,50 @@ def solve_mixture_full_only(
             _probe_binary_invalid_edges()
 
         if best_residual_max > tol and is_binary and bracket_found and bracket_interval is not None:
-            _refine_observed_binary_bracket()
+            # Spectral recovery changes the numerical function mu_i(V_i).
+            # Revalidate coordinates, not old residuals, before starting a new
+            # Brent call. Bound recovery/rebracketing work independently of the
+            # ordinary Brent iteration budget; an unresolved search still fails.
+            refresh_evaluations = 0
+            while best_residual_max > tol and bracket_found:
+                try:
+                    _refine_observed_binary_bracket()
+                    break
+                except _RootRepresentationChanged as changed:
+                    representation_restarts += 1
+                    root_method = "binary_representation_rebracket_failed"
+                    root_message = (
+                        "AA spectral recovery invalidated the running Brent bracket; "
+                        "no current-representation root was found within the rebracketing budget."
+                    )
+                    if best_residual_max <= tol:
+                        root_method = "binary_representation_mu_tolerance"
+                        root_message = "Converged on the recovered AA representation."
+                        break
+                    if representation_restarts > int(cfg.root_brent_maxiter):
+                        break
+                    # First revisit the original endpoints. If the refined
+                    # function no longer brackets there, try the physical seeds.
+                    coordinates = list(changed.interval) + [
+                        float(_weights_to_theta(seed)[0])
+                        for seed in _initial_weight_guesses(
+                            fractions=evaluator.x, elements=evaluator.elements,
+                            explicit=explicit_init, local_only=False,
+                        )
+                    ]
+                    for coordinate in dict.fromkeys(coordinates):
+                        if refresh_evaluations >= int(cfg.root_maxfev):
+                            break
+                        refresh_evaluations += 1
+                        _consider(evaluator.evaluate(np.asarray([coordinate])))
+                        if best_residual_max <= tol or bracket_found:
+                            break
+                    if best_residual_max <= tol:
+                        root_method = "binary_representation_mu_tolerance"
+                        root_message = "Converged after revalidating the recovered AA representation."
+                        break
+                    if not bracket_found:
+                        break
 
         if best_residual_max > tol and prefer_local_seeds and not is_binary:
             global_seed_weights = _initial_weight_guesses(
@@ -2706,23 +2716,36 @@ def solve_mixture_full_only(
                 _run_surrogate_refine(max(4, min(int(primary_root_maxfev), 8)))
 
         if best_residual_max > tol and best_final is not None and not is_binary:
-            theta_refined = _local_theta_refine(
-                evaluator,
-                theta_init=np.asarray(best_final["theta"], dtype=float),
-                root_tol=float(cfg.root_tol),
-                max_nfev=min(max(int(primary_root_maxfev), 8), 12),
-            )
-            if theta_refined is not None:
-                _consider(evaluator.evaluate(theta_refined))
-        if best_residual_max > tol and best_final is not None and not is_binary:
-            theta_bracketed = _scalar_theta_bracket_refine(
-                evaluator,
-                theta_center=np.asarray(best_final["theta"], dtype=float),
-                root_tol=min(float(cfg.root_tol), 1.0e-6),
-                max_nfev=min(max(int(primary_root_maxfev), 12), 32),
-            )
-            if theta_bracketed is not None:
-                _consider(evaluator.evaluate(theta_bracketed))
+            # A multicomponent least-squares solver can satisfy its numerical
+            # step/gradient criterion before the physical dmu target.  Refine
+            # only such an otherwise valid best state, one decade at a time.
+            # Easy mixtures pay no extra cost because this block is skipped as
+            # soon as mu_e_tol is reached.  The evaluator caches every AA point
+            # and supplies nearby converged potentials as continuation seeds.
+            for local_tol in _adaptive_local_root_tolerances(cfg.root_tol):
+                theta_center = np.asarray(best_final["theta"], dtype=float)
+                nfev_before = len(evaluator.history)
+                theta_refined = _local_theta_refine(
+                    evaluator,
+                    theta_init=theta_center,
+                    root_tol=float(local_tol),
+                    max_nfev=min(max(int(primary_root_maxfev), 8), 12),
+                    residual_tol=tol,
+                )
+                if theta_refined is not None:
+                    _consider(evaluator.evaluate(theta_refined))
+                local_refinement_tolerances.append(float(local_tol))
+                local_refinement_nfev.append(
+                    int(len(evaluator.history) - nfev_before)
+                )
+                local_refinement_residuals.append(float(best_residual_max))
+                if best_residual_max <= tol:
+                    root_method = "tabulated_mu_adaptive_local_refine"
+                    root_message = (
+                        "Converged after decade-wise local theta refinement "
+                        "reached the requested common-mu residual tolerance."
+                    )
+                    break
         if best_final is None:
             raise RuntimeError(
                 "Multicomponent common-mu solve did not produce any candidate for which "
@@ -2741,6 +2764,7 @@ def solve_mixture_full_only(
                     "binary_observed_bracket_brentq_budget_exhausted",
                     "binary_observed_bracket_brentq_failed",
                     "binary_observed_bracket_inner_aa_failed",
+                    "binary_representation_rebracket_failed",
                 ):
                     root_method = "binary_observed_bracket_brentq_unconverged"
                     root_message = (
@@ -2756,7 +2780,10 @@ def solve_mixture_full_only(
                     "but the requested tolerance was not reached. The best available AA state is "
                     "retained only for an explicitly requested diagnostic continuation."
                 )
-            else:
+            elif root_method not in (
+                "binary_representation_rebracket_failed",
+                "binary_observed_bracket_brentq_failed",
+            ):
                 root_message = (
                     "The common-mu solve did not reach the requested tolerance. "
                     "The best available AA state is retained only for an explicitly "
@@ -2920,6 +2947,7 @@ def solve_mixture_full_only(
                 "root_success": bool(root_success),
                 "root_message": str(root_message),
                 "root_nfev": int(len(evaluator.history)),
+                "root_representation_restarts": int(representation_restarts),
                 "root_primary_maxfev": int(cfg.root_maxfev),
                 "root_brent_maxiter": int(cfg.root_brent_maxiter),
                 "root_n_invalid_inner": int(
@@ -2928,6 +2956,16 @@ def solve_mixture_full_only(
                 "root_method": str(root_method),
                 "root_n_seed_evals": int(seed_eval_count),
                 "root_n_refine": int(surrogate_iters),
+                "root_local_refinement_tolerances": list(
+                    local_refinement_tolerances
+                ),
+                "root_local_refinement_nfev": list(local_refinement_nfev),
+                "root_local_refinement_residual_max_ha": list(
+                    local_refinement_residuals
+                ),
+                "root_local_refinement_success": bool(
+                    local_refinement_tolerances and root_success
+                ),
                 "root_bracket_found": bool(bracket_found),
                 "root_bracket_interval_theta": (
                     None
@@ -2941,6 +2979,9 @@ def solve_mixture_full_only(
                 ),
                 "root_threshold_refine_retries": int(
                     evaluator._species_threshold_refine_retries
+                ),
+                "root_threshold_refine_generations": int(
+                    evaluator._threshold_refine_generation
                 ),
                 "root_threshold_b3_a_only_retries": int(
                     evaluator._species_threshold_b3_a_only_retries
@@ -3096,6 +3137,11 @@ def _final_species_config(
             float(species_kwargs.get("bound_zero_tail_max_binding_ha", 1.0e-3)),
             _ROOT_THRESHOLD_RETRY_MAX_BINDING_HA,
         )
+        if "mixture_threshold_refine_cont_rmax_mult" in full_result_init:
+            species_kwargs["cont_rmax_mult"] = float(
+                full_result_init["mixture_threshold_refine_cont_rmax_mult"]
+            )
+            species_kwargs["cont_parallel_mode"] = "batch"
         species_kwargs["stage2_max_iter"] = max(
             int(species_kwargs.get("stage2_max_iter", 107)),
             _ROOT_THRESHOLD_RETRY_MAX_ITER,

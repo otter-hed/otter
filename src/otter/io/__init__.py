@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from otter.io.results import save_full_external_data, save_mixture_data
 from otter.io.state import (
+    STATE_EXPORT_GROUPS,
+    STATE_EXPORT_PROFILES,
     STATE_SCHEMA_VERSION,
     StateExportOptions,
     build_state_arrays,
@@ -13,6 +15,8 @@ from otter.io.state import (
 )
 
 __all__ = [
+    "STATE_EXPORT_GROUPS",
+    "STATE_EXPORT_PROFILES",
     "STATE_SCHEMA_VERSION",
     "StateExportOptions",
     "build_state_arrays",

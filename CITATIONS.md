@@ -115,7 +115,8 @@ D. J. W. Geldart, S. H. Vosko. The screening function of an interacting electron
 
 ### `Gill2020`
 
-Nathanael Matthew Gill. Modeling of Warm Dense Plasmas for the Determination of Transport Properties and Equation of State. (2020).
+Nathanael Matthew Gill. Modeling of Warm Dense Plasmas for the Determination of Transport Properties and Equation of State. (2020). URL: https://auetd.auburn.edu/bitstream/handle/10415/7208/
+        gill_dissertation%20%283%29.pdf.
 
 ### `GillEtAl2015`
 
@@ -160,6 +161,10 @@ Julian Lütgert, Samuel Schumacher, Johannes Rips, Chongbing Qu, Tilo Döppner, 
 ### `Mermin1970`
 
 N. D. Mermin. Lindhard Dielectric Function in the Relaxation-Time Approximation. Physical Review B 1(5), 2362–2363 (1970). DOI: https://doi.org/10.1103/PhysRevB.1.2362.
+
+### `NISTDLMF`
+
+National Institute of Standards and Technology. NIST Digital Library of Mathematical Functions. URL: https://dlmf.nist.gov/.
 
 ### `PerdewBurkeErnzerhof1996`
 
@@ -231,7 +236,7 @@ Everett Thiele. Equation of State for Hard Spheres. The Journal of Chemical Phys
 
 ### `ThompsonEtAl2022`
 
-Aidan P. Thompson, Hasan Metin Aktulga, Richard Berger, Dan S. Bolintineanu, W. Michael Brown, Paul S. Crozier, Pieter J. in 't Veld, Axel Kohlmeyer, Stan G. Moore, Trung Dac Nguyen, Ray Shan, Mark J. Stevens, Julien Tranchida, Christian Trott, Steven J. Plimpton. LAMMPS - a flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales. Computer Physics Communications 271, 108171 (2022). DOI: https://doi.org/10.1016/j.cpc.2021.108171.
+Aidan P. Thompson, Hasan Metin Aktulga, Richard Berger, Dan S. Bolintineanu, W. Michael Brown, Paul S. Crozier, Pieter J. in 't Veld, Axel Kohlmeyer, Stan G. Moore, Trung Dac Nguyen, Ray Shan, Mark J. Stevens, Julien Tranchida, Christian Trott, Steven J. Plimpton. LAMMPS—a flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales. Computer Physics Communications 271, 108171 (2022). DOI: https://doi.org/10.1016/j.cpc.2021.108171.
 
 ### `TiesingaEtAl2021`
 
@@ -259,7 +264,7 @@ M. S. Wertheim. Exact Solution of the Percus–Yevick Integral Equation for Hard
 
 ### `WilsonEtAl2006`
 
-B. Wilson, V. Sonnad, P. Sterne, W. Isaacs. Purgatorio–-a new implementation of the Inferno algorithm. Journal of Quantitative Spectroscopy and Radiative Transfer 99(1–3), 658–679 (2006). DOI: https://doi.org/10.1016/j.jqsrt.2005.05.053.
+B. Wilson, V. Sonnad, P. Sterne, W. Isaacs. Purgatorio—a new implementation of the Inferno algorithm. Journal of Quantitative Spectroscopy and Radiative Transfer 99(1–3), 658–679 (2006). DOI: https://doi.org/10.1016/j.jqsrt.2005.05.053.
 
 ### `WunschEtAl2009`
 

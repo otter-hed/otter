@@ -20,23 +20,20 @@ def _load_example_module():
     return module
 
 
-def test_carbon_producer_requires_4096_radial_points() -> None:
+def test_carbon_producer_requires_4096_radial_points(monkeypatch) -> None:
     module = _load_example_module()
     assert module.AA_N_POINTS == 2**12
     assert module._configuration(2.0).n_points == 2**12
     assert module.SCHEMA == "otter_carbon_ionization_levels_v3"
-    seeds = module._accepted_seed_rows(module.DENSITIES_G_CC)
     assert np.all(np.diff(module.DENSITIES_G_CC) > 0.0)
     assert np.all(module.DENSITIES_G_CC > 0.0)
-    with np.load(module.BASELINE_PATH, allow_pickle=False) as archive:
-        accepted_rho = np.asarray(archive["rho_g_cc"], dtype=float)
-    expected_seed_count = np.count_nonzero(
-        np.isin(accepted_rho, module.DENSITIES_G_CC)
-    )
-    assert len(seeds) == expected_seed_count
-    assert {row["point_source"] for row in seeds} == {
-        "accepted_baseline_seed"
-    }
+    # Historical archives without a matching method fingerprint remain
+    # displayable, but must not seed a new calculation after source changes.
+    monkeypatch.setattr(module, "_calculation_fingerprint", lambda: "different-source")
+    assert module._accepted_seed_rows(module.DENSITIES_G_CC) == []
+    cfg = module._configuration(2.0)
+    assert module.BOUND_ENERGY_CUT_MODE == cfg.bound_energy_cut_mode == "zero"
+    assert module.BOUND_ENERGY_CUT_VALUE == cfg.bound_energy_cut
 
 
 def test_main_extends_a_changed_density_grid_incrementally(
@@ -86,6 +83,10 @@ def test_failed_point_cache_keeps_nonconvergence_out_of_aa_results(
     assert loaded is not None
     assert loaded["stage2_converged"] is False
     assert "zbar" not in loaded
+
+    # Same density/temperature is insufficient when the AA source changes.
+    monkeypatch.setattr(module, "_calculation_fingerprint", lambda: "changed")
+    assert module._load_point_failure(500.0) is None
 
 
 def test_level_ion_charge_reduction_preserves_shell_labels_and_closure() -> None:

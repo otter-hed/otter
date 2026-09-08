@@ -41,6 +41,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter.numerics.constants import BOHR_TO_ANGSTROM
 from otter.plotting import grid_figsize, save_figure, set_style
 
 
@@ -51,28 +52,23 @@ USE_PRECOMPUTED_DATA = True
 if os.environ.get("OTTER_RECOMPUTE_ARGHA_CARBON", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 
-# Four state workers x four continuum workers uses at most about 16 workers.
+# Four independent state workers; each AA uses the single-worker default.
 # All five displayed temperatures are attempted; no more than four run
 # simultaneously.
 # MAX_STATE_WORKERS = 1 for a serial, memory-conservative calculation.
 MAX_STATE_WORKERS = 4
-CONTINUUM_WORKERS_PER_STATE = 4
-QOZ_N_POINTS = 4096
 
 PLOT_TEMPERATURES_EV = (20.0, 30.0, 40.0, 50.0, 100.0)
 REFERENCE_TEMPERATURES_EV = PLOT_TEMPERATURES_EV
 STACK_OFFSET = 0.3
 ACCEPTED_BASELINE_TEMPERATURES_EV = PLOT_TEMPERATURES_EV
 RHO_G_CC = 3.51538
-LFC_MODEL = "chabrier1990"
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 K_RETAIN_MAX_BOHR_INV = 20.0
 
 # =============================================================================
 
 
-BOHR_TO_ANGSTROM = 0.529177210903
 SCHEMA = "otter_argha_roy_carbon_sii_state_v1"
 
 
@@ -183,8 +179,6 @@ def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
         ion_temperature_ev=float(state["ti_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
         aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
             # Exterior-match a near-zero-energy pole only when the common
             # physical SCF boundary is already asymptotic.  No artificial
             # extended bound-only box is introduced.
@@ -193,7 +187,6 @@ def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
             "bound_zero_tail_scan_points": 64,
             "bound_zero_tail_edge_rel_tol": 0.1,
         },
-        hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=1000,
     )
@@ -211,7 +204,8 @@ def strict_result(workflow: dict[str, Any]) -> tuple[dict[str, Any], dict[str, A
         raise RuntimeError("The threshold-state representation is unresolved.")
     if ion.get("hnc_converged") is not True:
         raise RuntimeError("HNC did not reach a physical fixed point.")
-    if float(ion["hnc_output_residual"]) > HNC_TOL:
+    resolved = dict(workflow["configuration"])
+    if float(ion["hnc_output_residual"]) > float(resolved["hnc_tol"]):
         raise RuntimeError("HNC residual exceeds the configured tolerance.")
     if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
         raise RuntimeError("The g/S transform-closure audit failed.")
@@ -228,30 +222,17 @@ def solve_state(state: dict[str, Any]) -> tuple[str, dict[str, np.ndarray]]:
         raise RuntimeError(f"{identifier}: {exc}") from exc
     elapsed_s = time.perf_counter() - started
     electronic, ion = strict_result(workflow)
+    resolved = dict(workflow["configuration"])
     k = np.asarray(ion["k"], dtype=float)
     mask = k <= K_RETAIN_MAX_BOHR_INV
     signature = {
         "state": state,
-        "electronic_model": "qm",
         "structure_model": "IS",
-        "aa_n_points": 4096,
-        "bound_occ_mode": "fd",
-        "bound_rmax_mult": None,
-        "bound_zero_tail_refine": True,
-        "bound_zero_tail_max_binding_ha": 1.0e-2,
-        "bound_zero_tail_scan_points": 64,
-        "bound_zero_tail_edge_rel_tol": 0.1,
-        "b3_tail_model": "full",
-        "qoz_n_points": QOZ_N_POINTS,
-        "qoz_zbar_mode": "pseudoatom_partition",
-        "qoz_renormalize_nscr_to_zbar": True,
-        "chi0_model": "lindhard_fd",
-        "lfc_model": LFC_MODEL,
-        "hnc_tol": HNC_TOL,
-        "hnc_closure_tol": HNC_CLOSURE_TOL,
+        "resolved_configuration": resolved,
     }
     payload = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(str(state["state_id"])),
         "element": np.asarray(str(state["element"])),
         "rho_g_cc": np.asarray(float(state["rho_g_cc"])),
@@ -284,8 +265,6 @@ def solve_state(state: dict[str, Any]) -> tuple[str, dict[str, np.ndarray]]:
         ),
         "k_bohr_inv": k[mask],
         "sii_k": np.asarray(ion["sii_k"], dtype=float)[mask],
-        "vii_k_ha_bohr3": np.asarray(ion["vii_k"], dtype=float)[mask],
-        "n_scr_k_electrons": np.asarray(ion["n_scr_k"], dtype=float)[mask],
         "hnc_output_residual": np.asarray(float(ion["hnc_output_residual"])),
         "closure_transform_max_abs": np.asarray(
             float(ion["closure_transform_max_abs"])

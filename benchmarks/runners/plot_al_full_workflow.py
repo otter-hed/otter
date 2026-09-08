@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import otter.numerics.constants as otter_constants
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -109,7 +110,7 @@ def bound_level_rows(state: dict[str, np.ndarray]) -> list[dict[str, Any]]:
             {
                 "level": label,
                 "energy_ha": float(energy),
-                "energy_ev": 27.211386245988 * float(energy),
+                "energy_ev": otter_constants.HA_TO_EV * float(energy),
                 "fd": float(fd),
                 "occupation": float(occupation),
             }

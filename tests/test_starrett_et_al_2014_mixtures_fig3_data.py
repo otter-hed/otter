@@ -232,7 +232,7 @@ def test_otter_recompute_configuration_is_strict_and_candidate_only() -> None:
         "starrett_et_al_2014_mixtures_fig3",
         "recomputed",
     )
-    assert producer.MAX_STATE_WORKERS * producer.CONTINUUM_WORKERS_PER_STATE <= 24
+    assert producer.MAX_STATE_WORKERS * producer.FullExternalConfig.cont_n_jobs <= 24
     state = producer.State(2.94, 20)
     cfg = producer.configuration(state)
     assert cfg.elements == ["C", "H"]

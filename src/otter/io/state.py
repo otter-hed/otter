@@ -1,7 +1,9 @@
 r"""Portable, machine-readable plasma-state exports.
 
-The public state format stores the converged average-atom, pseudoatom, and
-QOZ/HNC quantities needed for analysis or downstream XRTS calculations:
+The public state format can store selected converged average-atom,
+pseudoatom, and QOZ/HNC quantities needed for analysis or downstream XRTS
+calculations.  The default ``complete`` profile preserves the historical
+full-state behaviour; smaller profiles omit unrelated arrays:
 
 ``q(k)``
     The charge-closed pseudoatom screening cloud
@@ -29,8 +31,7 @@ always be loaded with ``allow_pickle=False``.  The default public window is
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
+from dataclasses import MISSING, dataclass, fields
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -38,6 +39,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from otter.io._npz import save_npz_atomic
+from otter._version import __version__
 from otter.numerics.transforms import (
     precompute_dst_lattice_transform_like,
     radial_forward,
@@ -45,27 +47,69 @@ from otter.numerics.transforms import (
 )
 
 
-STATE_SCHEMA_VERSION = "otter_state_v4"
+STATE_SCHEMA_VERSION = "otter_state_v5"
 _SUPPORTED_STATE_SCHEMA_VERSIONS = {
     "otter_state_v1",
     "otter_state_v2",
     "otter_state_v3",
+    "otter_state_v4",
     STATE_SCHEMA_VERSION,
 }
+
+STATE_EXPORT_GROUPS = (
+    "electronic_summary",
+    "bound_levels",
+    "electronic_profiles",
+    "electronic_potentials",
+    "orbital_densities",
+    "electronic_spectra",
+    "ion_structure",
+    "qoz_response",
+    "pair_potential",
+    "solver_history",
+)
+STATE_EXPORT_PROFILES = {
+    "electronic_summary": frozenset({"electronic_summary", "bound_levels"}),
+    "electronic_levels": frozenset({"electronic_summary", "bound_levels"}),
+    "ion_structure": frozenset(
+        {"electronic_summary", "bound_levels", "ion_structure"}
+    ),
+    "complete": frozenset(STATE_EXPORT_GROUPS),
+}
+_ION_EXPORT_GROUPS = frozenset(
+    {"ion_structure", "qoz_response", "pair_potential", "solver_history"}
+)
 
 
 @dataclass(frozen=True)
 class StateExportOptions:
     """Controls for one portable state export."""
 
+    profile: str = "complete"
+    include_groups: tuple[str, ...] = ()
     r_max_bohr: float = 20.0
     k_max_bohr_inv: float = 20.0
     require_converged_hnc: bool = True
     compressed: bool = True
-    include_electronic_profiles: bool = True
-    include_orbital_densities: bool = True
+    # Compatibility controls from state v4.  ``None`` follows ``profile``;
+    # explicit booleans retain the old opt-in/opt-out behaviour.
+    include_electronic_profiles: bool | None = None
+    include_orbital_densities: bool | None = None
 
     def __post_init__(self) -> None:
+        profile = str(self.profile).strip().lower().replace("-", "_")
+        if profile not in STATE_EXPORT_PROFILES:
+            allowed = ", ".join(STATE_EXPORT_PROFILES)
+            raise ValueError(f"profile must be one of: {allowed}.")
+        object.__setattr__(self, "profile", profile)
+        groups = tuple(
+            str(value).strip().lower().replace("-", "_")
+            for value in self.include_groups
+        )
+        unknown = sorted(set(groups).difference(STATE_EXPORT_GROUPS))
+        if unknown:
+            raise ValueError("Unknown export groups: " + ", ".join(unknown))
+        object.__setattr__(self, "include_groups", groups)
         if not np.isfinite(float(self.r_max_bohr)) or float(self.r_max_bohr) <= 0.0:
             raise ValueError("r_max_bohr must be finite and positive.")
         if (
@@ -73,6 +117,28 @@ class StateExportOptions:
             or float(self.k_max_bohr_inv) <= 0.0
         ):
             raise ValueError("k_max_bohr_inv must be finite and positive.")
+
+    @property
+    def groups(self) -> frozenset[str]:
+        """Resolved data groups after profile defaults and compatibility flags."""
+        groups = set(STATE_EXPORT_PROFILES[self.profile])
+        groups.update(self.include_groups)
+        if self.include_electronic_profiles is True:
+            groups.update({"electronic_profiles", "electronic_potentials"})
+        elif self.include_electronic_profiles is False:
+            groups.difference_update({"electronic_profiles", "electronic_potentials"})
+        if self.include_orbital_densities is True:
+            groups.add("orbital_densities")
+        elif self.include_orbital_densities is False:
+            groups.discard("orbital_densities")
+        if "orbital_densities" in groups:
+            groups.add("bound_levels")
+        return frozenset(groups)
+
+    @property
+    def requires_ion_stage(self) -> bool:
+        """Whether the resolved export requires a completed QOZ/HNC stage."""
+        return bool(self.groups.intersection(_ION_EXPORT_GROUPS))
 
 
 def _json_safe(value: Any) -> Any:
@@ -92,11 +158,38 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _nondefault_configuration(configuration: Mapping[str, Any]) -> dict[str, Any]:
+    """Return required inputs and resolved values differing from defaults.
+
+    The archive also stores the full resolved configuration.  This compact
+    view is for readers: it highlights the thermodynamic/composition inputs
+    and intentional overrides without making reproducibility depend on the
+    defaults of the Otter version used to read the file.
+    """
+    # Imported lazily because workflows imports this module only when an
+    # export is requested.
+    from otter.workflows import PlasmaWorkflowConfig
+
+    compact: dict[str, Any] = {}
+    for definition in fields(PlasmaWorkflowConfig):
+        if definition.name not in configuration:
+            continue
+        value = configuration[definition.name]
+        if definition.default is not MISSING:
+            default = definition.default
+        elif definition.default_factory is not MISSING:
+            default = definition.default_factory()
+        else:
+            compact[definition.name] = _json_safe(value)
+            continue
+        if _json_safe(value) != _json_safe(default):
+            compact[definition.name] = _json_safe(value)
+    return compact
+
+
 def _package_version() -> str:
-    try:
-        return str(version("otter"))
-    except PackageNotFoundError:
-        return "0+source"
+    """Return the version of the Otter source that produced the archive."""
+    return __version__
 
 
 def _as_species_axis(values: Any, *, n_species: int, name: str) -> np.ndarray:
@@ -281,25 +374,44 @@ def _add_species_electronic_arrays(
     *,
     entries: list[dict[str, Any]],
     r_max_bohr: float,
-    include_profiles: bool,
-    include_orbital_densities: bool,
+    groups: frozenset[str],
 ) -> None:
     """Add native-grid AA fields using stable species-index prefixes."""
     for species_index, entry in enumerate(entries):
         result = dict(entry["result"])
         prefix = f"species_{species_index}_"
         r_native = np.asarray(result.get("r", ()), dtype=float)
-        if (
+        valid_r = not (
             r_native.ndim != 1
             or r_native.size < 1
             or np.any(~np.isfinite(r_native))
             or np.any(np.diff(r_native) <= 0.0)
-        ):
-            continue
-        r_mask = r_native < float(r_max_bohr)
-        if not np.any(r_mask):
-            continue
-        arrays[prefix + "r_bohr"] = r_native[r_mask]
+        )
+        r_mask = r_native < float(r_max_bohr) if valid_r else np.zeros(0, dtype=bool)
+        native_groups = {
+            "bound_levels",
+            "electronic_profiles",
+            "electronic_potentials",
+            "orbital_densities",
+            "electronic_spectra",
+        }
+        needs_native_detail = bool(groups.intersection(native_groups))
+        needs_native_grid = bool(
+            groups.intersection(
+                {
+                    "electronic_profiles",
+                    "electronic_potentials",
+                    "orbital_densities",
+                }
+            )
+        )
+        if needs_native_grid:
+            if not valid_r or not np.any(r_mask):
+                raise ValueError(
+                    f"Species {entry.get('element', species_index)!r} lacks a "
+                    "valid native radial grid required by the selected export groups."
+                )
+            arrays[prefix + "r_bohr"] = r_native[r_mask]
 
         n_i = _entry_n_i(entry)
         n0 = float(result.get("n0", np.nan))
@@ -319,16 +431,14 @@ def _add_species_electronic_arrays(
             ),
             "runtime_s": result.get("runtime_s", np.nan),
         }
-        for name, value in scalar_values.items():
-            value_array = _finite_numeric(value)
-            if value_array is not None and value_array.size == 1:
-                arrays[prefix + name] = np.asarray(float(value_array.item()))
+        if needs_native_detail:
+            for name, value in scalar_values.items():
+                value_array = _finite_numeric(value)
+                if value_array is not None and value_array.size == 1:
+                    arrays[prefix + name] = np.asarray(float(value_array.item()))
 
-        if include_profiles:
-            for source, target in {
-                **_ELECTRON_DENSITY_FIELDS,
-                **_ELECTRON_POTENTIAL_FIELDS,
-            }.items():
+        if "electronic_profiles" in groups:
+            for source, target in _ELECTRON_DENSITY_FIELDS.items():
                 value = _finite_numeric(result.get(source))
                 if value is not None and value.shape == r_native.shape:
                     arrays[prefix + target] = np.asarray(value[r_mask], dtype=float)
@@ -345,70 +455,81 @@ def _add_species_electronic_arrays(
                     g_background[r_mask], dtype=float
                 )
 
-        try:
-            energies = np.asarray(result.get("bound_energy_ha"), dtype=float)
-        except (TypeError, ValueError):
-            energies = np.empty((0, 0), dtype=float)
-        angular = _finite_numeric(result.get("bound_l_list"))
-        if energies.ndim == 2 and energies.size and angular is not None:
-            l_values = np.asarray(angular, dtype=int).reshape(-1)
-            if l_values.shape == (energies.shape[0],):
-                energy_cut = float(result.get("bound_energy_cut_ha", 0.0))
-                selected = np.isfinite(energies) & (energies < energy_cut)
-                l_grid = np.broadcast_to(l_values[:, None], energies.shape)
-                n_grid = np.broadcast_to(
-                    np.arange(1, energies.shape[1] + 1, dtype=int)[None, :],
-                    energies.shape,
-                )
-                arrays[prefix + "bound_l"] = l_grid[selected]
-                arrays[prefix + "bound_n_index"] = n_grid[selected]
-                arrays[prefix + "bound_principal_n"] = (
-                    n_grid[selected] + l_grid[selected]
-                )
-                arrays[prefix + "bound_energy_ha"] = energies[selected]
-                for source in (
-                    "bound_fd",
-                    "bound_m",
-                    "bound_fdm",
-                    "bound_occ_deg_fd",
-                    "bound_occ_deg_fdm",
-                    "bound_q_ion_ws",
-                ):
-                    try:
-                        value = np.asarray(result.get(source), dtype=float)
-                    except (TypeError, ValueError):
-                        continue
-                    if value.shape == energies.shape and np.all(
-                        np.isfinite(value[selected])
-                    ):
-                        arrays[prefix + source] = np.asarray(
-                            value[selected], dtype=float
-                        )
-                if include_orbital_densities:
+        if "electronic_potentials" in groups:
+            for source, target in _ELECTRON_POTENTIAL_FIELDS.items():
+                value = _finite_numeric(result.get(source))
+                if value is not None and value.shape == r_native.shape:
+                    arrays[prefix + target] = np.asarray(value[r_mask], dtype=float)
+
+        if "bound_levels" in groups:
+            try:
+                energies = np.asarray(result.get("bound_energy_ha"), dtype=float)
+            except (TypeError, ValueError):
+                energies = np.empty((0, 0), dtype=float)
+            angular = _finite_numeric(result.get("bound_l_list"))
+            if energies.ndim == 2 and energies.size and angular is not None:
+                l_values = np.asarray(angular, dtype=int).reshape(-1)
+                if l_values.shape == (energies.shape[0],):
+                    energy_cut = float(result.get("bound_energy_cut_ha", 0.0))
+                    selected = np.isfinite(energies) & (energies < energy_cut)
+                    l_grid = np.broadcast_to(l_values[:, None], energies.shape)
+                    n_grid = np.broadcast_to(
+                        np.arange(1, energies.shape[1] + 1, dtype=int)[None, :],
+                        energies.shape,
+                    )
+                    arrays[prefix + "bound_l"] = l_grid[selected]
+                    arrays[prefix + "bound_n_index"] = n_grid[selected]
+                    arrays[prefix + "bound_principal_n"] = (
+                        n_grid[selected] + l_grid[selected]
+                    )
+                    arrays[prefix + "bound_energy_ha"] = energies[selected]
                     for source in (
-                        "bound_orbital_density_r",
-                        "ion_orbital_density_r",
+                        "bound_fd",
+                        "bound_m",
+                        "bound_fdm",
+                        "bound_occ_deg_fd",
+                        "bound_occ_deg_fdm",
+                        "bound_q_ion_ws",
                     ):
-                        value = _finite_numeric(result.get(source))
-                        if value is not None and value.shape == (*energies.shape, r_native.size):
+                        try:
+                            value = np.asarray(result.get(source), dtype=float)
+                        except (TypeError, ValueError):
+                            continue
+                        if value.shape == energies.shape and np.all(
+                            np.isfinite(value[selected])
+                        ):
                             arrays[prefix + source] = np.asarray(
-                                value[selected][:, r_mask], dtype=float
+                                value[selected], dtype=float
                             )
+                    if "orbital_densities" in groups:
+                        for source in (
+                            "bound_orbital_density_r",
+                            "ion_orbital_density_r",
+                        ):
+                            value = _finite_numeric(result.get(source))
+                            if value is not None and value.shape == (
+                                *energies.shape,
+                                r_native.size,
+                            ):
+                                arrays[prefix + source] = np.asarray(
+                                    value[selected][:, r_mask], dtype=float
+                                )
 
-        for source in _ELECTRON_SPECTRAL_FIELDS:
-            value = _finite_numeric(result.get(source))
-            if value is not None:
-                arrays[prefix + source] = np.asarray(value)
+            for source in (
+                "bound_occ_mode",
+                "threshold_state_status",
+                "threshold_state_representation",
+                "threshold_spectral_representation_status",
+            ):
+                value = result.get(source, dict(result.get("meta", {})).get(source))
+                if value is not None:
+                    arrays[prefix + source] = np.asarray(str(value), dtype="<U96")
 
-        for source in (
-            "bound_occ_mode",
-            "threshold_state_status",
-            "threshold_state_representation",
-            "threshold_spectral_representation_status",
-        ):
-            value = result.get(source, dict(result.get("meta", {})).get(source))
-            if value is not None:
-                arrays[prefix + source] = np.asarray(str(value), dtype="<U96")
+        if "electronic_spectra" in groups:
+            for source in _ELECTRON_SPECTRAL_FIELDS:
+                value = _finite_numeric(result.get(source))
+                if value is not None:
+                    arrays[prefix + source] = np.asarray(value)
 
 
 def _metadata(
@@ -439,6 +560,12 @@ def _metadata(
                 "threshold_state_status": result.get(
                     "threshold_state_status", meta.get("threshold_state_status")
                 ),
+                "final_state_map_error": result.get(
+                    "final_state_map_error", meta.get("final_state_map_error")
+                ),
+                "bound_spectrum_check": dict(result.get("bound_state_diagnostics", {})).get(
+                    "spectrum_check", meta.get("bound_spectrum_check", {})
+                ),
                 "threshold_state_representation": result.get(
                     "threshold_state_representation",
                     meta.get("threshold_state_representation"),
@@ -447,11 +574,34 @@ def _metadata(
             }
         )
     mixture_meta = dict(electronic_result.get("meta", {}))
+    groups = options.groups
+    computed_stages = ["electronic.full"]
+    if entries and all(
+        "n_ext" in dict(entry["result"])
+        or bool(dict(entry["result"]).get("ext_status"))
+        for entry in entries
+    ):
+        computed_stages.append("electronic.external")
+    if ion:
+        computed_stages.append("qoz")
+        if ion.get("hnc_converged") is not None:
+            computed_stages.append("hnc")
+    analysis_complete_for = ["electronic_summary"]
+    if "bound_levels" in groups:
+        analysis_complete_for.append("electronic_levels")
+    if "ion_structure" in groups:
+        analysis_complete_for.append("ion_structure")
+    resolved_configuration = dict(workflow.get("configuration", {}))
     return {
         "schema_version": STATE_SCHEMA_VERSION,
         "producer": "otter",
         "producer_version": _package_version(),
-        "configuration": workflow.get("configuration", {}),
+        # Store both views.  Saving only overrides would make old archives
+        # ambiguous after a future release changes a default.
+        "configuration": resolved_configuration,
+        "configuration_nondefault": _nondefault_configuration(
+            resolved_configuration
+        ),
         "citation_keys": workflow.get("citation_keys", ()),
         "units": {
             "r_bohr": "Bohr",
@@ -519,19 +669,25 @@ def _metadata(
             "r_max_bohr_exclusive": float(options.r_max_bohr),
             "k_max_bohr_inv_exclusive": float(options.k_max_bohr_inv),
         },
+        "export": {
+            "profile": options.profile,
+            "included_groups": sorted(groups),
+            "omitted_groups": sorted(set(STATE_EXPORT_GROUPS).difference(groups)),
+            "computed_stages": computed_stages,
+            "analysis_complete_for": analysis_complete_for,
+            # Portable analysis archives do not retain every internal object
+            # needed to resume an iterative solver exactly.
+            "restart_capable": False,
+        },
         "convergence": {
             "electronic": electronic_convergence,
-            "common_mu_residual_max_ha": mixture_meta.get(
-                "final_mu_residual_max_ha"
-            ),
+            "common_mu_residual_max_ha": mixture_meta.get("final_mu_residual_max_ha"),
             "common_mu_success": mixture_meta.get("final_mu_root_success"),
             "hnc_converged": ion.get("hnc_converged"),
             "hnc_best_residual": ion.get("hnc_best_residual"),
             "hnc_output_residual": ion.get("hnc_output_residual"),
             "closure_transform_max_abs": ion.get("closure_transform_max_abs"),
-            "vmhnc_variational_residual": ion.get(
-                "vmhnc_variational_residual"
-            ),
+            "vmhnc_variational_residual": ion.get("vmhnc_variational_residual"),
             "charge_fix": ion.get("charge_fix"),
         },
         "definitions": {
@@ -555,21 +711,22 @@ def build_state_arrays(
     *,
     options: StateExportOptions | None = None,
 ) -> dict[str, np.ndarray]:
-    """Build a portable state payload from a completed plasma workflow.
-
-    The workflow must include the ionic stage.  This guarantees that all
-    reciprocal-space quantities share the exact QOZ/DST lattice and that
-    ``q(k)`` is the same charge-closed screening cloud used to construct the
-    effective pair potential.
-    """
+    """Build one profile-selected portable payload from a plasma workflow."""
     opts = options or StateExportOptions()
+    groups = opts.groups
     ion_raw = workflow.get("ion")
-    if not isinstance(ion_raw, Mapping) or not ion_raw:
+    ion = dict(ion_raw) if isinstance(ion_raw, Mapping) else {}
+    if opts.requires_ion_stage and not ion:
         raise ValueError(
-            "A completed ion-structure stage is required to export q/f/g/S."
+            f"The {opts.profile!r} export requires a completed ion-structure "
+            "stage. Use electronic_summary or electronic_levels for full-AA-only "
+            "results."
         )
-    ion = dict(ion_raw)
-    if bool(opts.require_converged_hnc) and ion.get("hnc_converged") is not True:
+    if (
+        opts.requires_ion_stage
+        and bool(opts.require_converged_hnc)
+        and ion.get("hnc_converged") is not True
+    ):
         raise ValueError(
             "Refusing to export a missing or unconverged HNC status. Set "
             "require_converged_hnc=False only for an explicit diagnostic file."
@@ -577,7 +734,11 @@ def build_state_arrays(
     structure_model = str(
         workflow.get("structure_model", ion.get("structure_model", "IS"))
     ).upper()
-    if structure_model == "SC" and bool(opts.require_converged_hnc):
+    if (
+        opts.requires_ion_stage
+        and structure_model == "SC"
+        and bool(opts.require_converged_hnc)
+    ):
         feedback = workflow.get("sc_feedback", ion.get("sc_feedback"))
         if not isinstance(feedback, Mapping) or feedback.get("converged") is not True:
             raise ValueError(
@@ -592,155 +753,23 @@ def build_state_arrays(
         raise ValueError("Workflow species symbols/counts are inconsistent.")
     fractions = counts / float(np.sum(counts))
     n_species = len(symbols)
-
-    r_full = np.asarray(ion["r"], dtype=float)
-    k_full = np.asarray(ion["k"], dtype=float)
-    if (
-        r_full.ndim != 1
-        or k_full.ndim != 1
-        or r_full.size < 2
-        or r_full.size != k_full.size
-    ):
-        raise ValueError("Ion r/k grids must be equal-length one-dimensional arrays.")
-
-    transform = precompute_dst_lattice_transform_like(r_full)
-    if not np.allclose(transform.r, r_full, rtol=1.0e-12, atol=1.0e-13):
-        raise ValueError("Ion r grid is not the strict DST lattice expected by QOZ.")
-    if not np.allclose(transform.k, k_full, rtol=1.0e-10, atol=1.0e-12):
-        raise ValueError("Ion k grid is inconsistent with its real-space DST lattice.")
-
     entries = _species_entries(workflow)
     if len(entries) != n_species:
         raise ValueError("Electronic and ionic species counts differ.")
-    n_ion_r_full = _interpolate_ion_density(entries=entries, r_target=r_full)
-    f_k_full = np.asarray(radial_forward(n_ion_r_full, transform), dtype=float)
-
-    q_k_full = _as_species_axis(
-        ion["n_scr_k"],
-        n_species=n_species,
-        name="n_scr_k",
-    )
-    v_ie_k_full = _as_species_axis(
-        ion["v_ie_k"],
-        n_species=n_species,
-        name="v_ie_k",
-    )
-    c_ie_k_full = _as_species_axis(
-        ion["c_ie_k"],
-        n_species=n_species,
-        name="c_ie_k",
-    )
-    v_ee_k_full = np.asarray(ion["v_ee_k"], dtype=float)
-    c_ee_k_full = np.asarray(ion["c_ee_k"], dtype=float)
-    chi0_k_full = np.asarray(ion["chi0_k"], dtype=float)
-    chi_ee_k_full = np.asarray(ion["chi_ee_k"], dtype=float)
-    lfc_key = next(
-        (key for key in ("G_ee_k", "gee_k", "g_ee_k") if key in ion),
-        None,
-    )
-    if lfc_key is None:
-        raise KeyError("Ion structure result has no G_ee_k local-field correction.")
-    G_ee_k_full = np.asarray(ion[lfc_key], dtype=float)
-    if any(
-        value.shape != k_full.shape
-        for value in (
-            v_ee_k_full,
-            c_ee_k_full,
-            chi0_k_full,
-            chi_ee_k_full,
-            G_ee_k_full,
-        )
-    ):
-        raise ValueError(
-            "Electron response and common interaction channels must share "
-            "the ion reciprocal grid."
-        )
-    n_scr_r_full = _as_species_axis(
-        ion["n_scr_r"],
-        n_species=n_species,
-        name="n_scr_r",
-    )
-    gij_full = _as_pair_axes(
-        ion.get("gij_r", ion.get("gii_r")),
-        n_species=n_species,
-        name="gij_r",
-    )
-    sij_full = _as_pair_axes(
-        ion.get("sij_k", ion.get("sii_k")),
-        n_species=n_species,
-        name="sij_k",
-    )
-    hij_full = _as_pair_axes(
-        ion.get("hij_r", ion.get("hii_r")),
-        n_species=n_species,
-        name="hij_r",
-    )
-    cij_full = _as_pair_axes(
-        ion.get("cij_r", ion.get("cii_r")),
-        n_species=n_species,
-        name="cij_r",
-    )
-    vij_r_full = _as_pair_axes(
-        ion.get("vij_r", ion.get("vii_r")),
-        n_species=n_species,
-        name="vij_r",
-    )
-    vij_k_full = _as_pair_axes(
-        ion.get("vij_k", ion.get("vii_k")),
-        n_species=n_species,
-        name="vij_k",
-    )
-
-    v_ie_r_full = np.asarray(radial_inverse(v_ie_k_full, transform), dtype=float)
-    c_ie_r_full = np.asarray(radial_inverse(c_ie_k_full, transform), dtype=float)
-    v_ee_r_full = np.asarray(radial_inverse(v_ee_k_full, transform), dtype=float)
-    c_ee_r_full = np.asarray(radial_inverse(c_ee_k_full, transform), dtype=float)
-
-    r_mask = r_full < float(opts.r_max_bohr)
-    k_mask = k_full < float(opts.k_max_bohr_inv)
-    if not np.any(r_mask) or not np.any(k_mask):
-        raise ValueError("Requested export window contains no grid points.")
-
     arrays: dict[str, np.ndarray] = {
         "schema_version": np.asarray(STATE_SCHEMA_VERSION),
         "species_symbols": np.asarray(symbols, dtype="<U8"),
         "species_counts": counts,
         "species_number_fraction": fractions,
-        "r_bohr": r_full[r_mask],
-        "k_bohr_inv": k_full[k_mask],
-        "n_ion_r": n_ion_r_full[:, r_mask],
-        "n_scr_r": n_scr_r_full[:, r_mask],
-        "f_k": f_k_full[:, k_mask],
-        "q_k": q_k_full[:, k_mask],
-        # Explicit aliases make the physics names self-documenting while
-        # preserving the q/f notation commonly used by XRTS workflows.
-        "n_ion_k": f_k_full[:, k_mask],
-        "n_scr_k": q_k_full[:, k_mask],
-        "v_ie_k": v_ie_k_full[:, k_mask],
-        "v_ei_k": v_ie_k_full[:, k_mask],
-        "v_ee_k": v_ee_k_full[k_mask],
-        "c_ie_k": c_ie_k_full[:, k_mask],
-        "c_ee_k": c_ee_k_full[k_mask],
-        "chi0_k": chi0_k_full[k_mask],
-        "chi_ee_k": chi_ee_k_full[k_mask],
-        "G_ee_k": G_ee_k_full[k_mask],
-        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
-        "gee_k": G_ee_k_full[k_mask],
-        "g_ee_k": G_ee_k_full[k_mask],
-        "gij_r": gij_full[..., r_mask],
-        "sij_k": sij_full[..., k_mask],
-        "hij_r": hij_full[..., r_mask],
-        "cij_r": cij_full[..., r_mask],
-        "vij_r": vij_r_full[..., r_mask],
-        "vij_k": vij_k_full[..., k_mask],
+        "species_nuclear_charge": np.asarray(
+            [
+                dict(entry["result"]).get("Z", entry.get("Z", np.nan))
+                for entry in entries
+            ],
+            dtype=float,
+        ),
         "zbar": _species_vector(
             ion, "zbar", entries=entries, fallback_keys=("zbar_partition", "zbar")
-        ),
-        "zbar_qoz": _species_vector(
-            ion,
-            "zbar_qoz",
-            entries=entries,
-            fallback_keys=("zbar_partition", "zbar"),
         ),
         "zbar_partition": _species_vector(
             ion,
@@ -756,36 +785,6 @@ def build_state_arrays(
         ),
         "n_i_bohr3": np.asarray([_entry_n_i(entry) for entry in entries]),
     }
-    arrays.update(
-        {
-            "v_ie_r": v_ie_r_full[:, r_mask],
-            "v_ei_r": v_ie_r_full[:, r_mask],
-            "v_ee_r": v_ee_r_full[r_mask],
-            "c_ie_r": c_ie_r_full[:, r_mask],
-            "c_ee_r": c_ee_r_full[r_mask],
-        }
-    )
-    if str(ion.get("hnc_bridge_model", "none")) != "none":
-        bridge_full = _as_pair_axes(
-            ion["bridge_r"],
-            n_species=n_species,
-            name="bridge_r",
-        )
-        effective_full = _as_pair_axes(
-            ion["hnc_effective_potential_r"],
-            n_species=n_species,
-            name="hnc_effective_potential_r",
-        )
-        arrays["bridge_r"] = bridge_full[..., r_mask]
-        arrays["hnc_effective_potential_r"] = effective_full[..., r_mask]
-        arrays["vmhnc_eta"] = np.asarray(float(ion["vmhnc_eta"]))
-        arrays["vmhnc_sigma_bohr"] = np.asarray(
-            float(ion["vmhnc_sigma_bohr"])
-        )
-        arrays["vmhnc_variational_residual"] = np.asarray(
-            float(ion["vmhnc_variational_residual"])
-        )
-
     mu_values = []
     r_ws_values = []
     n0_values = []
@@ -805,19 +804,203 @@ def build_state_arrays(
     arrays["n0_bohr3"] = np.asarray(n0_values, dtype=float)
     arrays["zstar"] = np.asarray(zstar_values, dtype=float)
 
-    residual_history = _finite_numeric(ion.get("residual_history"))
-    if residual_history is not None:
-        arrays["hnc_residual_history"] = np.asarray(
-            residual_history, dtype=float
-        ).reshape(-1)
-
     _add_species_electronic_arrays(
         arrays,
         entries=entries,
         r_max_bohr=float(opts.r_max_bohr),
-        include_profiles=bool(opts.include_electronic_profiles),
-        include_orbital_densities=bool(opts.include_orbital_densities),
+        groups=groups,
     )
+
+    if opts.requires_ion_stage:
+        arrays["zbar_qoz"] = _species_vector(
+            ion,
+            "zbar_qoz",
+            entries=entries,
+            fallback_keys=("zbar_partition", "zbar"),
+        )
+        r_full = np.asarray(ion["r"], dtype=float)
+        k_full = np.asarray(ion["k"], dtype=float)
+        if (
+            r_full.ndim != 1
+            or k_full.ndim != 1
+            or r_full.size < 2
+            or r_full.size != k_full.size
+        ):
+            raise ValueError(
+                "Ion r/k grids must be equal-length one-dimensional arrays."
+            )
+        transform = precompute_dst_lattice_transform_like(r_full)
+        if not np.allclose(transform.r, r_full, rtol=1.0e-12, atol=1.0e-13):
+            raise ValueError(
+                "Ion r grid is not the strict DST lattice expected by QOZ."
+            )
+        if not np.allclose(transform.k, k_full, rtol=1.0e-10, atol=1.0e-12):
+            raise ValueError(
+                "Ion k grid is inconsistent with its real-space DST lattice."
+            )
+        r_mask = r_full < float(opts.r_max_bohr)
+        k_mask = k_full < float(opts.k_max_bohr_inv)
+        if not np.any(r_mask) or not np.any(k_mask):
+            raise ValueError("Requested export window contains no grid points.")
+        arrays["r_bohr"] = r_full[r_mask]
+        arrays["k_bohr_inv"] = k_full[k_mask]
+
+        if groups.intersection({"ion_structure", "qoz_response"}):
+            n_ion_r_full = _interpolate_ion_density(
+                entries=entries,
+                r_target=r_full,
+            )
+            f_k_full = np.asarray(
+                radial_forward(n_ion_r_full, transform),
+                dtype=float,
+            )
+            q_k_full = _as_species_axis(
+                ion["n_scr_k"],
+                n_species=n_species,
+                name="n_scr_k",
+            )
+            arrays["f_k"] = f_k_full[:, k_mask]
+            arrays["q_k"] = q_k_full[:, k_mask]
+            arrays["n_ion_k"] = f_k_full[:, k_mask]
+            arrays["n_scr_k"] = q_k_full[:, k_mask]
+
+        if "ion_structure" in groups:
+            gij_full = _as_pair_axes(
+                ion.get("gij_r", ion.get("gii_r")),
+                n_species=n_species,
+                name="gij_r",
+            )
+            sij_full = _as_pair_axes(
+                ion.get("sij_k", ion.get("sii_k")),
+                n_species=n_species,
+                name="sij_k",
+            )
+            arrays["gij_r"] = gij_full[..., r_mask]
+            arrays["sij_k"] = sij_full[..., k_mask]
+
+        if "qoz_response" in groups:
+            n_ion_r_full = _interpolate_ion_density(
+                entries=entries,
+                r_target=r_full,
+            )
+            n_scr_r_full = _as_species_axis(
+                ion["n_scr_r"],
+                n_species=n_species,
+                name="n_scr_r",
+            )
+            v_ie_k_full = _as_species_axis(
+                ion["v_ie_k"],
+                n_species=n_species,
+                name="v_ie_k",
+            )
+            c_ie_k_full = _as_species_axis(
+                ion["c_ie_k"],
+                n_species=n_species,
+                name="c_ie_k",
+            )
+            common_k = {
+                "v_ee_k": np.asarray(ion["v_ee_k"], dtype=float),
+                "c_ee_k": np.asarray(ion["c_ee_k"], dtype=float),
+                "chi0_k": np.asarray(ion["chi0_k"], dtype=float),
+                "chi_ee_k": np.asarray(ion["chi_ee_k"], dtype=float),
+            }
+            lfc_key = next(
+                (key for key in ("G_ee_k", "gee_k", "g_ee_k") if key in ion),
+                None,
+            )
+            if lfc_key is None:
+                raise KeyError(
+                    "Ion structure result has no G_ee_k local-field correction."
+                )
+            G_ee_k_full = np.asarray(ion[lfc_key], dtype=float)
+            if any(value.shape != k_full.shape for value in common_k.values()) or (
+                G_ee_k_full.shape != k_full.shape
+            ):
+                raise ValueError(
+                    "Electron response and common interaction channels must share "
+                    "the ion reciprocal grid."
+                )
+            arrays.update(
+                {
+                    "n_ion_r": n_ion_r_full[:, r_mask],
+                    "n_scr_r": n_scr_r_full[:, r_mask],
+                    "v_ie_k": v_ie_k_full[:, k_mask],
+                    "v_ei_k": v_ie_k_full[:, k_mask],
+                    "c_ie_k": c_ie_k_full[:, k_mask],
+                    "v_ee_k": common_k["v_ee_k"][k_mask],
+                    "c_ee_k": common_k["c_ee_k"][k_mask],
+                    "chi0_k": common_k["chi0_k"][k_mask],
+                    "chi_ee_k": common_k["chi_ee_k"][k_mask],
+                    "G_ee_k": G_ee_k_full[k_mask],
+                    "gee_k": G_ee_k_full[k_mask],
+                    "g_ee_k": G_ee_k_full[k_mask],
+                    "v_ie_r": np.asarray(
+                        radial_inverse(v_ie_k_full, transform), dtype=float
+                    )[:, r_mask],
+                    "c_ie_r": np.asarray(
+                        radial_inverse(c_ie_k_full, transform), dtype=float
+                    )[:, r_mask],
+                    "v_ee_r": np.asarray(
+                        radial_inverse(common_k["v_ee_k"], transform), dtype=float
+                    )[r_mask],
+                    "c_ee_r": np.asarray(
+                        radial_inverse(common_k["c_ee_k"], transform), dtype=float
+                    )[r_mask],
+                }
+            )
+            arrays["v_ei_r"] = arrays["v_ie_r"]
+
+        if "pair_potential" in groups:
+            vij_r_full = _as_pair_axes(
+                ion.get("vij_r", ion.get("vii_r")),
+                n_species=n_species,
+                name="vij_r",
+            )
+            vij_k_full = _as_pair_axes(
+                ion.get("vij_k", ion.get("vii_k")),
+                n_species=n_species,
+                name="vij_k",
+            )
+            arrays["vij_r"] = vij_r_full[..., r_mask]
+            arrays["vij_k"] = vij_k_full[..., k_mask]
+            if str(ion.get("hnc_bridge_model", "none")) != "none":
+                bridge_full = _as_pair_axes(
+                    ion["bridge_r"],
+                    n_species=n_species,
+                    name="bridge_r",
+                )
+                effective_full = _as_pair_axes(
+                    ion["hnc_effective_potential_r"],
+                    n_species=n_species,
+                    name="hnc_effective_potential_r",
+                )
+                arrays["bridge_r"] = bridge_full[..., r_mask]
+                arrays["hnc_effective_potential_r"] = effective_full[..., r_mask]
+                arrays["vmhnc_eta"] = np.asarray(float(ion["vmhnc_eta"]))
+                arrays["vmhnc_sigma_bohr"] = np.asarray(float(ion["vmhnc_sigma_bohr"]))
+                arrays["vmhnc_variational_residual"] = np.asarray(
+                    float(ion["vmhnc_variational_residual"])
+                )
+
+        if "solver_history" in groups:
+            hij_full = _as_pair_axes(
+                ion.get("hij_r", ion.get("hii_r")),
+                n_species=n_species,
+                name="hij_r",
+            )
+            cij_full = _as_pair_axes(
+                ion.get("cij_r", ion.get("cii_r")),
+                n_species=n_species,
+                name="cij_r",
+            )
+            arrays["hij_r"] = hij_full[..., r_mask]
+            arrays["cij_r"] = cij_full[..., r_mask]
+            residual_history = _finite_numeric(ion.get("residual_history"))
+            if residual_history is not None:
+                arrays["hnc_residual_history"] = np.asarray(
+                    residual_history,
+                    dtype=float,
+                ).reshape(-1)
 
     metadata = _metadata(workflow, ion, opts)
     metadata["fields"] = sorted(arrays)
@@ -833,24 +1016,14 @@ def build_state_arrays(
 
 def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
     """Validate the public state schema without loading pickled objects."""
-    required = {
+    base_required = {
         "schema_version",
         "species_symbols",
         "species_counts",
         "species_number_fraction",
-        "r_bohr",
-        "k_bohr_inv",
-        "n_ion_r",
-        "n_scr_r",
-        "f_k",
-        "q_k",
-        "n_ion_k",
-        "n_scr_k",
-        "gij_r",
-        "sij_k",
         "metadata_json",
     }
-    missing = sorted(required.difference(arrays))
+    missing = sorted(base_required.difference(arrays))
     if missing:
         raise ValueError(f"State payload is missing fields: {', '.join(missing)}")
 
@@ -873,6 +1046,7 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
         raise ValueError("metadata_json must decode to an object.")
     if metadata.get("schema_version") != schema_version:
         raise ValueError("metadata_json has an unsupported schema version.")
+    groups: frozenset[str]
     if schema_version == STATE_SCHEMA_VERSION:
         if not isinstance(metadata.get("configuration"), dict):
             raise ValueError("metadata_json lacks the workflow configuration.")
@@ -883,46 +1057,95 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
             set(converted) - {"metadata_json"}
         ):
             raise ValueError("metadata_json field inventory is inconsistent.")
-        interaction_fields = {
-            "v_ie_k",
-            "v_ei_k",
-            "v_ee_k",
-            "c_ie_k",
-            "c_ee_k",
-            "v_ie_r",
-            "v_ei_r",
-            "v_ee_r",
-            "c_ie_r",
-            "c_ee_r",
-            "chi0_k",
-            "chi_ee_k",
-            "G_ee_k",
-            "gee_k",
-            "g_ee_k",
-            "hij_r",
-            "cij_r",
-            "vij_r",
-            "vij_k",
-            "zbar_qoz",
+        export = metadata.get("export")
+        if not isinstance(export, dict):
+            raise ValueError("metadata_json lacks export-profile metadata.")
+        profile = str(export.get("profile", ""))
+        if profile not in STATE_EXPORT_PROFILES:
+            raise ValueError("metadata_json has an unknown export profile.")
+        included = export.get("included_groups")
+        if not isinstance(included, list):
+            raise ValueError("metadata_json lacks the included export groups.")
+        groups = frozenset(str(value) for value in included)
+        if not groups or not groups.issubset(STATE_EXPORT_GROUPS):
+            raise ValueError("metadata_json contains invalid export groups.")
+        if "electronic_summary" not in groups:
+            raise ValueError("Every state export must include electronic_summary.")
+        required = {
+            "species_nuclear_charge",
+            "zbar",
             "zbar_partition",
             "zbar_aa_ws",
             "zstar",
             "mu_ha",
             "r_ws_bohr",
             "n0_bohr3",
+            "n_i_bohr3",
         }
-        missing_interactions = sorted(interaction_fields.difference(converted))
-        if missing_interactions:
+        if groups.intersection(_ION_EXPORT_GROUPS):
+            required.update({"r_bohr", "k_bohr_inv", "zbar_qoz"})
+        if groups.intersection({"ion_structure", "qoz_response"}):
+            required.update({"f_k", "q_k", "n_ion_k", "n_scr_k"})
+        if "ion_structure" in groups:
+            required.update({"gij_r", "sij_k"})
+        if "qoz_response" in groups:
+            required.update(
+                {
+                    "n_ion_r",
+                    "n_scr_r",
+                    "v_ie_k",
+                    "v_ei_k",
+                    "v_ee_k",
+                    "c_ie_k",
+                    "c_ee_k",
+                    "v_ie_r",
+                    "v_ei_r",
+                    "v_ee_r",
+                    "c_ie_r",
+                    "c_ee_r",
+                    "chi0_k",
+                    "chi_ee_k",
+                    "G_ee_k",
+                    "gee_k",
+                    "g_ee_k",
+                }
+            )
+        if "pair_potential" in groups:
+            required.update({"vij_r", "vij_k"})
+        if "solver_history" in groups:
+            required.update({"hij_r", "cij_r"})
+        missing_profile_fields = sorted(required.difference(converted))
+        if missing_profile_fields:
             raise ValueError(
-                "State payload is missing electron-interaction fields: "
-                + ", ".join(missing_interactions)
+                "State payload is missing fields required by its export groups: "
+                + ", ".join(missing_profile_fields)
+            )
+    else:
+        groups = frozenset(STATE_EXPORT_GROUPS)
+        legacy_required = {
+            "r_bohr",
+            "k_bohr_inv",
+            "n_ion_r",
+            "n_scr_r",
+            "f_k",
+            "q_k",
+            "n_ion_k",
+            "n_scr_k",
+            "gij_r",
+            "sij_k",
+        }
+        missing_legacy = sorted(legacy_required.difference(converted))
+        if missing_legacy:
+            raise ValueError(
+                "Legacy state payload is missing fields: " + ", ".join(missing_legacy)
             )
 
     n_species = int(converted["species_symbols"].size)
-    nr = int(converted["r_bohr"].size)
-    nk = int(converted["k_bohr_inv"].size)
-    if n_species < 1 or nr < 1 or nk < 1:
-        raise ValueError("State species and r/k grids must be non-empty.")
+    has_ion_grid = bool(groups.intersection(_ION_EXPORT_GROUPS))
+    nr = int(converted["r_bohr"].size) if has_ion_grid else 0
+    nk = int(converted["k_bohr_inv"].size) if has_ion_grid else 0
+    if n_species < 1 or (has_ion_grid and (nr < 1 or nk < 1)):
+        raise ValueError("State species and requested grids must be non-empty.")
     counts = converted["species_counts"]
     fractions = converted["species_number_fraction"]
     if counts.shape != (n_species,) or fractions.shape != (n_species,):
@@ -936,9 +1159,9 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
     ):
         raise ValueError("Species counts/fractions must be finite and positive.")
 
-    r_grid = converted["r_bohr"]
-    k_grid = converted["k_bohr_inv"]
-    if (
+    r_grid = converted.get("r_bohr", np.empty(0))
+    k_grid = converted.get("k_bohr_inv", np.empty(0))
+    if has_ion_grid and (
         r_grid.ndim != 1
         or k_grid.ndim != 1
         or np.any(~np.isfinite(r_grid))
@@ -950,12 +1173,18 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
     ):
         raise ValueError("State r/k grids must be finite, positive, and increasing.")
 
-    if converted["n_ion_r"].shape != (n_species, nr):
+    if "n_ion_r" in converted and converted["n_ion_r"].shape != (
+        n_species,
+        nr,
+    ):
         raise ValueError("n_ion_r shape is inconsistent with species/r grids.")
-    if converted["n_scr_r"].shape != (n_species, nr):
+    if "n_scr_r" in converted and converted["n_scr_r"].shape != (
+        n_species,
+        nr,
+    ):
         raise ValueError("n_scr_r shape is inconsistent with species/r grids.")
     for key in ("f_k", "q_k", "n_ion_k", "n_scr_k"):
-        if converted[key].shape != (n_species, nk):
+        if key in converted and converted[key].shape != (n_species, nk):
             raise ValueError(f"{key} shape is inconsistent with species/k grids.")
     for key in ("v_ie_k", "v_ei_k", "c_ie_k"):
         if key in converted and converted[key].shape != (n_species, nk):
@@ -971,9 +1200,17 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
     ):
         if key in converted and converted[key].shape != (nk,):
             raise ValueError(f"{key} shape is inconsistent with the k grid.")
-    if converted["gij_r"].shape != (n_species, n_species, nr):
+    if "gij_r" in converted and converted["gij_r"].shape != (
+        n_species,
+        n_species,
+        nr,
+    ):
         raise ValueError("gij_r shape is inconsistent with species/r grids.")
-    if converted["sij_k"].shape != (n_species, n_species, nk):
+    if "sij_k" in converted and converted["sij_k"].shape != (
+        n_species,
+        n_species,
+        nk,
+    ):
         raise ValueError("sij_k shape is inconsistent with species/k grids.")
     for key in ("hij_r", "cij_r", "vij_r"):
         if key in converted and converted[key].shape != (
@@ -1004,12 +1241,14 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
         "r_ws_bohr",
         "n0_bohr3",
         "n_i_bohr3",
+        "species_nuclear_charge",
     ):
         if key in converted and converted[key].shape != (n_species,):
             raise ValueError(f"{key} shape is inconsistent with the species axis.")
     for key in (
         "species_counts",
         "species_number_fraction",
+        "species_nuclear_charge",
         "n_ion_r",
         "n_scr_r",
         "f_k",
@@ -1049,9 +1288,13 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
     ):
         if key in converted and np.any(~np.isfinite(converted[key])):
             raise ValueError(f"{key} contains non-finite values.")
-    if not np.array_equal(converted["f_k"], converted["n_ion_k"]):
+    if "f_k" in converted and not np.array_equal(
+        converted["f_k"], converted["n_ion_k"]
+    ):
         raise ValueError("f_k must be the explicit alias of n_ion_k.")
-    if not np.array_equal(converted["q_k"], converted["n_scr_k"]):
+    if "q_k" in converted and not np.array_equal(
+        converted["q_k"], converted["n_scr_k"]
+    ):
         raise ValueError("q_k must be the explicit alias of n_scr_k.")
     if "v_ei_k" in converted and not np.array_equal(
         converted["v_ie_k"], converted["v_ei_k"]
@@ -1077,19 +1320,29 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
             raise ValueError(f"{key} contains non-finite values.")
 
     if schema_version == STATE_SCHEMA_VERSION:
+        needs_native_grid = bool(
+            groups.intersection(
+                {
+                    "electronic_profiles",
+                    "electronic_potentials",
+                    "orbital_densities",
+                }
+            )
+        )
         for species_index in range(n_species):
             prefix = f"species_{species_index}_"
             r_key = prefix + "r_bohr"
-            if r_key not in converted:
+            if needs_native_grid and r_key not in converted:
                 raise ValueError(f"State payload is missing {r_key}.")
-            r_native = converted[r_key]
-            if (
-                r_native.ndim != 1
-                or r_native.size < 1
-                or np.any(r_native <= 0.0)
-                or np.any(np.diff(r_native) <= 0.0)
-            ):
-                raise ValueError(f"{r_key} must be positive and increasing.")
+            r_native = converted.get(r_key, np.empty(0))
+            if r_key in converted:
+                if (
+                    r_native.ndim != 1
+                    or r_native.size < 1
+                    or np.any(r_native <= 0.0)
+                    or np.any(np.diff(r_native) <= 0.0)
+                ):
+                    raise ValueError(f"{r_key} must be positive and increasing.")
             n_level = int(converted.get(prefix + "bound_energy_ha", np.empty(0)).size)
             for name in ("bound_l", "bound_n_index", "bound_principal_n"):
                 key = prefix + name
@@ -1097,6 +1350,8 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
                     raise ValueError(f"{key} is not aligned with bound levels.")
             for name in ("bound_orbital_density_r", "ion_orbital_density_r"):
                 key = prefix + name
+                if key in converted and r_key not in converted:
+                    raise ValueError(f"{key} requires {r_key}.")
                 if key in converted and converted[key].shape != (
                     n_level,
                     r_native.size,
@@ -1150,6 +1405,8 @@ def load_plasma_state(path: str | Path) -> dict[str, np.ndarray]:
 
 
 __all__ = [
+    "STATE_EXPORT_GROUPS",
+    "STATE_EXPORT_PROFILES",
     "STATE_SCHEMA_VERSION",
     "StateExportOptions",
     "build_state_arrays",

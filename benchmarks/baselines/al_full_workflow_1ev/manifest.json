@@ -33,16 +33,18 @@
   },
   "producer": {
     "project": "Otter",
-    "git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9",
+    "git_commit": "unknown",
     "script_relative_path": "benchmarks/runners/regenerate_al_full_workflow.py",
-    "script_sha256": "6d05e964f77890bf8ff30db90628aec02da599ca6c59133013fffa451b307bd8",
+    "script_sha256": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
     "shared_generator_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
-    "shared_generator_sha256": "8145a2c22c3fb9ca5b365f9a2341a3c7caa9d89cbed271ff49df0de7ad1fd8b1",
+    "shared_generator_sha256": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
     "worktree_clean_at_generation": false,
-    "git_status_porcelain_sha256": "ca0438c8f2a0407b93a215de64594936a5431472b3b90183dabd28f852dc6d2c",
+    "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
     "note": "git_commit is a reproducible producer snapshot only when worktree_clean_at_generation is true.",
-    "script_sha256_current": "6d05e964f77890bf8ff30db90628aec02da599ca6c59133013fffa451b307bd8",
-    "script_sha256_at_generation": "4547faee329d0c80fd3024803b14723ed5eb7367ec4313e74106e757196d5b3c"
+    "script_sha256_current": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
+    "script_sha256_at_generation": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
+    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+    "source_inventory": "../validation_20260908.json"
   },
   "configuration": {
     "element": "Al",
@@ -67,25 +69,26 @@
     "k_retained_max_bohr_inv": 20.0
   },
   "scientific_audit": {
-    "zbar_aa_ws": 3.026070701841588,
-    "zbar_partition": 3.0228433317026067,
-    "zbar_qoz": 3.0228433317026067,
-    "q_scr_native_raw": 3.028398802488082,
-    "q_scr_grid_raw": 3.0203735392994595,
-    "q_scr_used": 3.0228433317026067,
-    "q_scr_scale_factor": 1.0008127816488288,
-    "hnc_best_residual": 8.058365482413532e-07,
-    "hnc_closure_mismatch": 3.9134630136050674e-05,
-    "note": "The gallery plots both the raw interpolated screening cloud and the uniformly charge-corrected cloud used by QOZ."
+    "zbar_aa_ws": 3.025869720560763,
+    "zbar_partition": 3.022732689289475,
+    "zbar_qoz": 3.022732689289475,
+    "q_scr_native_raw": 3.0197580591746718,
+    "q_scr_grid_raw": 3.019762517868083,
+    "q_scr_used": 3.0227326892894752,
+    "q_scr_scale_factor": 1.0009835778157445,
+    "hnc_best_residual": 7.686971922011378e-07,
+    "hnc_closure_mismatch": 8.880858384430201e-05
   },
   "state": {
     "state_id": "al_full_workflow_rho8p1_te1_ti1",
     "data_file": "Al_rho8p1gcc_Te1eV_Ti1eV.npz",
-    "data_sha256": "82d4b7007241b01e4d2a9c9402f3005cd6713f30e2286d9fa7481aed8095f791",
-    "zbar_partition": 3.0228433317026067,
-    "hnc_closure_mismatch": 3.9134630136050674e-05,
+    "data_sha256": "7aac89aa05edc7ddb72f04d3a7ff7305c44fa95374cd9d59f70203d220caec88",
+    "zbar_partition": 3.022732689289475,
+    "hnc_closure_mismatch": 8.880858384430201e-05,
     "threshold_state_status": "resolved",
     "threshold_state_representation": "finite_dirichlet_box",
     "n_model_points": 2634
-  }
+  },
+  "validation_scope": "completed_is_campaign",
+  "validation_inventory": "../validation_20260908.json"
 }

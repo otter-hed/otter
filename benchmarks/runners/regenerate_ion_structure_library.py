@@ -5,15 +5,14 @@ It performs expensive average-atom and QOZ/HNC calculations and writes only
 to ``benchmarks/outputs/ion_structure_library/recomputed``.  It never
 overwrites an accepted reference result.
 
-The calculation is parallelized at two levels.  Independent thermodynamic
-state groups run concurrently, while continuum energies within each
-average-atom calculation use a smaller worker pool.  Keep the product of
-``MAX_STATE_WORKERS`` and ``CONTINUUM_WORKERS_PER_STATE`` below the number of
-physical CPU cores to avoid nested oversubscription.
+Independent thermodynamic state groups run concurrently. Each average-atom
+calculation inherits Otter's single-worker default.
 """
+
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict
 import hashlib
 import json
 import os
@@ -35,6 +34,7 @@ TOOLS = ROOT / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import (  # noqa: E402
     PlasmaWorkflowConfig,
     continue_plasma_workflow_from_electronic_result,
@@ -48,20 +48,21 @@ from otter_lammps_md import (  # noqa: E402
 )
 
 
-# User-editable execution controls.  Three state groups times six continuum
-# workers uses at most 18 of a 24-core workstation.  The remaining cores keep
-# the desktop responsive and cover BLAS/runtime overhead.
+# Parallelize independent states, not the energies within one AA.
 MAX_STATE_WORKERS = 3
-CONTINUUM_WORKERS_PER_STATE = 6
-QOZ_N_POINTS = 4096
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
 VMHNC_ETA_TOL = 1.0e-6
 
-# The Wünsch Be state additionally compares HNC and VMHNC with classical MD
-# using the identical IS-QOZ pair potential.  Set this to False only when
-# preparing an electronic/integral-equation candidate without LAMMPS.
-RUN_WUNSCH_SAME_POTENTIAL_MD = True
+# The Wünsch Be state can additionally compare HNC and VMHNC with classical MD
+# using the identical IS-QOZ pair potential.  Full Otter-only recomputations
+# disable this optional external calculation through the environment.
+RUN_WUNSCH_SAME_POTENTIAL_MD = (
+    os.environ.get("OTTER_RUN_WUNSCH_SAME_POTENTIAL_MD", "1") == "1"
+)
+REUSE_COMPLETED_GROUPS = (
+    os.environ.get("OTTER_REUSE_ION_STRUCTURE_GROUPS", "0") == "1"
+)
 LAMMPS_EXECUTABLE = "lmp"
 MPI_LAUNCHER = "mpirun"
 MPI_PROCESSES_PER_MD_CASE = 10
@@ -75,14 +76,8 @@ WUNSCH_MD_K_MAX_ANGSTROM_INV = 10.2
 # ``("be_wunsch",)`` recomputes only the named state group.
 STATE_GROUPS_TO_RUN: tuple[str, ...] | None = None
 
-OUTPUT_DIR = (
-    ROOT
-    / "benchmarks"
-    / "outputs"
-    / "ion_structure_library"
-    / "recomputed"
-)
-SCHEMA = "otter_ion_structure_library_state_v1"
+OUTPUT_DIR = ROOT / "benchmarks" / "outputs" / "ion_structure_library" / "recomputed"
+SCHEMA = "otter_ion_structure_library_state_v2"
 
 
 STATE_GROUPS: dict[str, tuple[dict[str, Any], ...]] = {
@@ -177,15 +172,15 @@ def _configuration(
     bridge_model: str = "none",
 ) -> PlasmaWorkflowConfig:
     """Build the documented production configuration for one state."""
+    model = str(state.get("electronic_model", "qm"))
+    model_override = {} if model == "qm" else {"electronic_model": model}
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
         temperature_ev=float(state["te_ev"]),
         ion_temperature_ev=float(state["ti_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
-        electronic_model=str(state.get("electronic_model", "qm")),
+        **model_override,
         aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
             "bound_zero_tail_refine": True,
             "bound_zero_tail_max_binding_ha": 1.0e-2,
             "bound_zero_tail_scan_points": 64,
@@ -201,69 +196,6 @@ def _configuration(
     )
 
 
-def _finite_bound_levels(electronic: dict[str, Any]) -> dict[str, np.ndarray]:
-    """Flatten only finite, negative-energy bound levels for portable output."""
-    energies = np.asarray(
-        electronic.get("bound_energy_ha", np.empty((0, 0))),
-        dtype=float,
-    )
-    l_values = np.asarray(
-        electronic.get("bound_l_list", np.arange(energies.shape[0])),
-        dtype=int,
-    )
-    fd = np.asarray(
-        electronic.get("bound_fd", np.zeros_like(energies)),
-        dtype=float,
-    )
-    occ = np.asarray(
-        electronic.get("bound_occ_deg_fd", np.zeros_like(energies)),
-        dtype=float,
-    )
-    records: list[tuple[int, int, float, float, float]] = []
-    for li in range(energies.shape[0]):
-        for ni in range(energies.shape[1]):
-            energy = float(energies[li, ni])
-            if np.isfinite(energy) and energy < 0.0:
-                records.append(
-                    (
-                        int(l_values[li]),
-                        int(ni + 1),
-                        energy,
-                        float(fd[li, ni]),
-                        float(occ[li, ni]),
-                    )
-                )
-    if not records:
-        return {
-            "bound_l": np.empty(0, dtype=int),
-            "bound_n_index": np.empty(0, dtype=int),
-            "bound_energy_ha": np.empty(0),
-            "bound_fd": np.empty(0),
-            "bound_occ_deg_fd": np.empty(0),
-        }
-    values = np.asarray(records, dtype=float)
-    return {
-        "bound_l": values[:, 0].astype(int),
-        "bound_n_index": values[:, 1].astype(int),
-        "bound_energy_ha": values[:, 2],
-        "bound_fd": values[:, 3],
-        "bound_occ_deg_fd": values[:, 4],
-    }
-
-
-def _profile(
-    electronic: dict[str, Any],
-    name: str,
-    mask: np.ndarray,
-    *,
-    fallback: str | None = None,
-) -> np.ndarray:
-    key = name if name in electronic else fallback
-    if key is None or key not in electronic:
-        return np.full(int(np.count_nonzero(mask)), np.nan)
-    return np.asarray(electronic[key], dtype=float)[mask]
-
-
 def _pack_result(
     result: dict[str, Any],
     state: dict[str, Any],
@@ -273,41 +205,20 @@ def _pack_result(
     """Convert a workflow payload to a compact pickle-free state archive."""
     electronic = dict(result["electronic"]["result"])
     ion = dict(result["ion"])
-    r_e = np.asarray(electronic["r"], dtype=float)
     r_i = np.asarray(ion["r"], dtype=float)
     k = np.asarray(ion["k"], dtype=float)
-    electron_mask = r_e <= R_RETAIN_MAX_BOHR
     ion_mask = r_i <= R_RETAIN_MAX_BOHR
     k_mask = k <= K_RETAIN_MAX_BOHR_INV
 
     signature = {
         "state": state,
         "structure_model": "IS",
-        "electronic_model": str(state.get("electronic_model", "qm")),
-        "aa": {
-            "n_points": 4096,
-            "bound_occ_mode": "fd",
-            "bound_rmax_mult": None,
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_max_binding_ha": 1.0e-2,
-            "bound_zero_tail_scan_points": 64,
-            "bound_zero_tail_edge_rel_tol": 0.1,
-            "b3_tail_model": "full",
-            "continuum_workers": CONTINUUM_WORKERS_PER_STATE,
-        },
-        "qoz": {
-            "n_points": QOZ_N_POINTS,
-            "zbar_mode": "pseudoatom_partition",
-            "renormalize_nscr_to_zbar": True,
-            "chi0_model": "lindhard_fd",
-            "lfc_model": "chabrier1990",
-        },
-        "hnc": {
-            "tol": 1.0e-4,
-            "closure_transform_tol": 2.5e-3,
-            "max_iter": 1000,
-            "require_converged": True,
-        },
+        # Store the complete resolved workflow configuration.  The producer
+        # code above only spells out non-default overrides, while this record
+        # remains reproducible if a future Otter release changes its defaults.
+        "resolved_configuration": result.get(
+            "configuration", asdict(_configuration(state))
+        ),
     }
     if str(state["state_id"]).startswith("be_wunsch"):
         signature["ionic_comparison"] = {
@@ -318,10 +229,9 @@ def _pack_result(
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "benchmark_id": np.asarray("ion_structure_library"),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(str(state["state_id"])),
-        "electronic_model": np.asarray(
-            str(state.get("electronic_model", "qm"))
-        ),
+        "electronic_model": np.asarray(str(state.get("electronic_model", "qm"))),
         "element": np.asarray(str(state["element"])),
         "rho_g_cc": np.asarray(float(state["rho_g_cc"])),
         "te_ev": np.asarray(float(state["te_ev"])),
@@ -331,27 +241,6 @@ def _pack_result(
             json.dumps(signature, sort_keys=True, separators=(",", ":"))
         ),
         "producer_elapsed_s": np.asarray(float(elapsed_s)),
-        "r_e_bohr": r_e[electron_mask],
-        "n_full_bohr3": _profile(electronic, "n_full", electron_mask),
-        # ``n_free`` is an internal A3-domain diagnostic and can be undefined
-        # outside R_DFT,max.  The converged all-space continuum/free density is
-        # ``n_cont`` after the documented B3 continuation.
-        "n_free_bohr3": _profile(electronic, "n_cont", electron_mask),
-        "n_cont_bohr3": _profile(electronic, "n_cont", electron_mask),
-        "n_bound_bohr3": _profile(electronic, "n_bound", electron_mask),
-        "n_ext_bohr3": _profile(electronic, "n_ext", electron_mask),
-        "n_ion_bohr3": _profile(electronic, "n_ion", electron_mask),
-        "n_pa_bohr3": _profile(electronic, "n_pa", electron_mask),
-        "n_scr_bohr3": _profile(electronic, "n_scr", electron_mask),
-        "v_full_ha": _profile(
-            electronic,
-            "v_full",
-            electron_mask,
-            fallback="v_scf",
-        ),
-        "v_ext_ha": _profile(electronic, "v_ext", electron_mask),
-        "v_hartree_ha": _profile(electronic, "v_H", electron_mask),
-        "v_xc_ha": _profile(electronic, "v_xc", electron_mask),
         "n0_bohr3": np.asarray(float(electronic["n0"])),
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "mu_ha": np.asarray(float(electronic["mu"])),
@@ -365,34 +254,16 @@ def _pack_result(
         "threshold_state_representation": np.asarray(
             str(electronic.get("threshold_state_representation", "none"))
         ),
-        "q_scr_raw": np.asarray(
-            float(ion["zbar_screening_integral_raw"])
-        ),
+        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
         "r_bohr": r_i[ion_mask],
         "k_bohr_inv": k[k_mask],
         "gii_r": np.asarray(ion["gii_r"], dtype=float)[ion_mask],
         "sii_k": np.asarray(ion["sii_k"], dtype=float)[k_mask],
-        "vii_r_ha": np.asarray(ion["vii_r"], dtype=float)[ion_mask],
-        "vii_k_ha_bohr3": np.asarray(ion["vii_k"], dtype=float)[k_mask],
-        "n_scr_k_electrons": np.asarray(
-            ion["n_scr_k"],
-            dtype=float,
-        )[k_mask],
-        "chi0_k_bohr3_per_ha": np.asarray(
-            ion["chi0_k"],
-            dtype=float,
-        )[k_mask],
-        "gee_k": np.asarray(ion["gee_k"], dtype=float)[k_mask],
         "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),
-        "hnc_closure_mismatch": np.asarray(
-            float(ion["closure_transform_max_abs"])
-        ),
-        "hnc_closure_tolerance": np.asarray(
-            float(ion["closure_transform_tol"])
-        ),
+        "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
+        "hnc_closure_tolerance": np.asarray(float(ion["closure_transform_tol"])),
         "hnc_iters": np.asarray(int(ion["hnc_iters"])),
     }
-    payload.update(_finite_bound_levels(electronic))
     for key, value in payload.items():
         array = np.asarray(value)
         if array.dtype.hasobject:
@@ -430,13 +301,9 @@ def _add_wunsch_vmhnc(
     k_mask = k <= K_RETAIN_MAX_BOHR_INV
     payload.update(
         {
-            "vmhnc_r_bohr": r[r_mask],
             "vmhnc_gii_r": np.asarray(vmhnc["gii_r"], dtype=float)[r_mask],
-            "vmhnc_k_bohr_inv": k[k_mask],
             "vmhnc_sii_k": np.asarray(vmhnc["sii_k"], dtype=float)[k_mask],
-            "vmhnc_best_residual": np.asarray(
-                float(vmhnc["hnc_output_residual"])
-            ),
+            "vmhnc_best_residual": np.asarray(float(vmhnc["hnc_output_residual"])),
             "vmhnc_closure_mismatch": np.asarray(
                 float(vmhnc["closure_transform_max_abs"])
             ),
@@ -474,9 +341,7 @@ def _wunsch_md_config(
         equilibration_steps=round(
             MD_EQUILIBRATION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
         ),
-        production_steps=round(
-            MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
-        ),
+        production_steps=round(MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV),
         rdf_bins=500,
         rdf_every=100,
         rdf_repeat=50,
@@ -517,6 +382,16 @@ def _add_wunsch_md(
     payload["md_sii_k"] = np.asarray(md["md_snn_k"])
     payload["md_sii_frame_sem"] = np.asarray(md["md_snn_frame_sem"])
     payload["md_sii_vectors_per_bin"] = np.asarray(md["md_vectors_per_k_bin"])
+    for key in (
+        "md_gij_r",
+        "md_gij_block_sem",
+        "md_snn_k",
+        "md_snn_frame_sem",
+        "md_sij_k",
+        "md_sij_frame_sem",
+        "md_vectors_per_k_bin",
+    ):
+        payload.pop(key, None)
 
 
 def _attach_metadata(
@@ -538,9 +413,7 @@ def _attach_metadata(
         "archive_role": "project_generated_example_or_benchmark_baseline",
         "archive_schema_version": SCHEMA,
         "package_id": "ion_structure_library",
-        "configuration": json.loads(
-            str(payload["producer_signature_json"].item())
-        ),
+        "configuration": json.loads(str(payload["producer_signature_json"].item())),
         "state": {
             "state_id": state_id,
             "element": str(state["element"]),
@@ -565,17 +438,21 @@ def _attach_metadata(
             **(
                 {
                     "vmhnc_best_residual": float(payload["vmhnc_best_residual"]),
-                    "vmhnc_closure_mismatch": float(
-                        payload["vmhnc_closure_mismatch"]
-                    ),
+                    "vmhnc_closure_mismatch": float(payload["vmhnc_closure_mismatch"]),
                     "vmhnc_variational_residual": float(
                         payload["vmhnc_variational_residual"]
                     ),
-                    "md_nve_relative_energy_drift": float(
-                        payload["md_nve_relative_energy_drift"]
-                    ),
                 }
                 if "vmhnc_best_residual" in payload
+                else {}
+            ),
+            **(
+                {
+                    "md_nve_relative_energy_drift": float(
+                        payload["md_nve_relative_energy_drift"]
+                    )
+                }
+                if "md_nve_relative_energy_drift" in payload
                 else {}
             ),
         },
@@ -656,6 +533,32 @@ def regenerate(
         if STATE_GROUPS_TO_RUN is None
         else {name: STATE_GROUPS[name] for name in STATE_GROUPS_TO_RUN}
     )
+    if REUSE_COMPLETED_GROUPS:
+        pending: dict[str, tuple[dict[str, Any], ...]] = {}
+        for group, states in selected.items():
+            paths = [output_dir / f"{state['state_id']}.npz" for state in states]
+            complete = True
+            for state, path in zip(states, paths, strict=True):
+                try:
+                    with np.load(path, allow_pickle=False) as archive:
+                        complete = (
+                            str(archive["schema_version"].item()) == SCHEMA
+                            and str(archive["state_id"].item())
+                            == str(state["state_id"])
+                        )
+                except (OSError, KeyError, ValueError):
+                    complete = False
+                if not complete:
+                    break
+            if complete:
+                written.extend(paths)
+                print(f"[reused] group={group}")
+            else:
+                pending[group] = states
+        selected = pending
+    if not selected:
+        return written
+
     workers = max(1, min(int(max_state_workers), len(selected)))
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
@@ -692,7 +595,7 @@ def main() -> None:
     print(
         "Otter recomputation: "
         f"{MAX_STATE_WORKERS} state workers x "
-        f"{CONTINUUM_WORKERS_PER_STATE} continuum workers"
+        f"{FullExternalConfig.cont_n_jobs} continuum workers"
     )
     paths = regenerate()
     print(f"Wrote {len(paths)} staged states under {OUTPUT_DIR.relative_to(ROOT)}")

@@ -10,7 +10,8 @@ from otter.electronic.solvers import bound
 def test_sparse_bound_solver_supplies_reproducible_arpack_start(monkeypatch) -> None:
     starts: list[np.ndarray] = []
 
-    def fake_eigs(matrix, *, k, M, sigma, which, tol, v0):
+    def fake_eigs(matrix, *, k, M, sigma, which, tol, v0, maxiter):
+        assert maxiter == 80
         starts.append(np.asarray(v0, dtype=float).copy())
         n = matrix.shape[0]
         index = np.arange(1, n + 1, dtype=float)

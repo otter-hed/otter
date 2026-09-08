@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pytest
 
+from otter import __version__
 from otter.io.state import (
     STATE_SCHEMA_VERSION,
     StateExportOptions,
@@ -208,9 +209,7 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert arrays["vij_r"].shape[:2] == (n_species, n_species)
     assert arrays["vij_k"].shape[:2] == (n_species, n_species)
     assert arrays["species_0_bound_energy_ha"].shape == (2,)
-    np.testing.assert_array_equal(
-        arrays["species_0_bound_principal_n"], [1, 2]
-    )
+    np.testing.assert_array_equal(arrays["species_0_bound_principal_n"], [1, 2])
     assert arrays["species_0_bound_orbital_density_r"].shape[0] == 2
     assert arrays["species_0_ion_orbital_density_r"].shape[0] == 2
     assert arrays["mu_ha"].shape == (n_species,)
@@ -220,6 +219,7 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert float(np.max(arrays["r_bohr"])) < 20.0
     assert float(np.max(arrays["k_bohr_inv"])) < 20.0
     metadata = json.loads(str(arrays["metadata_json"].item()))
+    assert metadata["producer_version"] == __version__
     assert metadata["model"]["structure_model"] == "IS"
     assert metadata["model"]["lfc_model"] == "chabrier1990"
     assert metadata["units"]["q_k"] == "electron number"
@@ -227,11 +227,196 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert metadata["units"]["c_ee_k"] == "Bohr^3"
     assert metadata["units"]["G_ee_k"] == "dimensionless"
     assert metadata["configuration"]["rho_g_cc"] == 1.0
+    assert metadata["configuration_nondefault"] == {
+        "temperature_ev": 10.0,
+        "rho_g_cc": 1.0,
+    }
     assert metadata["citation_keys"] == [
         "StarrettSaumon2014",
         "Chabrier1990",
     ]
     assert metadata["convergence"]["electronic"][0]["species"] == "C"
+
+
+def test_electronic_summary_is_full_only_and_minimal() -> None:
+    workflow = _synthetic_workflow(1)
+    workflow["ion"] = None
+    result = workflow["electronic"]["result"]
+    result["final_state_map_error"] = 2e-7
+    result["bound_state_diagnostics"] = {"spectrum_check": {
+        "status": "no_additional_pole_in_window", "max_binding_ha": .01}}
+    arrays = build_state_arrays(
+        workflow,
+        options=StateExportOptions(profile="electronic_summary"),
+    )
+    assert set(arrays) == {
+        "schema_version",
+        "species_symbols",
+        "species_counts",
+        "species_number_fraction",
+        "species_nuclear_charge",
+        "zbar",
+        "zbar_partition",
+        "zbar_aa_ws",
+        "zstar",
+        "mu_ha",
+        "r_ws_bohr",
+        "n0_bohr3",
+        "n_i_bohr3",
+        "species_0_bound_energy_cut_ha",
+        "species_0_bound_energy_ha",
+        "species_0_bound_fd",
+        "species_0_bound_fdm",
+        "species_0_bound_l",
+        "species_0_bound_m",
+        "species_0_bound_n_index",
+        "species_0_bound_occ_deg_fd",
+        "species_0_bound_occ_deg_fdm",
+        "species_0_bound_principal_n",
+        "species_0_bound_q_ion_ws",
+        "species_0_mu_ha",
+        "species_0_n0_bohr3",
+        "species_0_n_i_bohr3",
+        "species_0_nuclear_charge",
+        "species_0_r_ws_bohr",
+        "species_0_zbar_aa",
+        "species_0_zbar_partition",
+        "species_0_zbar_ws",
+        "species_0_zstar",
+        "metadata_json",
+    }
+    metadata = json.loads(str(arrays["metadata_json"].item()))
+    electronic = metadata["convergence"]["electronic"][0]
+    assert electronic["final_state_map_error"] == 2e-7
+    assert electronic["bound_spectrum_check"] == result["bound_state_diagnostics"]["spectrum_check"]
+    assert metadata["export"]["profile"] == "electronic_summary"
+    assert metadata["export"]["included_groups"] == [
+        "bound_levels",
+        "electronic_summary",
+    ]
+    assert metadata["export"]["computed_stages"] == [
+        "electronic.full",
+        "electronic.external",
+    ]
+    assert metadata["export"]["restart_capable"] is False
+
+
+def test_electronic_levels_is_a_compatible_summary_alias() -> None:
+    workflow = _synthetic_workflow(1)
+    workflow["ion"] = None
+    summary = build_state_arrays(
+        workflow,
+        options=StateExportOptions(profile="electronic_summary"),
+    )
+    levels = build_state_arrays(
+        workflow,
+        options=StateExportOptions(profile="electronic_levels"),
+    )
+    assert set(levels) == set(summary)
+    for key in set(levels).difference({"metadata_json"}):
+        np.testing.assert_array_equal(levels[key], summary[key])
+    assert "species_0_bound_energy_ha" in levels
+    assert "species_0_bound_m" in levels
+    assert "species_0_r_bohr" not in levels
+    assert not any("density_r" in key for key in levels)
+    assert not any("v_full_r" in key for key in levels)
+    assert "r_bohr" not in levels and "k_bohr_inv" not in levels
+
+
+def test_ion_structure_profile_omits_qoz_intermediates_and_potentials() -> None:
+    arrays = build_state_arrays(
+        _synthetic_workflow(2),
+        options=StateExportOptions(profile="ion_structure"),
+    )
+    assert {
+        "schema_version",
+        "species_symbols",
+        "species_counts",
+        "species_number_fraction",
+        "species_nuclear_charge",
+        "zbar",
+        "zbar_qoz",
+        "zbar_partition",
+        "zbar_aa_ws",
+        "zstar",
+        "mu_ha",
+        "r_ws_bohr",
+        "n0_bohr3",
+        "n_i_bohr3",
+        "r_bohr",
+        "k_bohr_inv",
+        "f_k",
+        "q_k",
+        "n_ion_k",
+        "n_scr_k",
+        "gij_r",
+        "sij_k",
+        "metadata_json",
+    } <= set(arrays)
+    for species_index in range(2):
+        assert f"species_{species_index}_bound_energy_ha" in arrays
+        assert f"species_{species_index}_bound_m" in arrays
+    assert "chi0_k" not in arrays
+    assert "chi_ee_k" not in arrays
+    assert "G_ee_k" not in arrays
+    assert "vij_r" not in arrays
+    assert "species_0_n_full_r" not in arrays
+    assert "species_1_n_full_r" not in arrays
+
+
+def test_include_groups_adds_only_requested_optional_data() -> None:
+    workflow = _synthetic_workflow(1)
+    ion_only = build_state_arrays(
+        workflow,
+        options=StateExportOptions(profile="ion_structure"),
+    )
+    with_potential = build_state_arrays(
+        workflow,
+        options=StateExportOptions(
+            profile="ion_structure",
+            include_groups=("pair_potential",),
+        ),
+    )
+    assert set(with_potential).difference(ion_only) == {"vij_r", "vij_k"}
+    for key in ion_only:
+        if key != "metadata_json":
+            np.testing.assert_array_equal(with_potential[key], ion_only[key])
+
+
+def test_ion_structure_can_include_qoz_electron_response() -> None:
+    arrays = build_state_arrays(
+        _synthetic_workflow(2),
+        options=StateExportOptions(
+            profile="ion_structure",
+            include_groups=("qoz_response",),
+        ),
+    )
+    for key in (
+        "chi0_k",
+        "chi_ee_k",
+        "G_ee_k",
+        "v_ie_k",
+        "c_ie_k",
+        "v_ee_k",
+        "c_ee_k",
+        "gij_r",
+        "sij_k",
+    ):
+        assert key in arrays
+    assert "vij_k" not in arrays
+    assert "hij_r" not in arrays
+    assert "species_0_n_full_r" not in arrays
+
+
+def test_electronic_summary_is_materially_smaller_than_complete(tmp_path) -> None:
+    workflow = _synthetic_workflow(2)
+    summary = save_plasma_state(
+        tmp_path / "summary.npz",
+        workflow,
+        options=StateExportOptions(profile="electronic_summary"),
+    )
+    complete = save_plasma_state(tmp_path / "complete.npz", workflow)
+    assert summary.stat().st_size < complete.stat().st_size / 4
 
 
 def test_state_file_round_trips_without_pickle(tmp_path) -> None:
@@ -303,6 +488,16 @@ def test_state_validator_accepts_legacy_v3_without_canonical_lfc_key() -> None:
     metadata = json.loads(str(legacy["metadata_json"].item()))
     metadata["schema_version"] = "otter_state_v3"
     metadata["fields"] = sorted(set(metadata["fields"]) - {"G_ee_k"})
+    legacy["metadata_json"] = np.asarray(json.dumps(metadata))
+    validate_state_arrays(legacy)
+
+
+def test_state_validator_accepts_complete_legacy_v4_archive() -> None:
+    arrays = build_state_arrays(_synthetic_workflow(1))
+    legacy = dict(arrays)
+    legacy["schema_version"] = np.asarray("otter_state_v4")
+    metadata = json.loads(str(legacy["metadata_json"].item()))
+    metadata["schema_version"] = "otter_state_v4"
     legacy["metadata_json"] = np.asarray(json.dumps(metadata))
     validate_state_arrays(legacy)
 
@@ -386,7 +581,7 @@ def test_state_export_rejects_missing_or_unconverged_ion_stage() -> None:
         build_state_arrays(sc_unconverged)
 
 
-def test_workflow_state_save_requires_ion_temperature() -> None:
+def test_workflow_state_save_requires_ion_temperature_only_for_ion_profiles() -> None:
     with pytest.raises(ValueError, match="save_state_npz requires"):
         PlasmaWorkflowConfig(
             elements=["C"],
@@ -394,3 +589,14 @@ def test_workflow_state_save_requires_ion_temperature() -> None:
             rho_g_cc=1.0,
             save_state_npz=True,
         )
+
+    config = PlasmaWorkflowConfig(
+        elements=["C"],
+        temperature_ev=10.0,
+        rho_g_cc=1.0,
+        run_mode="full",
+        save_state_npz=True,
+        state_export_profile="electronic_levels",
+    )
+    assert config.ion_temperature_ev is None
+    assert config.state_export_profile == "electronic_levels"

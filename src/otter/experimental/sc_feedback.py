@@ -23,7 +23,7 @@ choices, not claims about the cited algorithms.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -58,6 +58,11 @@ class SCFeedbackConfig:
     v_corr_scale: float = 1.0
     use_continuation: bool = True
     require_converged: bool = True
+    # Inexact outer iteration: tighten only the QM full solve near convergence
+    # or stagnation. Cap its tolerances at this fraction of ordinary AA defaults;
+    # preserve stricter user tolerances. None disables this numerical safeguard
+    # for diagnostics. IS, TF, external and spectral controls are unchanged.
+    inner_full_tol_scale: float | None = 0.01
 
     def __post_init__(self) -> None:
         if int(self.max_outer) < 1:
@@ -68,6 +73,55 @@ class SCFeedbackConfig:
             raise ValueError("v_corr_mix must lie in (0, 1].")
         if float(self.v_corr_scale) < 0.0:
             raise ValueError("v_corr_scale must be non-negative.")
+        if self.inner_full_tol_scale is not None and not (
+            np.isfinite(self.inner_full_tol_scale)
+            and 0.0 < self.inner_full_tol_scale <= 1.0
+        ):
+            raise ValueError("inner_full_tol_scale must be in (0, 1] or None.")
+
+
+class SCFeedbackConvergenceError(RuntimeError):
+    """Failed outer solve with an explicitly unconverged diagnostic result.
+
+    Catching RuntimeError remains compatible. ``result`` retains the actual
+    last iterate and its full feedback history, not an accepted SC solution.
+    """
+
+    def __init__(self, message: str, result: dict[str, Any]):
+        super().__init__(message)
+        self.result = result
+
+    def __reduce__(self):
+        # Benchmark producers use ProcessPoolExecutor. Preserve the diagnostic
+        # payload across its exception transport, not only within one process.
+        return type(self), (str(self), self.result)
+
+
+def _refine_inner_full(cfg: FullExternalConfig, scale: float) -> FullExternalConfig:
+    """Tighten numerical precision without changing the AA equations or model."""
+    names = ("scf_tol", "scf_dn_tol", "scf_dv_tol")
+    return replace(
+        cfg,
+        **{
+            name: min(
+                float(getattr(cfg, name)),
+                float(getattr(FullExternalConfig, name)) * scale,
+            )
+            for name in names
+        },
+    )
+
+
+def _needs_inner_precision(normalized_residuals: list[float]) -> bool:
+    """Refine in the final decade or after three updates without progress.
+
+    This trigger schedules work; it does not relax the acceptance tolerance.
+    The refinement latches so later iterates cannot fall back to coarse AA.
+    """
+    return normalized_residuals[-1] <= 10.0 or (
+        len(normalized_residuals) >= 4
+        and min(normalized_residuals[-3:]) >= min(normalized_residuals[:-3])
+    )
 
 
 def mixture_ionic_background_profiles(
@@ -343,6 +397,25 @@ def solve_sc_feedback_workflow(
     old_v_corr: np.ndarray | None = None
     history: list[dict[str, Any]] = []
     converged = False
+    refine_enabled = (
+        str(workflow_cfg.electronic_model).strip().lower() != "tf"
+        and controls.inner_full_tol_scale is not None
+    )
+    inner_refined = False
+    normalized_residuals: list[float] = []
+
+    def correlation_target(state: dict[str, Any]) -> np.ndarray:
+        state_ion = state["ion"]
+        return float(controls.v_corr_scale) * estimate_mixture_correlation_potentials(
+            r=state_ion["r"], k=state_ion["k"], gij_r=state_ion["gij_r"],
+            n_scr_k=state_ion["n_scr_k"], chi_ee_k=state_ion["chi_ee_k"],
+            zbar=np.atleast_1d(state_ion["zbar"]),
+            partial_ion_density=np.atleast_1d(state_ion["n_i"]),
+            field_free_electron_density=n0_common,
+            electron_temperature_ev=float(workflow_cfg.temperature_ev),
+        )
+
+    v_target = correlation_target(previous)
 
     for outer in range(1, int(controls.max_outer) + 1):
         ion = dict(previous["ion"])
@@ -354,19 +427,6 @@ def solve_sc_feedback_workflow(
             [float(sp["result"]["n0"]) for sp in current_entries], dtype=float
         )
         n0_span = float(np.max(n0_values) - np.min(n0_values))
-        v_target = float(
-            controls.v_corr_scale
-        ) * estimate_mixture_correlation_potentials(
-            r=r_ion,
-            k=np.asarray(ion["k"], dtype=float),
-            gij_r=gij_r,
-            n_scr_k=np.asarray(ion["n_scr_k"], dtype=float),
-            chi_ee_k=np.asarray(ion["chi_ee_k"], dtype=float),
-            zbar=np.atleast_1d(np.asarray(ion["zbar"], dtype=float)),
-            partial_ion_density=np.atleast_1d(np.asarray(ion["n_i"], dtype=float)),
-            field_free_electron_density=n0_common,
-            electron_temperature_ev=float(workflow_cfg.temperature_ev),
-        )
         v_mixed, d_v_corr = _mix_correlation_potentials(
             r=r_ion,
             target=v_target,
@@ -376,6 +436,7 @@ def solve_sc_feedback_workflow(
         )
 
         results: list[dict[str, Any]] = []
+        inner_tolerances: list[dict[str, float]] = []
         for idx, sp in enumerate(current_entries):
             symbol = str(sp["element"])
             overrides = dict(workflow_cfg.aa_overrides)
@@ -411,6 +472,14 @@ def solve_sc_feedback_workflow(
                 }
             )
             aa_cfg = FullExternalConfig(**overrides)
+            if inner_refined:
+                aa_cfg = _refine_inner_full(
+                    aa_cfg, float(controls.inner_full_tol_scale)
+                )
+            inner_tolerances.append({
+                name: float(getattr(aa_cfg, name))
+                for name in ("scf_tol", "scf_dn_tol", "scf_dv_tol")
+            })
             if bool(controls.use_continuation):
                 aa_cfg = with_continuation_initial_guess(
                     aa_cfg,
@@ -472,11 +541,26 @@ def solve_sc_feedback_workflow(
             electronic_result=electronic_result,
         )
         d_g = _max_g_change(previous, current)
+        # Evaluate Eq. (19) on the NEW AA/HNC output against the potential
+        # actually used for that AA input. A small damped step alone is not a
+        # fixed-point residual, especially when v_corr_mix is very small.
+        # Cache this target for the next iteration; the physical map is unchanged.
+        v_target = correlation_target(current)
+        r_new = np.asarray(current["ion"]["r"], dtype=float)
+        used_on_new = np.asarray([np.interp(r_new, r_ion, row) for row in v_mixed])
+        v_residual = float(np.max(np.abs(v_target - used_on_new)))
+        normalized_residuals.append(max(
+            float(d_g) / float(controls.g_tol),
+            v_residual / float(controls.v_corr_tol),
+        ))
         history.append(
             {
                 "iteration": int(outer),
                 "max_g_change": float(d_g),
                 "max_v_corr_change_ha": float(d_v_corr),
+                "max_v_corr_residual_ha": v_residual,
+                "inner_full_refined": bool(inner_refined),
+                "inner_full_tolerances": inner_tolerances,
                 "ideal_common_n0_bohr3": float(n0_common),
                 "species_n0_span_bohr3": float(n0_span),
                 "zbar": np.atleast_1d(
@@ -488,9 +572,18 @@ def solve_sc_feedback_workflow(
         entries = _electronic_species_entries(previous)
         old_v_r = r_ion.copy()
         old_v_corr = np.asarray(v_mixed, dtype=float).copy()
-        if d_g < float(controls.g_tol) and d_v_corr < float(controls.v_corr_tol):
+        if (d_g < float(controls.g_tol)
+                and d_v_corr < float(controls.v_corr_tol)
+                and v_residual < float(controls.v_corr_tol)
+                and (not refine_enabled or inner_refined)):
             converged = True
             break
+        if (
+            refine_enabled
+            and not inner_refined
+            and _needs_inner_precision(normalized_residuals)
+        ):
+            inner_refined = True
 
     feedback_meta = {
         "structure_model": "SC",
@@ -505,6 +598,8 @@ def solve_sc_feedback_workflow(
         "v_corr_tol_ha": float(controls.v_corr_tol),
         "v_corr_mix": float(controls.v_corr_mix),
         "v_corr_scale": float(controls.v_corr_scale),
+        "inner_full_tol_scale": controls.inner_full_tol_scale,
+        "potential_convergence_metric": "unmixed_current_output_minus_used_input",
         "electronic_model": str(workflow_cfg.electronic_model),
         "reference": (
             "C. E. Starrett and D. Saumon, High Energy Density Physics "
@@ -527,17 +622,21 @@ def solve_sc_feedback_workflow(
         previous["ion"]["structure_model"] = "SC"
         previous["ion"]["sc_feedback"] = feedback_meta
     if bool(controls.require_converged) and not converged:
-        raise RuntimeError(
+        raise SCFeedbackConvergenceError(
             "SC feedback did not converge within "
             f"{int(controls.max_outer)} iterations: "
             f"max|dg|={float(history[-1]['max_g_change']):.3e}, "
-            f"max|dVcorr|={float(history[-1]['max_v_corr_change_ha']):.3e} Ha."
+            f"max|dVcorr|={float(history[-1]['max_v_corr_change_ha']):.3e} Ha; "
+            "max|Vcorr_out-Vcorr_in|="
+            f"{float(history[-1]['max_v_corr_residual_ha']):.3e} Ha.",
+            previous,
         )
     return previous
 
 
 __all__ = [
     "SCFeedbackConfig",
+    "SCFeedbackConvergenceError",
     "estimate_mixture_correlation_potentials",
     "mixture_ionic_background_profiles",
     "solve_sc_feedback_workflow",

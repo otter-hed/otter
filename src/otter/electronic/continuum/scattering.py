@@ -24,6 +24,9 @@ References
   quadrature, and resonance diagnostics are Otter implementation choices.
 """
 from typing import Dict, Tuple, Any
+from collections import OrderedDict
+from contextlib import contextmanager
+from contextvars import ContextVar
 import math
 import time
 import warnings
@@ -52,6 +55,64 @@ except Exception:
 _HAVE_COULOMB_ASYM = True
 
 from .interface import ContinuumModel
+
+
+_FREE_BASIS_CACHE = ContextVar("otter_free_basis_cache", default=None)
+
+
+class _FreeBasisCache:
+    """Byte-bounded LRU for potential-independent j_l(kr), y_l(kr) tables.
+
+    Exact arguments, including l_max, are required: Miller normalization can
+    depend on the recurrence length. Never slice a larger-l table to answer a
+    smaller-l request. No interacting wave, phase or matching decision is cached.
+    """
+
+    def __init__(self, max_bytes=64 * 1024**2):
+        self.max_bytes = max_bytes
+        self.nbytes = 0
+        self.entries = OrderedDict()
+
+    def tables(self, z, l_max):
+        key = (int(l_max), np.asarray(z, dtype=np.float64).tobytes())
+        entry = self.entries.pop(key, None)
+        if entry is not None:
+            self.entries[key] = entry
+            return entry[0]
+        tables = _free_bessel_tables_numba(z, l_max)
+        size = len(key[1]) + sum(a.nbytes for a in tables)
+        if size <= self.max_bytes:
+            while self.nbytes + size > self.max_bytes:
+                _, (_, removed_size) = self.entries.popitem(last=False)
+                self.nbytes -= removed_size
+            for a in tables:
+                a.flags.writeable = False
+            self.entries[key] = (tables, size)
+            self.nbytes += size
+        return tables
+
+
+@contextmanager
+def _free_basis_cache_scope():
+    """Own one cache per AA call; nested refinements share it, then release it.
+
+    This only memoizes the free reference functions in A3 matching
+    (:cite:`StarrettSaumon2014`, Appendix A). It changes no approximation.
+    """
+    token = None
+    if _FREE_BASIS_CACHE.get() is None:
+        token = _FREE_BASIS_CACHE.set(_FreeBasisCache())
+    try:
+        yield
+    finally:
+        if token is not None:
+            _FREE_BASIS_CACHE.reset(token)
+
+
+def _free_bessel_tables(z, l_max):
+    cache = _FREE_BASIS_CACHE.get()
+    return (_free_bessel_tables_numba(z, l_max) if cache is None
+            else cache.tables(z, l_max))
 
 
 def _trapz(y: np.ndarray, x: np.ndarray, axis: int = -1) -> np.ndarray:
@@ -292,7 +353,9 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                                        l_cap_strategy: str = "match",
                                        energy_cache: dict[float, tuple[np.ndarray, np.ndarray]] | None = None,
                                        n_jobs: int | None = None,
-                                       return_meta: bool = False) -> np.ndarray | tuple[np.ndarray, dict[str, Any]]:
+                                       return_meta: bool = False,
+                                       l_max_soft: int | None = None,
+                                       partial_wave_tol: float = 1e-7) -> np.ndarray | tuple[np.ndarray, dict[str, Any]]:
     """
     Continuum scattering density basis (no Fermi-Dirac occupancy applied).
 
@@ -369,6 +432,9 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                 prop_rescale_limit,
                 False,
                 l_cap_strategy,
+                None,
+                partial_wave_tol,
+                l_max_soft,
             ),
         ) as pool:
             results = pool.map(_scatter_worker, [float(e) for e in e_grid])
@@ -413,6 +479,8 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                 l_cap_strategy=l_cap_strategy,
                 numerov_geom=numerov_geom,
                 perf_accum=perf_accum,
+                l_max_soft=l_max_soft,
+                partial_wave_tol=partial_wave_tol,
             )
             cache[e_val] = (n_e, delta_vec)
             n_e_r[i] = n_e
@@ -691,7 +759,9 @@ def _numerov_propagate_sqrt_wbase_batch_numba(r: np.ndarray,
         w_curr[j] = w_base[1] - l_terms[j] * inv_r[1]
 
     # (2) March once over radius and update every l-channel in place.
+    rescale_channels = np.empty(n_l, dtype=np.int64)
     for i in range(1, N - 1):
+        n_rescale = 0
         inv_next = inv_r[i + 1]
         for j in range(n_l):
             w_next = w_base[i + 1] - l_terms[j] * inv_next
@@ -700,10 +770,22 @@ def _numerov_propagate_sqrt_wbase_batch_numba(r: np.ndarray,
                 - (1.0 + h * w_prev[j]) * psi[i - 1, j]
             ) / (1.0 + h * w_next)
             if do_rescale and abs(psi[i + 1, j]) > rescale_limit:
-                for k in range(i + 2):
-                    psi[k, j] /= rescale_limit
+                rescale_channels[n_rescale] = j
+                n_rescale += 1
             w_prev[j] = w_curr[j]
             w_curr[j] = w_next
+
+        # Channels are independent: finish this radius, then rescale every
+        # affected prefix before advancing again. Group simultaneous events
+        # for better locality, retaining the same divisions and threshold.
+        if n_rescale == 1:
+            j = rescale_channels[0]
+            for k in range(i + 2):
+                psi[k, j] /= rescale_limit
+        elif n_rescale > 1:
+            for k in range(i + 2):
+                for event in range(n_rescale):
+                    psi[k, rescale_channels[event]] /= rescale_limit
 
     # (3) Return contiguous row-major u_l(r) buffers for downstream matching.
     out = np.empty((n_l, N), dtype=np.float64)
@@ -714,6 +796,26 @@ def _numerov_propagate_sqrt_wbase_batch_numba(r: np.ndarray,
     return out
 
 
+
+
+@njit(cache=True)
+def _numerov_propagate_sqrt_wbase_suffix_numba(
+    r: np.ndarray, r_quarter: np.ndarray, inv_r: np.ndarray,
+    w_base: np.ndarray, l_vals: np.ndarray, dxi: float,
+    rescale_limit: float = 1e6, origin_charge: float = 0.0,
+) -> np.ndarray:
+    """Propagate a recovery suffix with contiguous per-channel rescaling.
+
+    High-l overflow protection repeatedly revisits earlier radial samples.
+    Contiguous rows avoid strided prefix writes on these added channels.
+    Reuse the existing scalar recurrence, origin condition and scale limit;
+    ordinary initial batches retain their vectorized radial sweep.
+    """
+    out = np.empty((l_vals.size, r.size), dtype=np.float64)
+    for j, l in enumerate(l_vals):
+        _numerov_propagate_sqrt_wbase_inplace_numba(
+            r, r_quarter, inv_r, w_base, l, dxi, out[j], rescale_limit, origin_charge)
+    return out
 
 
 @njit(cache=True, inline="always")
@@ -745,25 +847,22 @@ def _spherical_y1_exact(x: float) -> float:
 
 
 @njit(cache=True)
-def _spherical_jn_yn_all_numba(l_max: int, x: float) -> tuple[np.ndarray, np.ndarray]:
+def _spherical_jn_yn_all_inplace_numba(l_max, x, j, y, tmp):
     """
-    Compute j_0..j_lmax and y_0..y_lmax for one real x.
+    Fill j_0..j_lmax and y_0..y_lmax for one real x using caller scratch.
 
     Notes
     -----
     - j_l(x) uses Miller downward recurrence + normalization.
     - y_l(x) uses upward recurrence.
     """
-    j = np.empty(l_max + 1, dtype=np.float64)
-    y = np.empty(l_max + 1, dtype=np.float64)
-
     if x == 0.0:
         j[0] = 1.0
         y[0] = -math.inf
         for l_val in range(1, l_max + 1):
             j[l_val] = 0.0
             y[l_val] = -math.inf
-        return j, y
+        return
 
     y[0] = _spherical_y0_exact(x)
     if l_max >= 1:
@@ -772,7 +871,6 @@ def _spherical_jn_yn_all_numba(l_max: int, x: float) -> tuple[np.ndarray, np.nda
             y[l_val + 1] = ((2.0 * l_val + 1.0) / x) * y[l_val] - y[l_val - 1]
 
     L = l_max + int(max(50.0, x + 25.0))
-    tmp = np.empty(L + 2, dtype=np.float64)
     tmp[L + 1] = 0.0
     tmp[L] = 1.0
 
@@ -801,6 +899,15 @@ def _spherical_jn_yn_all_numba(l_max: int, x: float) -> tuple[np.ndarray, np.nda
     for l_val in range(l_max + 1):
         j[l_val] = tmp[l_val] * scale
 
+
+@njit(cache=True)
+def _spherical_jn_yn_all_numba(l_max: int, x: float) -> tuple[np.ndarray, np.ndarray]:
+    """Allocate a standalone pair; table construction reuses its own scratch."""
+    j = np.empty(l_max + 1, dtype=np.float64)
+    y = np.empty(l_max + 1, dtype=np.float64)
+    L = l_max + int(max(50.0, x + 25.0))
+    tmp = np.empty(L + 2, dtype=np.float64)
+    _spherical_jn_yn_all_inplace_numba(l_max, x, j, y, tmp)
     return j, y
 
 
@@ -817,8 +924,19 @@ def _free_bessel_tables_numba(z_grid: np.ndarray, l_max: int) -> tuple[np.ndarra
     n_z = z_grid.size
     j_tab = np.empty((l_max + 1, n_z), dtype=np.float64)
     y_tab = np.empty((l_max + 1, n_z), dtype=np.float64)
+    if n_z == 0:
+        return j_tab, y_tab
+    # Each x has an independent Miller recurrence. Reuse storage, not its
+    # values or recurrence length: the active L and rescaling bounds below
+    # remain exactly those of the scalar calculation, even for unsorted x.
+    longest = l_max + 50
     for i in range(n_z):
-        j_vals, y_vals = _spherical_jn_yn_all_numba(l_max, float(z_grid[i]))
+        longest = max(longest, l_max + int(max(50.0, float(z_grid[i]) + 25.0)))
+    tmp = np.empty(longest + 2, dtype=np.float64)
+    j_vals = np.empty(l_max + 1, dtype=np.float64)
+    y_vals = np.empty(l_max + 1, dtype=np.float64)
+    for i in range(n_z):
+        _spherical_jn_yn_all_inplace_numba(l_max, float(z_grid[i]), j_vals, y_vals, tmp)
         for l_val in range(l_max + 1):
             j_tab[l_val, i] = j_vals[l_val]
             y_tab[l_val, i] = y_vals[l_val]
@@ -1641,8 +1759,8 @@ def _prepare_match_plan_for_energy(r: np.ndarray,
                 free_i1.append(int(base_i1))
         basis_meta_list = [basis_meta_shared] * (l_cap + 1)
     else:
-        # (2) General path: preprocess the energy-fixed tail constraints once,
-        # then update only the l-dependent kr threshold inside the loop.
+        # (2) General path: select the potential-valid run once and batch all
+        # l-dependent kr indices before resolving each window's basis.
         k = np.sqrt(2.0 * energy)
         rm_base = np.asarray(r[base_i0:base_i1], dtype=float)
         v_tail_base = np.asarray(v_eff[base_i0:base_i1], dtype=float) if v_eff is not None else None
@@ -1650,65 +1768,58 @@ def _prepare_match_plan_for_energy(r: np.ndarray,
         if match_v_tol is not None and v_tail_base is not None:
             mask_base &= np.abs(v_tail_base) <= float(match_v_tol)
         true_runs = _contiguous_true_runs(mask_base)
+        valid_runs = true_runs[(true_runs[:, 1] - true_runs[:, 0]) >= min_points]
+        starts = np.full(l_cap + 1, -1, dtype=int)
+        run_end = 0
+        if valid_runs.size:
+            run_start, run_end = map(int, valid_runs[-1])
+            starts.fill(run_start)
+            if match_kr_min is not None:
+                kr_min = np.maximum(float(match_kr_min), np.arange(l_cap + 1, dtype=float) + 1)
+                starts = np.maximum(run_start, np.searchsorted(rm_base, kr_min / k))
+                # All channels share the same potential-valid runs. If the
+                # rightmost long run is too short after imposing kr, every
+                # earlier run also ends too early. Relax only kr, exactly as
+                # in the scalar selector; never relax the potential criterion.
+                starts[run_end - starts < min_points] = run_start
         auto_free_from_tol = (
             asym_mode == "auto"
             and match_v_tol is not None
             and v_tail_base is not None
         )
-        free_meta_shared = None
-        if auto_free_from_tol:
-            free_meta_shared = {
+        if not valid_runs.size:
+            fallback_count = l_cap + 1
+            match_slices = [(base_i0, base_i1)] * (l_cap + 1)
+            fallback_flags = [True] * (l_cap + 1)
+            basis_meta_list = [None] * (l_cap + 1)
+        elif auto_free_from_tol:
+            # Every selected window already satisfies the potential criterion.
+            # Their free-basis metadata differ neither with l nor with window
+            # length. Batch the bookkeeping, not the matching approximation:
+            # retain each kr-constrained slice and the original Bessel l_max
+            # (Miller normalization depends on that maximum order).
+            ends = [int(base_i0 + run_end)] * (l_cap + 1)
+            match_slices = list(zip((base_i0 + starts).tolist(), ends))
+            fallback_flags = [False] * (l_cap + 1)
+            basis_meta_list = [{
                 "kind": "free",
                 "k_use": float(k),
                 "eta": None,
                 "v_shift": None,
                 "coulomb_backend": None,
-            }
+            }] * (l_cap + 1)
+            free_l_max = l_cap
+            free_i0 = [int(base_i0 + starts.min())]
+            free_i1 = [ends[0]]
+        else:
+            basis_meta_cache: dict[tuple[int, int], dict | None] = {}
+            for l_val, start_rel in enumerate(starts):
+                slice_rel = (int(start_rel), run_end)
+                i0 = int(base_i0 + slice_rel[0])
+                i1 = int(base_i0 + slice_rel[1])
+                match_slices.append((i0, i1))
+                fallback_flags.append(False)
 
-        basis_meta_cache: dict[tuple[int, int], dict | None] = {}
-        for l_val in range(l_cap + 1):
-            j_kr = 0
-            if match_kr_min is not None:
-                kr_min = max(float(match_kr_min), float(l_val + 1))
-                j_kr = int(np.searchsorted(rm_base, kr_min / k))
-
-            slice_rel = None
-            for run_start, run_end in true_runs[::-1]:
-                start_eff = max(int(run_start), int(j_kr))
-                if int(run_end) - start_eff >= min_points:
-                    slice_rel = (start_eff, int(run_end))
-                    break
-
-            if slice_rel is None and match_kr_min is not None:
-                # The kr threshold is a conditioning preference, not a
-                # physical validity condition: the exact free/Coulomb basis
-                # used below is defined at low kr.  Relax only kr when a
-                # sufficiently long |V|-valid tail window exists.  Preserve
-                # the free fallback for cases where even the potential-tail
-                # criterion cannot be satisfied.
-                for run_start, run_end in true_runs[::-1]:
-                    if int(run_end) - int(run_start) >= min_points:
-                        slice_rel = (int(run_start), int(run_end))
-                        break
-
-            if slice_rel is None:
-                fallback_count += 1
-                match_slice_l = (base_i0, base_i1)
-                match_slices.append(match_slice_l)
-                fallback_flags.append(True)
-                basis_meta_list.append(None)
-                continue
-
-            i0 = int(base_i0 + slice_rel[0])
-            i1 = int(base_i0 + slice_rel[1])
-            match_slice_l = (i0, i1)
-            match_slices.append(match_slice_l)
-            fallback_flags.append(False)
-
-            basis_meta = None
-            if auto_free_from_tol:
-                basis_meta = free_meta_shared
-            else:
                 slice_key = (int(slice_rel[0]), int(slice_rel[1]))
                 basis_meta = basis_meta_cache.get(slice_key)
                 if basis_meta is None:
@@ -1725,19 +1836,19 @@ def _prepare_match_plan_for_energy(r: np.ndarray,
                             bool(match_allow_shift),
                         )
                     basis_meta_cache[slice_key] = basis_meta
-            if basis_meta is not None:
-                if str(basis_meta.get("kind", "free")).lower() == "free":
-                    free_l_max = max(free_l_max, int(l_val))
-                    free_i0.append(int(i0))
-                    free_i1.append(int(i1))
-            basis_meta_list.append(basis_meta)
+                if basis_meta is not None:
+                    if str(basis_meta.get("kind", "free")).lower() == "free":
+                        free_l_max = max(free_l_max, int(l_val))
+                        free_i0.append(int(i0))
+                        free_i1.append(int(i1))
+                basis_meta_list.append(basis_meta)
 
     free_basis_cache = None
     if free_l_max >= 0 and free_i0 and free_i1:
         i0_union = int(min(free_i0))
         i1_union = int(max(free_i1))
         z_union = np.sqrt(2.0 * energy) * r[i0_union:i1_union]
-        j_tab, y_tab = _free_bessel_tables_numba(z_union, int(free_l_max))
+        j_tab, y_tab = _free_bessel_tables(z_union, int(free_l_max))
         free_basis_cache = {
             "i0": i0_union,
             "z": z_union,
@@ -1750,7 +1861,7 @@ def _prepare_match_plan_for_energy(r: np.ndarray,
         # exact free basis once on the full grid and let all fallback channels
         # reuse it instead of calling spherical_jn(l, k r) independently.
         z_full = np.sqrt(2.0 * energy) * r
-        j_tab, y_tab = _free_bessel_tables_numba(z_full, int(l_cap))
+        j_tab, y_tab = _free_bessel_tables(z_full, int(l_cap))
         free_basis_cache = {
             "i0": 0,
             "z": z_full,
@@ -1974,6 +2085,131 @@ def _match_scattering_scale_preplanned(u: np.ndarray,
     return None, float(delta), float(amp_target / amp)
 
 
+@njit(cache=True)
+def _match_free_scales_batch_numba(waves, windows, base_i0, z, j_tab, y_tab, amp_target,
+                                  l_offset=0):
+    """Batch the existing free-basis fits, without changing their arithmetic."""
+    count = waves.shape[0]
+    status = np.empty(count, dtype=np.int64)
+    phases = np.zeros(count)
+    scales = np.ones(count)
+    for l in range(count):
+        i0, i1 = windows[l]
+        start, end = i0-base_i0, i1-base_i0
+        code, amp, phase = _solve_match_amplitude_phase_free_numba(
+            waves[l], i0, z[start:end],
+            j_tab[l + l_offset, start:end], y_tab[l + l_offset, start:end],
+        )
+        status[l] = code
+        if code == 0:
+            phases[l] = phase
+            scales[l] = amp_target / amp
+    return status, phases, scales
+
+
+def _match_free_scales_batch(waves, windows, fallback_flags, basis_meta, cache, energy,
+                            l_offset=0):
+    """Remove per-channel Python dispatch for ordinary free-basis matching.
+
+    This is the same Appendix-A normalization (:cite:`StarrettSaumon2014`).
+    Non-free bases and free-wave fallbacks keep the scalar path. Retained
+    propagation rows reuse their contiguous backing batches without stacking
+    full radial arrays, and angular offsets index the enlarged original basis.
+    An unsuccessful batched fit must also use the scalar path,
+    including its robust least-squares fallback; it is never silently accepted.
+    """
+    if waves is None or cache is None or any(fallback_flags):
+        return None
+    k = np.sqrt(2.0 * energy)
+    if any(meta is None or str(meta.get("kind", "free")).lower() != "free"
+           or float(meta.get("k_use", k)) != k for meta in basis_meta):
+        return None
+    amp_target = np.sqrt(2.0 / np.pi) / np.sqrt(max(float(k), 1.0e-12))
+    windows = np.asarray(windows, dtype=np.int64)
+    if not isinstance(waves, np.ndarray):
+        # Angular recovery retains a list of views into one or more original
+        # propagation batches. Reuse those blocks; independently allocated
+        # scalar rows and any non-contiguous views keep scalar matching.
+        count = len(waves)
+        status = np.full(count, -1, dtype=np.int64)
+        phases = np.zeros(count)
+        scales = np.ones(count)
+        first = 0
+        while first < count:
+            row = waves[first]
+            base = row.base
+            if (not isinstance(base, np.ndarray) or base.ndim != 2
+                    or not base.flags.c_contiguous or row.shape != base.shape[1:]
+                    or row.strides != base.strides[1:]):
+                first += 1
+                continue
+            stride = base.strides[0]
+            row_pointer = row.ctypes.data
+            offset = row_pointer - base.ctypes.data
+            row_start, remainder = divmod(offset, stride)
+            if remainder or row_start < 0 or row_start >= base.shape[0]:
+                first += 1
+                continue
+            stop = first + 1
+            while stop < count and row_start + stop - first < base.shape[0]:
+                next_row = waves[stop]
+                if (next_row.base is not base or next_row.shape != row.shape
+                        or next_row.strides != row.strides
+                        or next_row.ctypes.data != row_pointer + (stop-first)*stride):
+                    break
+                stop += 1
+            result = _match_free_scales_batch_numba(
+                base[row_start:row_start + stop-first], windows[first:stop], int(cache["i0"]),
+                cache["z"], cache["j_tab"], cache["y_tab"], amp_target, l_offset + first,
+            )
+            status[first:stop], phases[first:stop], scales[first:stop] = result
+            first = stop
+        return status, phases, scales
+    return _match_free_scales_batch_numba(
+        waves, windows, int(cache["i0"]),
+        cache["z"], cache["j_tab"], cache["y_tab"], amp_target, l_offset,
+    )
+
+
+def _matching_l_cap_radius(r, match_slice, match_r_cut, match_fraction,
+                           match_fraction_mode, match_width, match_min_points,
+                           match_v_tol, v_eff):
+    """Potential-dependent, energy-independent part of the matching cap.
+
+    Prepare once per adaptive integration. This is not the kr constraint or
+    a new truncation: keep the original indexing and local-spacing arithmetic.
+    Never retain this radius across potentials/SCF iterations.
+    """
+    if match_slice is not None:
+        i0, i1 = int(match_slice[0]), int(match_slice[1])
+    elif match_r_cut is not None:
+        i0 = int(np.searchsorted(r, float(match_r_cut)))
+        if match_width is not None:
+            i1 = int(np.searchsorted(r, float(match_r_cut + match_width)))
+        else:
+            i1 = int(r.size)
+    else:
+        mode = str(match_fraction_mode).lower()
+        if mode in ("r", "radius", "physical"):
+            r_start = float((1.0 - match_fraction) * r[-1])
+            i0 = int(np.searchsorted(r, r_start))
+        else:
+            i0 = int(max(1, (1.0 - match_fraction) * r.size))
+        i1 = int(r.size)
+
+    i0 = max(1, min(i0, r.size - 1))
+    i1 = max(i0 + 1, min(i1, r.size))
+    if match_v_tol is not None and v_eff is not None:
+        mask = np.abs(v_eff[i0:i1]) <= float(match_v_tol)
+        if np.any(mask):
+            i0 = i0 + int(np.argmax(mask))
+    r_end = min(float(r[i1 - 1]), float(r[-1]))
+    dr_local = np.median(np.diff(r[i0:i1])) if (i1 - i0) >= 2 else np.median(np.diff(r))
+    dr_local = float(dr_local) if np.isfinite(dr_local) else float(np.median(np.diff(r)))
+    delta_r = max(int(match_min_points), 2) * dr_local
+    return max(float(r[i0]), r_end - delta_r)
+
+
 def _compute_l_cap(energy: float,
                    l_max: int,
                    r: np.ndarray,
@@ -1987,9 +2223,11 @@ def _compute_l_cap(energy: float,
                    match_kr_min: float | None,
                    match_v_tol: float | None,
                    v_eff: np.ndarray | None,
-                   strategy: str) -> int:
+                   strategy: str,
+                   *, _match_radius: float | None = None,
+                   partial_wave_tol: float = 1e-7) -> int:
     """
-    Compute an energy-dependent l cutoff to avoid unstable tail matching.
+    Compute an energy-dependent workload, retaining evanescent density channels.
 
     Strategies
     ----------
@@ -1998,10 +2236,10 @@ def _compute_l_cap(energy: float,
         Δr ≈ match_min_points * dr to define
         l_cap(E) = floor(k * (r_m_end - Δr) - 1), with the configured
         ``l_pad`` low-l channels retained at every positive energy.  The
-        floor is required because exact free/Coulomb matching remains valid
-        at small ``kr`` and an l>=1 bound level becomes a threshold shape
-        resonance rather than disappearing from the spectrum.  Large l whose
-        oscillatory region lies beyond the match window are still skipped.
+        floor retains threshold resonances but is only a workload hint, NOT
+        a density-convergence ceiling. Raise it by the potential-aware
+        turning-point margin, including evanescent waves. Exact free/Coulomb
+        matching remains valid at small ``kr``.
         If match_r_cut is provided, r_m_end defaults to match_r_cut + match_width.
     "rmax":
         l_cap(E) = ceil(k * Rmax + l_pad) (legacy behavior).
@@ -2021,43 +2259,10 @@ def _compute_l_cap(energy: float,
     elif strategy in ("rmax", "global"):
         l_cap = int(np.ceil(k * r[-1] + l_pad))
     else:
-        # Tail-window-based cutoff (default).
-        if match_slice is not None:
-            i0, i1 = int(match_slice[0]), int(match_slice[1])
-        elif match_r_cut is not None:
-            i0 = int(np.searchsorted(r, float(match_r_cut)))
-            if match_width is not None:
-                i1 = int(np.searchsorted(r, float(match_r_cut + match_width)))
-            else:
-                i1 = int(r.size)
-        else:
-            mode = str(match_fraction_mode).lower()
-            if mode in ("r", "radius", "physical"):
-                r_start = float((1.0 - match_fraction) * r[-1])
-                i0 = int(np.searchsorted(r, r_start))
-            else:
-                i0 = int(max(1, (1.0 - match_fraction) * r.size))
-            i1 = int(r.size)
-
-        i0 = max(1, min(i0, r.size - 1))
-        i1 = max(i0 + 1, min(i1, r.size))
-
-        # If a tail potential tolerance is provided, shift i0 to the
-        # first point in the tail where |V_eff| is sufficiently small.
-        if match_v_tol is not None and v_eff is not None:
-            mask = np.abs(v_eff[i0:i1]) <= float(match_v_tol)
-            if np.any(mask):
-                i0 = i0 + int(np.argmax(mask))
-
-        r_end = float(r[i1 - 1])
-        r_end = min(r_end, float(r[-1]))
-
-        # Estimate a safety margin Δr from the local spacing.
-        dr_local = np.median(np.diff(r[i0:i1])) if (i1 - i0) >= 2 else np.median(np.diff(r))
-        dr_local = float(dr_local) if np.isfinite(dr_local) else float(np.median(np.diff(r)))
-        delta_r = max(int(match_min_points), 2) * dr_local
-        r_eff = max(float(r[i0]), r_end - delta_r)
-
+        r_eff = (_matching_l_cap_radius(
+            r, match_slice, match_r_cut, match_fraction, match_fraction_mode,
+            match_width, match_min_points, match_v_tol, v_eff,
+        ) if _match_radius is None else _match_radius)
         if match_kr_min is not None:
             r_eff = max(r_eff, float(match_kr_min) / k)
         r_eff = min(r_eff, float(r[-1]))
@@ -2071,9 +2276,47 @@ def _compute_l_cap(energy: float,
         # narrow p/d shape resonances and made pressure-ionized AA densities
         # jump between bound and continuum SCF branches.
         l_cap = max(l_cap, min(int(l_pad), int(l_max)))
+        # Oscillation starting outside the matching window does not make a
+        # density contribution zero. For V=0, the complete sum is exactly
+        # sum_l (2*l+1)*j_l(k*r)**2 = 1 (:cite:`NISTDLMF`, 10.60.12,
+        # https://dlmf.nist.gov/10.60.E12). The old floor(k*r_eff-1) violated
+        # this identity at low E even after radial/energy mesh refinement.
+        l_cap = max(l_cap, _turning_point_l_cap(
+            energy, r, v_eff, r[-1], partial_wave_tol,
+        ))
 
     l_cap = max(0, min(int(l_cap), int(l_max)))
     return l_cap
+
+
+def _validate_l_max_soft(value: int | None) -> int | None:
+    """A soft limit must leave room for the eight-channel remainder check."""
+    if value is None:
+        return None
+    if not isinstance(value, (int, np.integer)) or value < 8:
+        raise ValueError("l_max_soft must be an integer >= 8, or None.")
+    return int(value)
+
+
+def _turning_point_l_cap(energy, r, v_eff, density_rmax, tol):
+    """Conservative turning-point estimate, checked against actual waves below.
+
+    B3 needs accurate A3 density only through its fit window (Starrett2014,
+    Appendix B, doi:10.1016/j.hedp.2013.12.001). Keep propagation/matching at
+    the original radius. The extra cube-root margin covers the evanescent
+    transition of large-order spherical Bessel functions (:cite:`NISTDLMF`,
+    https://dlmf.nist.gov/10.57);
+    this estimate alone is NOT an acceptance test for an interacting wave.
+    """
+    end = min(len(r), int(np.searchsorted(r, density_rmax, side="right")) + 1)
+    potential = 0.0 if v_eff is None else v_eff[:end]
+    x = np.sqrt(max(0.0, float(np.max(2 * r[:end]**2 * (energy-potential)))))
+    margin = np.cbrt(max(x, 1.0)) * (-np.log(tol))**(2.0/3.0) + 8
+    return max(2, int(np.ceil(x + margin)))
+
+
+def _density_domain_l_cap(energy, r, v_eff, density_rmax, ceiling, tol):
+    return min(ceiling, _turning_point_l_cap(energy, r, v_eff, density_rmax, tol))
 
 
 def _scattering_density_and_phase(v_eff: np.ndarray,
@@ -2101,7 +2344,13 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
                                   apply_occ: bool = True,
                                   l_cap_strategy: str = "match",
                                   numerov_geom: dict[str, np.ndarray] | None = None,
-                                  perf_accum: dict[str, float] | None = None) -> tuple[np.ndarray, np.ndarray]:
+                                  perf_accum: dict[str, float] | None = None,
+                                  density_rmax: float | None = None,
+                                  partial_wave_tol: float = 1e-7,
+                                  l_max_soft: int | None = None,
+                                  _propagated: list[np.ndarray] | None = None,
+                                  _matching_l_cap: int | None = None,
+                                  _phase_channel: int | None = None) -> tuple[np.ndarray | None, np.ndarray]:
     """
     Continuum density and phase shifts at a single energy.
 
@@ -2118,8 +2367,18 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
     - Asymptotic matching to extract phase shifts and normalization.
     - If apply_occ=True, includes Fermi-Dirac occupancy.
     - l is truncated at an energy-dependent l_cap, controlled by
-      l_cap_strategy ("match" default). The default retains l=0..l_pad at
-      threshold, then grows the cap from the tail-matching window.
+      l_cap_strategy ("match" default). The matching-window estimate is
+      raised when the density domain requires evanescent partial waves.
+    - l_max_soft is a trial limit, never an acceptance override. If the
+      density/transport remainder is significant, retry without the soft
+      limit, then without the density-domain reduction if necessary.
+      Private _propagated storage belongs only to this energy/potential call
+      and its angular retries; it must never be reused across SCF states.
+    - Private _phase_channel still performs any density/transport checks that
+      select the angular range. Only once no remainder decision is left may
+      it evaluate one requested phase, using the same full matching plan.
+      In that case n_r is None and only that delta_vec entry is meaningful;
+      this partial result must never enter a density or transport cache.
     """
     numerov_geom = numerov_geom if numerov_geom is not None else _prepare_numerov_geometry(r, v_eff)
     r_eval = np.asarray(numerov_geom["r"], dtype=float)
@@ -2138,7 +2397,7 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
     # (1) Determine the actual l workload and precompute the tail-matching
     # plan for this energy before entering the per-l propagation loop.
     t_stage = time.perf_counter() if perf_accum is not None else 0.0
-    l_cap = _compute_l_cap(
+    l_cap = _matching_l_cap if _matching_l_cap is not None else _compute_l_cap(
         energy,
         l_max,
         r_eval,
@@ -2153,7 +2412,20 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
         match_v_tol,
         v_eval,
         l_cap_strategy,
+        partial_wave_tol=partial_wave_tol,
     )
+    original_l_cap = l_cap
+    l_max_soft = _validate_l_max_soft(l_max_soft)
+    density_end = r_eval.size
+    if density_rmax is not None and str(l_cap_strategy).lower() == "match":
+        density_end = min(r_eval.size, int(np.searchsorted(r_eval, density_rmax, side="right")) + 1)
+        l_cap = _density_domain_l_cap(
+            energy, r_eval, v_eval, density_rmax, l_cap, partial_wave_tol,
+        )
+    soft_limited = (str(l_cap_strategy).lower() == "match"
+                    and l_max_soft is not None and l_cap > l_max_soft)
+    if soft_limited:
+        l_cap = l_max_soft
     match_slices, fallback_flags, basis_meta_list, free_basis_cache = _prepare_match_plan_for_energy(
         r_eval,
         v_eval,
@@ -2179,16 +2451,57 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
     w_base = np.asarray(numerov_geom["r8"], dtype=float) * float(energy) + np.asarray(numerov_geom["v_term"], dtype=float)
     origin_charge = float(np.asarray(numerov_geom.get("origin_charge", 0.0)))
 
+    if _phase_channel is not None and l_cap == original_l_cap:
+        # Central-potential channels are independent (StarrettSaumon2014,
+        # Appendix A). Keep the original cap/window/Bessel table: its Miller
+        # normalization can depend on the OTHER requested angular channels.
+        # All decisions to reach this unreduced cap have already been made.
+        l = int(_phase_channel)
+        delta_vec = np.zeros(l_max + 1, dtype=float)
+        if not 0 <= l <= l_max:
+            raise ValueError("_phase_channel must lie in 0..l_max")
+        if l <= l_cap:
+            t_stage = time.perf_counter() if perf_accum is not None else 0.0
+            retained = [] if _propagated is None else _propagated
+            rescale = float(prop_rescale_limit) if prop_rescale_limit is not None else 1e6
+            if l < len(retained):
+                u = retained[l]
+            elif l_cap >= 2:
+                propagate = (_numerov_propagate_sqrt_wbase_suffix_numba if retained
+                             else _numerov_propagate_sqrt_wbase_batch_numba)
+                u = propagate(r_eval, r_quarter, inv_r, w_base,
+                              np.array([l], dtype=np.int64), grid_step,
+                              rescale_limit=rescale, origin_charge=origin_charge)[0]
+            else:
+                u = _numerov_propagate_sqrt_wbase_numba(
+                    r_eval, r_quarter, inv_r, w_base, l, grid_step,
+                    rescale_limit=rescale, origin_charge=origin_charge)
+            if perf_accum is not None:
+                perf_accum["propagate_s"] += time.perf_counter() - t_stage
+            t_stage = time.perf_counter() if perf_accum is not None else 0.0
+            _, delta_vec[l], _ = _match_scattering_scale_preplanned(
+                u, r_eval, energy, l, match_slices[l], fallback_flags[l], basis_meta_list[l],
+                match_fallback=match_fallback, free_basis_cache=free_basis_cache)
+            if perf_accum is not None:
+                perf_accum["match_s"] += time.perf_counter() - t_stage
+        if perf_accum is not None:
+            perf_accum["eval_total_s"] += time.perf_counter() - t_eval
+        return None, delta_vec
+
     # (2) Propagate the partial waves for this energy, then match and
     # accumulate them one channel at a time.
     sum_l = np.zeros_like(r_eval, dtype=float)
     delta_vec = np.zeros(l_max + 1, dtype=float)
     rescale_limit = float(prop_rescale_limit) if prop_rescale_limit is not None else 1e6
+    propagated = [] if _propagated is None else _propagated
+    l_start = len(propagated)
     u_batch = None
-    if l_cap >= 2:
-        l_vals = np.arange(l_cap + 1, dtype=np.int64)
+    if l_cap >= 2 and l_start <= l_cap:
+        l_vals = np.arange(l_start, l_cap + 1, dtype=np.int64)
         t_stage = time.perf_counter() if perf_accum is not None else 0.0
-        u_batch = _numerov_propagate_sqrt_wbase_batch_numba(
+        propagate = (_numerov_propagate_sqrt_wbase_suffix_numba if l_start > 0
+                     else _numerov_propagate_sqrt_wbase_batch_numba)
+        u_batch = propagate(
             r_eval,
             r_quarter,
             inv_r,
@@ -2200,8 +2513,25 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
         )
         if perf_accum is not None:
             perf_accum["propagate_s"] = float(perf_accum.get("propagate_s", 0.0) + (time.perf_counter() - t_stage))
+    tail_start = max(0, l_cap - 7)
+    density_before_tail = None
+    t_stage = time.perf_counter() if perf_accum is not None else 0.0
+    prefix_match = (_match_free_scales_batch(
+        propagated, match_slices[:l_start], fallback_flags[:l_start],
+        basis_meta_list[:l_start], free_basis_cache, energy,
+    ) if l_start else None)
+    batch_match = _match_free_scales_batch(
+        u_batch, match_slices[l_start:], fallback_flags[l_start:],
+        basis_meta_list[l_start:], free_basis_cache, energy, l_start,
+    )
+    if perf_accum is not None:
+        perf_accum["match_s"] = float(perf_accum.get("match_s", 0.0) + time.perf_counter() - t_stage)
     for l in range(l_cap + 1):
-        if u_batch is None:
+        if l == tail_start and l_cap < original_l_cap:
+            density_before_tail = sum_l[:density_end].copy()
+        if l < l_start:
+            u = propagated[l]
+        elif u_batch is None:
             t_stage = time.perf_counter() if perf_accum is not None else 0.0
             u = _numerov_propagate_sqrt_wbase_numba(
                 r_eval,
@@ -2215,22 +2545,22 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
             )
             if perf_accum is not None:
                 perf_accum["propagate_s"] = float(perf_accum.get("propagate_s", 0.0) + (time.perf_counter() - t_stage))
+            if l_cap < original_l_cap:
+                propagated.append(u)
         else:
-            u = u_batch[l]
+            u = u_batch[l - l_start]
 
         # Asymptotic matching → normalized u and phase shift.
         t_stage = time.perf_counter() if perf_accum is not None else 0.0
-        u_override, delta, scale = _match_scattering_scale_preplanned(
-            u,
-            r_eval,
-            energy,
-            l,
-            match_slices[l],
-            fallback_flags[l],
-            basis_meta_list[l],
-            match_fallback=match_fallback,
-            free_basis_cache=free_basis_cache,
-        )
+        matched = prefix_match if l < l_start else batch_match
+        match_index = l if l < l_start else l - l_start
+        if matched is not None and matched[0][match_index] == 0:
+            u_override, delta, scale = None, float(matched[1][match_index]), float(matched[2][match_index])
+        else:
+            u_override, delta, scale = _match_scattering_scale_preplanned(
+                u, r_eval, energy, l, match_slices[l], fallback_flags[l], basis_meta_list[l],
+                match_fallback=match_fallback, free_basis_cache=free_basis_cache,
+            )
         if perf_accum is not None:
             perf_accum["match_s"] = float(perf_accum.get("match_s", 0.0) + (time.perf_counter() - t_stage))
         delta_vec[l] = delta
@@ -2253,6 +2583,46 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
             )
         if perf_accum is not None:
             perf_accum["accumulate_s"] = float(perf_accum.get("accumulate_s", 0.0) + (time.perf_counter() - t_stage))
+
+    if density_before_tail is not None:
+        # Both the density and transport phase tail matter: gamma uses the
+        # latter in Starrett2013 Appendix C. Remove a failed soft limit first,
+        # then restore the matching-box cap if the domain check also fails.
+        tail = sum_l[:density_end] - density_before_tail
+        density_scale = np.maximum(sum_l[:density_end], np.sqrt(2*energy)/np.pi**2)
+        density_error = float(np.max(np.abs(tail)/density_scale))
+        phases = delta_vec[:l_cap+1]
+        transport = (np.arange(l_cap)+1) * np.sin(np.diff(phases))**2
+        transport_error = float(transport[-7:].sum()/max(transport.sum(), 1e-30))
+        phase_tail = float(np.max(np.abs(np.sin(phases[-8:]))))
+        if (density_error > partial_wave_tol
+                or (transport_error > partial_wave_tol and phase_tail > partial_wave_tol)):
+            # Retain raw rows only on an actual retry. Repeat matching with
+            # the enlarged Bessel tables (same normalization/summation),
+            # but propagate only the missing suffix at this energy/potential.
+            if u_batch is not None:
+                propagated.extend(u_batch)
+            if perf_accum is not None:
+                # Count the rejected trial as well as the accepted retry;
+                # otherwise propagation time can exceed total evaluation time.
+                perf_accum["eval_total_s"] = float(
+                    perf_accum.get("eval_total_s", 0.0) + time.perf_counter() - t_eval
+                )
+            return _scattering_density_and_phase(
+                v_eff, r, mu, temperature, energy, l_max, grid_kind, grid_step,
+                l_pad, match_fraction, match_slice, match_r_cut, match_fraction_mode,
+                match_width, match_kr_min, match_v_tol, match_min_points,
+                match_asymptotic, match_coulomb_tol, match_allow_shift,
+                match_fallback, prop_rescale_limit, apply_occ=apply_occ,
+                l_cap_strategy=l_cap_strategy, numerov_geom=numerov_geom,
+                perf_accum=perf_accum,
+                density_rmax=density_rmax if soft_limited else None,
+                partial_wave_tol=partial_wave_tol,
+                l_max_soft=None,
+                _propagated=propagated,
+                _matching_l_cap=original_l_cap,
+                _phase_channel=_phase_channel,
+            )
 
     if perf_accum is not None:
         perf_accum["eval_total_s"] = float(perf_accum.get("eval_total_s", 0.0) + (time.perf_counter() - t_eval))
@@ -2288,6 +2658,77 @@ def transport_cross_section_from_deltas(k: float, delta_vec: np.ndarray) -> floa
     return float(sigma_tr)
 
 
+def _prepare_phase_shift_transport_spectrum(
+    energy_cache: dict[float, tuple[np.ndarray, np.ndarray]],
+    n_i: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Snapshot the mu-independent Appendix C spectrum for one fixed potential.
+
+    The caller must only reuse this after phase discovery is complete. Include
+    every cached phase, not just the density quadrature nodes: resonance scouts
+    also contributed to the original transport integral. The returned arrays
+    have no aliases into the mutable phase cache and are read-only.
+    """
+    if n_i <= 0.0 or not energy_cache:
+        return None
+    energies = []
+    deltas = []
+    for energy, entry in energy_cache.items():
+        if energy <= 0.0:
+            continue
+        _, delta_vec = entry
+        energies.append(float(energy))
+        deltas.append(np.asarray(delta_vec, dtype=float))
+
+    if len(energies) < 2:
+        return None
+
+    order = np.argsort(energies)
+    e_arr = np.asarray(energies, dtype=float)[order]
+    delta_arr = [deltas[i] for i in order]
+    k_arr = np.sqrt(2.0 * e_arr)
+
+    tau_k = np.zeros_like(k_arr)
+    for i, k_val in enumerate(k_arr):
+        sigma_tr = transport_cross_section_from_deltas(k_val, delta_arr[i])
+        if sigma_tr <= 0.0 or k_val <= 0.0:
+            tau_k[i] = 0.0
+        else:
+            # 1/tau = n_i * v * sigma_tr, with v = k in atomic units.
+            tau_k[i] = 1.0 / (n_i * k_val * sigma_tr)
+
+    for arr in (e_arr, k_arr, tau_k):
+        arr.flags.writeable = False
+    return e_arr, k_arr, tau_k
+
+
+def _gamma_from_transport_spectrum(
+    spectrum: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    mu: float,
+    temperature: float,
+    n0: float,
+    n0_floor: float = 0.0,
+) -> float:
+    """Recompute occupations and broadening without rebuilding fixed phases."""
+    n0_floor = max(float(n0_floor), 0.0)
+    n0_eff = max(float(n0), n0_floor)
+    if spectrum is None or n0_eff <= 0.0:
+        return 0.0
+    e_arr, k_arr, tau_k = spectrum
+    g = fermi_dirac(e_arr, mu, temperature)
+    dgde = g * (1.0 - g) / max(float(temperature), 1e-12)
+
+    integrand = (k_arr ** 4) * dgde * tau_k
+    sigma_dc = (1.0 / (3.0 * np.pi ** 2)) * _trapz(integrand, k_arr)
+
+    if sigma_dc <= 0.0:
+        return 0.0
+    tau = sigma_dc / n0_eff
+    if tau <= 0.0:
+        return 0.0
+    return float(1.0 / tau)
+
+
 def gamma_from_phase_shift_cache(energy_cache: dict[float, tuple[np.ndarray, np.ndarray]],
                                  mu: float,
                                  temperature: float,
@@ -2303,52 +2744,17 @@ def gamma_from_phase_shift_cache(energy_cache: dict[float, tuple[np.ndarray, np.
       tau(k) = 1 / (n_i * v * sigma_tr(k)), v = k
       sigma_dc = (1 / (3 pi^2)) * integral dk k^4 (-dg/dE) tau(k)
       gamma = 1 / tau, with tau = sigma_dc / n0
+
+    This public entry point always rereads the cache, which may still be growing
+    during adaptive discovery. Only the SCF-owned frozen-basis path reuses a
+    prepared spectrum across chemical potentials.
     """
     n0_floor = max(float(n0_floor), 0.0)
     n0_eff = max(float(n0), n0_floor)
     if n_i <= 0.0 or n0_eff <= 0.0:
         return 0.0
-    if not energy_cache:
-        return 0.0
-
-    energies = []
-    deltas = []
-    for energy, entry in energy_cache.items():
-        if energy <= 0.0:
-            continue
-        _, delta_vec = entry
-        energies.append(float(energy))
-        deltas.append(np.asarray(delta_vec, dtype=float))
-
-    if len(energies) < 2:
-        return 0.0
-
-    order = np.argsort(energies)
-    e_arr = np.asarray(energies, dtype=float)[order]
-    delta_arr = [deltas[i] for i in order]
-    k_arr = np.sqrt(2.0 * e_arr)
-
-    g = fermi_dirac(e_arr, mu, temperature)
-    dgde = g * (1.0 - g) / max(float(temperature), 1e-12)
-
-    tau_k = np.zeros_like(k_arr)
-    for i, k_val in enumerate(k_arr):
-        sigma_tr = transport_cross_section_from_deltas(k_val, delta_arr[i])
-        if sigma_tr <= 0.0 or k_val <= 0.0:
-            tau_k[i] = 0.0
-        else:
-            # 1/tau = n_i * v * sigma_tr, with v = k in atomic units.
-            tau_k[i] = 1.0 / (n_i * k_val * sigma_tr)
-
-    integrand = (k_arr ** 4) * dgde * tau_k
-    sigma_dc = (1.0 / (3.0 * np.pi ** 2)) * _trapz(integrand, k_arr)
-
-    if sigma_dc <= 0.0:
-        return 0.0
-    tau = sigma_dc / n0_eff
-    if tau <= 0.0:
-        return 0.0
-    return float(1.0 / tau)
+    spectrum = _prepare_phase_shift_transport_spectrum(energy_cache, n_i)
+    return _gamma_from_transport_spectrum(spectrum, mu, temperature, n0_eff)
 
 
 def _scattering_density_at_energy(v_eff: np.ndarray,
@@ -2437,7 +2843,10 @@ def _init_scatter_worker(v_eff: np.ndarray,
                          match_fallback: str,
                          prop_rescale_limit: float | None,
                          apply_occ: bool = True,
-                         l_cap_strategy: str = "match") -> None:
+                         l_cap_strategy: str = "match",
+                         density_rmax: float | None = None,
+                         partial_wave_tol: float = 1e-7,
+                         l_max_soft: int | None = None) -> None:
     numerov_geom = _prepare_numerov_geometry(r, v_eff)
     _SCATTER_MP["v_eff"] = np.asarray(numerov_geom["v_eff"], dtype=float)
     _SCATTER_MP["r"] = np.asarray(numerov_geom["r"], dtype=float)
@@ -2463,6 +2872,9 @@ def _init_scatter_worker(v_eff: np.ndarray,
     _SCATTER_MP["prop_rescale_limit"] = prop_rescale_limit
     _SCATTER_MP["apply_occ"] = apply_occ
     _SCATTER_MP["l_cap_strategy"] = l_cap_strategy
+    _SCATTER_MP["density_rmax"] = density_rmax
+    _SCATTER_MP["partial_wave_tol"] = partial_wave_tol
+    _SCATTER_MP["l_max_soft"] = l_max_soft
 
 
 def _scatter_worker(e_val: float) -> tuple[float, np.ndarray, np.ndarray]:
@@ -2492,46 +2904,16 @@ def _scatter_worker(e_val: float) -> tuple[float, np.ndarray, np.ndarray]:
         apply_occ=_SCATTER_MP.get("apply_occ", True),
         l_cap_strategy=_SCATTER_MP.get("l_cap_strategy", "match"),
         numerov_geom=_SCATTER_MP.get("numerov_geom", None),
+        density_rmax=_SCATTER_MP.get("density_rmax"),
+        partial_wave_tol=_SCATTER_MP.get("partial_wave_tol", 1e-7),
+        l_max_soft=_SCATTER_MP.get("l_max_soft"),
     )
     return float(e_val), n_e, delta_vec
 
 
-def _adaptive_shard_worker(
-    task: tuple[int, float, float, dict]
-) -> tuple[int, np.ndarray, dict, list[tuple[float, np.ndarray, np.ndarray]] | None]:
-    """
-    Worker for coarse-grained adaptive sharding over disjoint energy intervals.
-
-    Each worker integrates one independent [e0, e1] sub-interval and returns
-    its continuum contribution. Intervals only share endpoints, so summing all
-    shard contributions reconstructs the full [E_min, E_max] integral.
-    """
-    shard_idx, e0, e1, base_kwargs = task
-    kwargs = dict(base_kwargs)
-    # Optional export: when the caller requests basis reuse, each shard returns
-    # its local (E -> (n_E(r), delta_l(E))) samples so the parent process can
-    # rebuild a global cache/basis table.
-    collect_cache_samples = bool(kwargs.pop("_collect_cache_samples", False))
-    kwargs["e_min"] = float(e0)
-    kwargs["e_max"] = float(e1)
-    # Force serial inside each shard to avoid nested multiprocessing pools.
-    kwargs["n_jobs"] = None
-    local_cache: dict[float, tuple[np.ndarray, np.ndarray]] | None = {} if collect_cache_samples else None
-    kwargs["energy_cache"] = local_cache
-    kwargs["adaptive_parallel_mode"] = "batch"
-    kwargs["adaptive_shards"] = None
-    t0 = time.perf_counter()
-    n_r, meta = continuum_density_scattering_adaptive(**kwargs)
-    meta = dict(meta)
-    meta["wall_s"] = float(time.perf_counter() - t0)
-    samples = None
-    if collect_cache_samples and local_cache:
-        # Sort by energy so parent-side merge is deterministic and reproducible.
-        samples = [
-            (float(e), np.asarray(vals[0], dtype=float), np.asarray(vals[1], dtype=float))
-            for e, vals in sorted(local_cache.items(), key=lambda kv: float(kv[0]))
-        ]
-    return int(shard_idx), n_r, meta, samples
+def _scatter_energy_chunk(energies: list[float]) -> list[tuple[float, np.ndarray, np.ndarray]]:
+    """Evaluate already selected global nodes; never choose a local mesh."""
+    return [_scatter_worker(energy) for energy in energies]
 
 
 def continuum_density_scattering(v_eff: np.ndarray,
@@ -2559,7 +2941,9 @@ def continuum_density_scattering(v_eff: np.ndarray,
                                  l_cap_strategy: str = "match",
                                  energy_cache: dict[float, tuple[np.ndarray, np.ndarray]] | None = None,
                                  n_jobs: int | None = None,
-                                 apply_occ: bool = True) -> np.ndarray:
+                                 apply_occ: bool = True,
+                                 l_max_soft: int | None = None,
+                                 partial_wave_tol: float = 1e-7) -> np.ndarray:
     """
     Continuum density using Numerov scattering solutions in V_eff(r).
 
@@ -2580,6 +2964,8 @@ def continuum_density_scattering(v_eff: np.ndarray,
     repeated calls with the same V_eff and energy grid.
     l_cap_strategy controls the energy-dependent partial-wave cutoff
     ("match" default, see _compute_l_cap).
+    l_max_soft is an optional trial limit for automatic angular selection;
+    failed density/transport remainder checks restore the original range.
     """
     r = np.asarray(r)
     v_eff = np.asarray(v_eff)
@@ -2624,6 +3010,9 @@ def continuum_density_scattering(v_eff: np.ndarray,
                 prop_rescale_limit,
                 apply_occ,
                 l_cap_strategy,
+                None,
+                partial_wave_tol,
+                l_max_soft,
             ),
         ) as pool:
             results = pool.map(_scatter_worker, [float(e) for e in e_grid])
@@ -2633,6 +3022,7 @@ def continuum_density_scattering(v_eff: np.ndarray,
             cache[e_val] = (n_e, delta_vec)
     else:
         # Serial branch with optional cache reuse.
+        numerov_geom = _prepare_numerov_geometry(r, v_eff)
         for i, e in enumerate(e_grid):
             e_val = float(e)
             if e_val in cache:
@@ -2664,6 +3054,9 @@ def continuum_density_scattering(v_eff: np.ndarray,
                 prop_rescale_limit,
                 apply_occ=apply_occ,
                 l_cap_strategy=l_cap_strategy,
+                numerov_geom=numerov_geom,
+                l_max_soft=l_max_soft,
+                partial_wave_tol=partial_wave_tol,
             )
             cache[e_val] = (n_e, delta_vec)
             n_e_r[i] = n_e
@@ -2731,7 +3124,11 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                                           resonance_theta_root_tol: float | None = None,
                                           resonance_theta_sharpness_min: float = 2.0,
                                           resonance_theta_max_roots: int | None = None,
-                                          resonance_theta_refine_depth: int | None = None) -> tuple[np.ndarray, dict]:
+                                          resonance_theta_refine_depth: int | None = None,
+                                          density_rmax: float | None = None,
+                                          partial_wave_tol: float = 1e-7,
+                                          l_max_soft: int | None = None,
+                                          _density_only: bool = False) -> tuple[np.ndarray, dict]:
     """
     Adaptive energy integration for scattering continuum using Simpson refinement.
 
@@ -2761,6 +3158,20 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
 
     energy_cache can be supplied to reuse (n_e, delta) evaluations across
     repeated calls with the same V_eff and energy bounds.
+    The private density-only path may omit phase-root searches for a literal
+    zero potential: the regular free solution has delta_l=0 and no shape
+    resonance (:cite:`StarrettSaumon2014`, Appendix A). Numerical zero-phase
+    crossings are not physical poles. This does not approximate a weak V,
+    change density quadrature, or apply to callers needing transport phases.
+    Without a caller cache, serial phase-root probes may compute only the
+    requested channel after the original angular-acceptance checks. Partial
+    phases live in a separate call-local cache; density nodes are always full
+    evaluations. Root brackets, callbacks, tolerances and classifiers remain
+    unchanged. The parallel/transport-cache paths keep full evaluations.
+    density_rmax optionally limits required density accuracy, not propagation
+    or matching. The caller must replace the outer raw density with B3.
+    l_max_soft is a trial limit: failed density/transport remainder checks
+    increase it automatically. These checks are not a global error bound.
     l_cap_strategy controls the energy-dependent partial-wave cutoff
     ("match" default, see _compute_l_cap).
     match_fraction_mode controls whether match_fraction is interpreted in
@@ -2769,16 +3180,23 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     refinement loops (batching interval midpoints per iteration).
     adaptive_parallel_mode controls adaptive parallel policy when n_jobs>1:
     - "batch": current midpoint-batch parallel refinement (default).
-    - "shard": split [E_min, E_max] into independent sub-intervals and run
-      one adaptive solve per shard in parallel.
-      Shard boundaries follow e_base_grid ("sqrt" => denser low-E shards).
-    adaptive_shard_policy controls shard-boundary placement when
-    adaptive_parallel_mode="shard":
-    - "egrid": use the base-energy grid directly
-    - "cost": balance shards by approximate continuum work using l_cap(E)
+    - "shard": dispatch chunks of the same globally selected energy nodes.
+      The parent owns the adaptive mesh and resonance windows in both modes;
+      workers never restart quadrature on private energy sub-intervals.
+    adaptive_shards limits the number of chunks per evaluation batch, not the
+    base-node budget. adaptive_shard_policy="egrid" balances node counts;
+    "cost" balances approximate continuum work using l_cap(E). Neither policy
+    inserts, moves, or removes energy nodes.
     """
     r = np.asarray(r)
     v_eff = np.asarray(v_eff)
+    if not 0 < partial_wave_tol < 1:
+        raise ValueError("partial_wave_tol must be between zero and one.")
+    density_end = r.size
+    if density_rmax is not None:
+        if not np.isfinite(density_rmax) or density_rmax < r[0]:
+            raise ValueError("density_rmax must be finite and within the radial domain.")
+        density_end = min(r.size, int(np.searchsorted(r, density_rmax, side="right")) + 1)
     if grid_kind != "sqrt":
         raise ValueError("continuum_density_scattering_adaptive supports only grid_kind='sqrt'.")
     if grid_step is None:
@@ -2810,6 +3228,9 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     )
 
     cache = energy_cache if energy_cache is not None else {}
+    phase_cache: dict[tuple[float, int], np.ndarray] = {}
+    n_phase_eval = 0
+    phase_cache_hits = 0
     cache_init = len(cache)
     max_depth = 0
     resonance_hits = 0
@@ -2830,8 +3251,25 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     cache_hits = 0
     n_eval_new = 0
     use_parallel = n_jobs is not None and int(n_jobs) > 1
+    use_phase_channel = bool(_density_only and energy_cache is None and not use_parallel)
     if use_parallel:
         n_jobs = int(n_jobs)
+    # Potential-dependent factors belong to this integration, not individual
+    # energies or a later SCF iterate. Workers already prepare their own once.
+    numerov_geom = None if use_parallel else _prepare_numerov_geometry(r, v_eff)
+    # Every energy and phase-error panel sees this same frozen potential.
+    # Only the kr constraint depends on energy; do not repeat tail statistics.
+    match_radius = None
+    if r.size and str(l_cap_strategy).lower() not in ("none", "lmax", "full", "rmax", "global"):
+        match_radius = _matching_l_cap_radius(
+            r, match_slice, match_r_cut, match_fraction, match_fraction_mode,
+            match_width, match_min_points, match_v_tol, v_eff,
+        )
+    # Numerov may sanitize the origin or convert non-float64 inputs. In that
+    # case retain its original cap calculation on the converted wave grid;
+    # the phase scout below historically uses the caller's unconverted grid.
+    reuse_wave_cap = (numerov_geom is not None and r.dtype == np.dtype(float)
+                      and v_eff.dtype == np.dtype(float) and r.size > 0 and r[0] > 0.0)
     t_wall = time.perf_counter() if bool(collect_perf) else 0.0
     perf_accum = _init_scatter_perf_accum() if bool(collect_perf) and not use_parallel else None
     pool = None
@@ -2847,19 +3285,9 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         raise ValueError(
             f"adaptive_parallel_mode must be 'batch' or 'shard', got '{adaptive_parallel_mode}'."
         )
-    theta_shard_mode_forced_batch = bool(use_theta_detector and parallel_mode == "shard")
-    if theta_shard_mode_forced_batch:
-        # A root at a shard edge cannot be given a symmetric local panel, and
-        # independent workers cannot cluster coincident/nearby roots across
-        # that edge.  Keep parallel energy evaluation, but build the scout and
-        # resonance windows globally in the parent solve.
-        warnings.warn(
-            "phase-root resonance scouting is incompatible with independent "
-            "energy shards; forcing adaptive_parallel_mode='batch' so roots "
-            "and symmetric windows are resolved on the full energy interval.",
-            RuntimeWarning,
-        )
-        parallel_mode = "batch"
+    # Retain this diagnostic key for old consumers. Shards now share the same
+    # global root scout, so a mode override is no longer needed.
+    theta_shard_mode_forced_batch = False
     shard_policy = str(adaptive_shard_policy).lower().strip()
     if shard_policy not in ("egrid", "cost"):
         raise ValueError(
@@ -2957,37 +3385,11 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             match_v_tol,
             v_eff,
             l_cap_strategy,
+            _match_radius=match_radius,
+            partial_wave_tol=partial_wave_tol,
         )
         return float(max(int(l_cap_est) + 1, 1))
 
-    def _build_shard_edges(e_lo: float, e_hi: float, n_shards: int, mode: str, policy: str) -> np.ndarray:
-        """
-        Build shard boundaries on [e_lo, e_hi].
-
-        "egrid" preserves the old behavior. "cost" uses a cheap l_cap(E)-based
-        workload model so high-energy shards become narrower.
-        """
-        if str(policy).lower().strip() == "egrid":
-            edges_local = _build_base_nodes(e_lo, e_hi, n_shards + 1, mode).astype(float)
-        else:
-            n_probe = max(257, 64 * int(n_shards) + 1)
-            probe = _build_base_nodes(e_lo, e_hi, n_probe, mode).astype(float)
-            probe[0] = float(e_lo)
-            probe[-1] = float(e_hi)
-            weights = np.array([_estimate_energy_cost(e_val) for e_val in probe], dtype=float)
-            seg_w = 0.5 * (weights[:-1] + weights[1:]) * np.diff(probe)
-            cum = np.concatenate(([0.0], np.cumsum(seg_w)))
-            total = float(cum[-1]) if cum.size > 0 else 0.0
-            if (not np.isfinite(total)) or total <= 0.0:
-                edges_local = _build_base_nodes(e_lo, e_hi, n_shards + 1, mode).astype(float)
-            else:
-                targets = np.linspace(0.0, total, int(n_shards) + 1, dtype=float)
-                edges_local = np.interp(targets, cum, probe)
-                edges_local[0] = float(e_lo)
-                edges_local[-1] = float(e_hi)
-        if np.any(np.diff(edges_local) <= 0.0):
-            edges_local = np.linspace(e_lo, e_hi, int(n_shards) + 1, dtype=float)
-        return edges_local
 
     probe_idx = None
     if resonance_tol is not None and resonance_tol > 0.0:
@@ -2995,16 +3397,17 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             resonance_r_fractions = (0.25, 0.5, 0.75)
         idxs = []
         for frac in resonance_r_fractions:
-            idx = int(round(frac * (r.size - 1)))
-            idxs.append(min(max(idx, 0), r.size - 1))
+            idx = int(round(frac * (density_end - 1)))
+            idxs.append(min(max(idx, 0), density_end - 1))
         probe_idx = np.unique(np.array(idxs, dtype=int))
 
-    def eval_energy(e: float) -> tuple[np.ndarray, np.ndarray]:
+    def eval_energy(e: float, phase_channel: int | None = None) -> tuple[np.ndarray | None, np.ndarray]:
         """
         Evaluate scattering density and phase shifts at energy e with caching.
         """
         nonlocal cache_hits
         nonlocal n_eval_new
+        nonlocal n_phase_eval
         if e in cache:
             cache_hits += 1
             return cache[e]
@@ -3034,9 +3437,21 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             apply_occ=apply_occ,
             l_cap_strategy=l_cap_strategy,
             perf_accum=perf_accum,
+            numerov_geom=numerov_geom,
+            density_rmax=density_rmax,
+            partial_wave_tol=partial_wave_tol,
+            l_max_soft=l_max_soft,
+            _matching_l_cap=active_l_cap(e) if reuse_wave_cap else None,
+            **({"_phase_channel": phase_channel} if phase_channel is not None else {}),
         )
-        cache[e] = (n_e, delta_vec)
-        n_eval_new += 1
+        if n_e is None:
+            # Only the requested phase is valid. Never make this appear to be
+            # a complete basis to quadrature, angular checks, or gamma.
+            phase_cache[(e, phase_channel)] = delta_vec
+            n_phase_eval += 1
+        else:
+            cache[e] = (n_e, delta_vec)
+            n_eval_new += 1
         return n_e, delta_vec
 
     def eval_energy_batch(energies: list[float] | np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -3084,11 +3499,36 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                         apply_occ=apply_occ,
                         l_cap_strategy=l_cap_strategy,
                         perf_accum=perf_accum,
+                        numerov_geom=numerov_geom,
+                        density_rmax=density_rmax,
+                        partial_wave_tol=partial_wave_tol,
+                        l_max_soft=l_max_soft,
+                        _matching_l_cap=active_l_cap(e_val) if reuse_wave_cap else None,
                     )
                     cache[e_val] = (n_e, delta_vec)
                 n_eval_new += len(missing_unique)
             else:
-                results = pool.map(_scatter_worker, missing_unique)
+                if parallel_mode == "shard":
+                    count = min(
+                        len(missing_unique),
+                        max(1, int(adaptive_shards or n_jobs)),
+                    )
+                    if shard_policy == "cost":
+                        costs = np.array([_estimate_energy_cost(e) for e in missing_unique])
+                        cumulative = np.cumsum(costs)
+                        cuts = np.unique(np.searchsorted(
+                            cumulative, np.linspace(0.0, cumulative[-1], count + 1)[1:-1]
+                        ) + 1)
+                        chunks = np.split(np.asarray(missing_unique), cuts)
+                    else:
+                        chunks = np.array_split(np.asarray(missing_unique), count)
+                    tasks = [chunk.tolist() for chunk in chunks if chunk.size]
+                    results = [
+                        item for chunk in pool.map(_scatter_energy_chunk, tasks)
+                        for item in chunk
+                    ]
+                else:
+                    results = pool.map(_scatter_worker, missing_unique)
                 for e_val, n_e, delta_vec in results:
                     cache[e_val] = (n_e, delta_vec)
                 n_eval_new += len(missing_unique)
@@ -3108,12 +3548,15 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         """
         Compute a phase-shift change metric for resonance detection.
         """
+        # The regular wave has an arbitrary sign: delta and delta+pi are
+        # identical scattering states. Do not refine a mesh on that sign.
+        change = 0.5 * np.angle(np.exp(2j * (d1 - d0)))
         if delta_mode == "sum":
-            return float(abs(np.sum(d1) - np.sum(d0)))
+            return float(abs(np.sum(change)))
         if delta_mode == "weighted":
             weights = 2.0 * np.arange(d0.size) + 1.0
-            return float(abs(np.sum(weights * d1) - np.sum(weights * d0)))
-        return float(np.max(np.abs(d1 - d0)))
+            return float(abs(np.sum(weights * change)))
+        return float(np.max(np.abs(change)))
 
     def active_l_cap(e_val: float) -> int:
         """Return the channels that are genuinely evaluated at one energy."""
@@ -3132,12 +3575,25 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             match_v_tol,
             v_eff,
             l_cap_strategy,
+            _match_radius=match_radius,
+            partial_wave_tol=partial_wave_tol,
         )
+
+    def phase_at(e_val: float, l_val: int) -> np.ndarray:
+        """Return phases with at least channel l_val valid, scoped to this V."""
+        nonlocal phase_cache_hits
+        if not use_phase_channel or e_val in cache:
+            return eval_energy_single(float(e_val))[1]
+        key = (float(e_val), int(l_val))
+        if key in phase_cache:
+            phase_cache_hits += 1
+            return phase_cache[key]
+        return eval_energy(float(e_val), phase_channel=int(l_val))[1]
 
     def theta_value(e_val: float, l_val: int) -> float:
         """Evaluate one normalised regular matching coefficient."""
         nonlocal theta_root_evals
-        _, d_val = eval_energy_single(float(e_val))
+        d_val = phase_at(float(e_val), int(l_val))
         theta_root_evals += 1
         return float(phase_root_resonance_scout(d_val)[int(l_val)])
 
@@ -3209,7 +3665,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                 # rejects a numerical pi branch change of the arbitrary-sign
                 # regular solution, which used to look like a false root to
                 # the non-invariant cos(delta) scout.
-                _, delta_root = eval_energy_single(float(e_root))
+                delta_root = phase_at(float(e_root), l_val)
                 if np.cos(2.0 * float(delta_root[l_val])) >= 0.0:
                     theta_rejected += 1
                     continue
@@ -3290,6 +3746,27 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             deduped = sorted(selected, key=lambda item: float(item["energy"]))
         return deduped
 
+    quadrature_weights: dict[float, float] = {}
+    quadrature_panels: list[tuple[float, float]] = []
+
+    def accept_panel(ea: float, eb: float) -> None:
+        """Retain the accepted Simpson rule, not the mesh of scout evaluations.
+
+        Inner-mu SCF reuses unoccupied A3 wave functions (Starrett2014,
+        Eq. A3). Replacing this rule by trapezoids on all cached nodes loses
+        the accuracy tested here, and gives resonance scouts unintended weight.
+        """
+        step = (eb - ea) / 6.0
+        quadrature_panels.append((ea, eb))
+        for energy, weight in ((ea, step), (0.5 * (ea + eb), 4 * step), (eb, step)):
+            quadrature_weights[energy] = quadrature_weights.get(energy, 0.0) + weight
+
+    def panel_phase_change(ea, em, eb, da, dm, db):
+        # Check the path through the midpoint to retain a physical pi-wide
+        # resonance. Exclude channels not evaluated at all three energies.
+        end = min(active_l_cap(ea), active_l_cap(em), active_l_cap(eb)) + 1
+        return delta_metric(da[:end], dm[:end]) + delta_metric(dm[:end], db[:end])
+
     def integrate_interval(e0: float,
                            e1: float,
                            n0: np.ndarray,
@@ -3311,7 +3788,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         simp = (e1 - e0) * (n0 + 4.0 * nm + n1) / 6.0
 
         diff = simp - trap
-        err = np.linalg.norm(diff) / (np.linalg.norm(simp) + 1e-12)
+        err = np.linalg.norm(diff[:density_end]) / (np.linalg.norm(simp[:density_end]) + 1e-12)
 
         resonance_flag = False
         if probe_idx is not None:
@@ -3325,7 +3802,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
 
         delta_flag = False
         if delta_tol_local is not None and np.isfinite(delta_tol_local):
-            delta_diff = delta_metric(d0, d1)
+            delta_diff = panel_phase_change(e0, em, e1, d0, dm, d1)
             if delta_diff > float(delta_tol_local):
                 delta_flag = True
                 delta_hits += 1
@@ -3338,6 +3815,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             left = integrate_interval(e0, em, n0, nm, d0, dm, depth + 1)
             right = integrate_interval(em, e1, nm, n1, dm, d1, depth + 1)
             return left + right
+        accept_panel(e0, e1)
         return simp
 
     def integrate_intervals_parallel(intervals: list[tuple[float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]]
@@ -3369,7 +3847,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                 simp = (e1 - e0) * (n0 + 4.0 * nm + n1) / 6.0
 
                 diff = simp - trap
-                err = np.linalg.norm(diff) / (np.linalg.norm(simp) + 1e-12)
+                err = np.linalg.norm(diff[:density_end]) / (np.linalg.norm(simp[:density_end]) + 1e-12)
 
                 resonance_flag = False
                 if probe_idx is not None:
@@ -3383,7 +3861,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
 
                 delta_flag = False
                 if delta_tol_local is not None and np.isfinite(delta_tol_local):
-                    delta_diff = delta_metric(d0, d1)
+                    delta_diff = panel_phase_change(e0, em, e1, d0, dm, d1)
                     if delta_diff > float(delta_tol_local):
                         delta_flag = True
                         delta_hits += 1
@@ -3396,6 +3874,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                     stack.append((e0, em, n0, nm, d0, dm, depth + 1))
                     stack.append((em, e1, nm, n1, dm, d1, depth + 1))
                 else:
+                    accept_panel(e0, e1)
                     n_r_local += simp
         return n_r_local
 
@@ -3408,6 +3887,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         """
         em = 0.5 * (e0 + e1)
         nm, _ = eval_energy_single(em)
+        accept_panel(e0, e1)
         return (e1 - e0) * (n0 + 4.0 * nm + n1) / 6.0
 
     def split_interval_by_windows(e0: float,
@@ -3486,312 +3966,6 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             int(theta_refine_depth) if theta_refine_depth is not None else int(e_max_depth) + 8,
         )
 
-    # Coarse-grained parallel mode: split energy domain into disjoint shards
-    # and solve each shard independently in its own process.
-    if use_parallel and parallel_mode == "shard":
-        if e1 <= e0:
-            meta = {
-                "n_eval": 0,
-                "n_cache_init": 0,
-                "n_cache_hits": 0,
-                "n_cache_total": 0,
-                "max_depth": 0,
-                "e_min": e0,
-                "e_max": e1,
-                "n_jobs": int(n_jobs),
-                "n_base": int(n_e_base),
-                "e_base_grid": str(e_base_grid),
-                "adaptive_mode": adaptive_mode,
-                "adaptive_parallel_mode": "shard",
-                "adaptive_shards": 0,
-                "adaptive_shard_policy": str(shard_policy),
-                "apply_occ": bool(apply_occ),
-            }
-            if bool(collect_perf):
-                meta.update(_scatter_perf_meta(None, 0.0))
-            return np.zeros_like(r, dtype=float), meta
-
-        shard_count = int(adaptive_shards) if adaptive_shards is not None else int(n_jobs)
-        shard_count = max(1, shard_count)
-        if shard_count > 1:
-            # When caller provides an external cache (basis reuse path), ask each
-            # shard worker to return its local E-samples and merge them here.
-            # This enables adaptive_reuse_basis together with shard parallelism.
-            collect_cache_samples = energy_cache is not None
-
-            # `n_e_base` is defined as a global base-node budget over [E_min, E_max].
-            # If each shard used the full n_e_base independently, total initial nodes
-            # would scale as O(shard_count * n_e_base), which over-refines and slows
-            # runs dramatically at large shard counts. Distribute base nodes per shard
-            # so global coverage stays approximately constant.
-            n_e_base_total = max(int(n_e_base), 2)
-            n_e_base_shard = max(2, int(np.ceil((n_e_base_total - 1) / float(shard_count))) + 1)
-
-            edges = _build_shard_edges(e0, e1, shard_count, e_base_grid, shard_policy)
-            base_kwargs = {
-                "v_eff": v_eff,
-                "r": r,
-                "mu": mu,
-                "temperature": temperature,
-                "l_max": l_max,
-                "grid_kind": grid_kind,
-                "grid_step": grid_step,
-                "l_pad": l_pad,
-                "match_fraction": match_fraction,
-                "match_slice": match_slice,
-                "match_r_cut": match_r_cut,
-                "match_fraction_mode": match_fraction_mode,
-                "match_width": match_width,
-                "match_kr_min": match_kr_min,
-                "match_v_tol": match_v_tol,
-                "match_min_points": match_min_points,
-                "match_asymptotic": match_asymptotic,
-                "match_coulomb_tol": match_coulomb_tol,
-                "match_allow_shift": match_allow_shift,
-                "match_fallback": match_fallback,
-                "prop_rescale_limit": prop_rescale_limit,
-                "l_cap_strategy": l_cap_strategy,
-                "e_tol": e_tol,
-                "e_max_depth": e_max_depth,
-                "e_min_width": e_min_width,
-                "n_e_base": n_e_base_shard,
-                "e_base_grid": e_base_grid,
-                "near_zero_log_grid": near_zero_enabled,
-                "near_zero_log_points_per_decade": near_zero_points_per_decade,
-                "near_zero_log_max_nodes": near_zero_max_nodes,
-                "near_zero_log_max_energy": near_zero_max_energy,
-                "resonance_tol": resonance_tol,
-                "resonance_r_fractions": resonance_r_fractions,
-                "resonance_floor": resonance_floor,
-                "delta_tol": delta_tol,
-                "delta_mode": delta_mode,
-                "adaptive_mode": adaptive_mode,
-                "bisection_max_depth": bisection_max_depth,
-                "resonance_window_factor": resonance_window_factor,
-                "resonance_window_min": resonance_window_min,
-                "resonance_window_max": resonance_window_max,
-                "resonance_max_windows": resonance_max_windows,
-                "resonance_theta_l_min": theta_l_min,
-                "resonance_theta_probe_count": theta_probe_count,
-                "resonance_theta_scan_depth": theta_scan_depth,
-                "resonance_theta_root_tol": theta_root_tol,
-                "resonance_theta_sharpness_min": theta_sharpness_min,
-                "resonance_theta_max_roots": resonance_theta_max_roots,
-                "resonance_theta_refine_depth": theta_refine_depth,
-                "energy_cache": None,
-                "n_jobs": None,
-                "adaptive_parallel_mode": "batch",
-                "adaptive_shards": None,
-                "adaptive_shard_policy": "egrid",
-                "apply_occ": apply_occ,
-                "_collect_cache_samples": bool(collect_cache_samples),
-            }
-            tasks = []
-            for i in range(shard_count):
-                shard_kwargs = dict(base_kwargs)
-                if theta_scout_max_extra_nodes is None:
-                    shard_budget = None
-                else:
-                    # Preserve a global extra-node bound rather than silently
-                    # multiplying the configured budget by the shard count.
-                    quotient, remainder = divmod(
-                        int(theta_scout_max_extra_nodes),
-                        int(shard_count),
-                    )
-                    shard_budget = quotient + (1 if i < remainder else 0)
-                shard_kwargs["resonance_theta_scout_max_extra_nodes"] = shard_budget
-                tasks.append(
-                    (i, float(edges[i]), float(edges[i + 1]), shard_kwargs)
-                )
-
-            ctx = mp.get_context("fork")
-            with ctx.Pool(processes=int(n_jobs)) as shard_pool:
-                shard_results = shard_pool.map(_adaptive_shard_worker, tasks)
-
-            shard_results = sorted(shard_results, key=lambda t: int(t[0]))
-            n_r = np.zeros_like(r, dtype=float)
-            n_eval_sum = 0
-            cache_hits_sum = 0
-            cache_total_sum = 0
-            max_depth_agg = 0
-            resonance_hits_sum = 0
-            delta_hits_sum = 0
-            n_windows_sum = 0
-            bisect_intervals_sum = 0
-            bisect_samples_sum = 0
-            bisect_depth_max = 0
-            theta_candidates_sum = 0
-            theta_rejected_sum = 0
-            theta_root_evals_sum = 0
-            theta_roots_agg: list[dict[str, float | int]] = []
-            theta_root_clusters_agg: list[dict] = []
-            theta_scout_base_nodes_sum = 0
-            theta_scout_nodes_sum = 0
-            theta_scout_extra_nodes_sum = 0
-            theta_scout_completed_depth_min: int | None = None
-            theta_scout_budget_exhausted_any = False
-            theta_scout_min_spacing_agg = np.inf
-            theta_scout_max_spacing_agg = 0.0
-            near_zero_anchors_agg: set[float] = set()
-            shard_meta = []
-            merged_cache_count = 0
-            skipped_cache_count = 0
-
-            for idx, n_part, m_part, samples in shard_results:
-                n_r += np.asarray(n_part, dtype=float)
-                n_eval_sum += int(m_part.get("n_eval", 0))
-                cache_hits_sum += int(m_part.get("n_cache_hits", 0))
-                cache_total_sum += int(m_part.get("n_cache_total", 0))
-                max_depth_agg = max(max_depth_agg, int(m_part.get("max_depth", 0)))
-                resonance_hits_sum += int(m_part.get("resonance_hits", 0))
-                delta_hits_sum += int(m_part.get("delta_hits", 0))
-                n_windows_sum += int(m_part.get("n_windows", 0))
-                bisect_intervals_sum += int(m_part.get("bisection_intervals", 0))
-                bisect_samples_sum += int(m_part.get("bisection_samples", 0))
-                bisect_depth_max = max(bisect_depth_max, int(m_part.get("bisection_max_depth", 0)))
-                theta_candidates_sum += int(m_part.get("theta_candidates", 0))
-                theta_rejected_sum += int(m_part.get("theta_rejected", 0))
-                theta_root_evals_sum += int(m_part.get("theta_root_evals", 0))
-                for item in m_part.get("theta_roots", []):
-                    item_copy = dict(item)
-                    item_copy["shard"] = int(idx)
-                    theta_roots_agg.append(item_copy)
-                for cluster in m_part.get("theta_root_clusters", []):
-                    cluster_copy = dict(cluster)
-                    cluster_copy["shard"] = int(idx)
-                    theta_root_clusters_agg.append(cluster_copy)
-                theta_scout_base_nodes_sum += int(m_part.get("theta_scout_base_node_count", 0))
-                theta_scout_nodes_sum += int(m_part.get("theta_scout_node_count", 0))
-                theta_scout_extra_nodes_sum += int(m_part.get("theta_scout_extra_node_count", 0))
-                completed_part = int(m_part.get("theta_scout_completed_depth", 0))
-                theta_scout_completed_depth_min = (
-                    completed_part
-                    if theta_scout_completed_depth_min is None
-                    else min(theta_scout_completed_depth_min, completed_part)
-                )
-                theta_scout_budget_exhausted_any = bool(
-                    theta_scout_budget_exhausted_any
-                    or m_part.get("theta_scout_budget_exhausted", False)
-                )
-                min_spacing_part = m_part.get("theta_scout_min_spacing", None)
-                max_spacing_part = m_part.get("theta_scout_max_spacing", None)
-                if min_spacing_part is not None and np.isfinite(float(min_spacing_part)):
-                    theta_scout_min_spacing_agg = min(
-                        theta_scout_min_spacing_agg,
-                        float(min_spacing_part),
-                    )
-                if max_spacing_part is not None and np.isfinite(float(max_spacing_part)):
-                    theta_scout_max_spacing_agg = max(
-                        theta_scout_max_spacing_agg,
-                        float(max_spacing_part),
-                    )
-                near_zero_anchors_agg.update(
-                    float(val) for val in m_part.get("near_zero_log_anchors", [])
-                )
-
-                # Merge shard-local basis samples into caller cache. This is
-                # required for inner-mu basis reuse where caller builds
-                # cont_basis from energy_cache after this adaptive pass.
-                if collect_cache_samples and samples is not None and energy_cache is not None:
-                    for e_val, n_e_val, d_val in samples:
-                        if e_val in energy_cache:
-                            skipped_cache_count += 1
-                            continue
-                        energy_cache[e_val] = (n_e_val, d_val)
-                        merged_cache_count += 1
-
-                shard_meta.append(
-                    {
-                        "idx": int(idx),
-                        "e_min": float(m_part.get("e_min", np.nan)),
-                        "e_max": float(m_part.get("e_max", np.nan)),
-                        "n_eval": int(m_part.get("n_eval", 0)),
-                        "wall_s": float(m_part.get("wall_s", np.nan)),
-                        "n_windows": int(m_part.get("n_windows", 0)),
-                        "max_depth": int(m_part.get("max_depth", 0)),
-                    }
-                )
-
-            cache_total_final = len(energy_cache) if energy_cache is not None else int(cache_total_sum)
-            meta = {
-                "n_eval": int(n_eval_sum),
-                "n_cache_init": int(cache_init),
-                "n_cache_hits": int(cache_hits_sum),
-                "n_cache_total": int(cache_total_final),
-                "max_depth": int(max_depth_agg),
-                "e_min": float(e0),
-                "e_max": float(e1),
-                "n_jobs": int(n_jobs),
-                "n_base": int(n_e_base_total),
-                "n_base_per_shard": int(n_e_base_shard),
-                "e_base_grid": str(e_base_grid),
-                "resonance_hits": int(resonance_hits_sum),
-                "delta_hits": int(delta_hits_sum),
-                "delta_tol": float(delta_tol) if delta_tol is not None else None,
-                "delta_mode": str(delta_mode),
-                "adaptive_mode": adaptive_mode,
-                "n_windows": int(n_windows_sum),
-                "resonance_windows": [],
-                "bisection_fallback": None,
-                "max_delta_metric": None,
-                "bisection_intervals": int(bisect_intervals_sum),
-                "bisection_samples": int(bisect_samples_sum),
-                "bisection_max_depth": int(bisect_depth_max),
-                "theta_detector_enabled": adaptive_mode in ("phase-root", "theta-scout", "theta-local"),
-                "theta_fallback": bool(
-                    n_windows_sum == 0
-                    and adaptive_mode in ("phase-root", "theta-scout", "theta-local")
-                ),
-                "theta_candidates": int(theta_candidates_sum),
-                "theta_rejected": int(theta_rejected_sum),
-                "theta_root_evals": int(theta_root_evals_sum),
-                "theta_root_tol": float(theta_root_tol),
-                "theta_refine_min_width": float(refine_min_width),
-                "theta_refine_depth": int(refine_depth_limit),
-                "theta_roots": sorted(theta_roots_agg, key=lambda item: float(item.get("energy", 0.0))),
-                "theta_root_clusters": sorted(
-                    theta_root_clusters_agg,
-                    key=lambda item: (int(item.get("shard", 0)), float(item.get("energy", 0.0))),
-                ),
-                "theta_scout_requested_depth": int(theta_scan_depth),
-                "theta_scout_completed_depth": int(theta_scout_completed_depth_min or 0),
-                "theta_scout_base_node_count": int(theta_scout_base_nodes_sum),
-                "theta_scout_node_count": int(theta_scout_nodes_sum),
-                "theta_scout_extra_node_count": int(theta_scout_extra_nodes_sum),
-                "theta_scout_max_extra_nodes": (
-                    None
-                    if theta_scout_max_extra_nodes is None
-                    else int(theta_scout_max_extra_nodes)
-                ),
-                "theta_scout_budget_exhausted": bool(theta_scout_budget_exhausted_any),
-                "theta_scout_min_spacing": (
-                    float(theta_scout_min_spacing_agg)
-                    if np.isfinite(theta_scout_min_spacing_agg)
-                    else None
-                ),
-                "theta_scout_max_spacing": (
-                    float(theta_scout_max_spacing_agg)
-                    if theta_scout_max_spacing_agg > 0.0
-                    else None
-                ),
-                "theta_scout_limitation": "finite_mesh_no_arbitrary_subgrid_guarantee",
-                "near_zero_log_grid": bool(near_zero_enabled),
-                "near_zero_log_anchor_count": int(len(near_zero_anchors_agg)),
-                "near_zero_log_anchors": sorted(near_zero_anchors_agg),
-                "apply_occ": bool(apply_occ),
-                "adaptive_parallel_mode": "shard",
-                "adaptive_parallel_mode_requested": str(parallel_mode_requested),
-                "theta_shard_mode_forced_batch": bool(theta_shard_mode_forced_batch),
-                "adaptive_shards": int(shard_count),
-                "adaptive_shard_policy": str(shard_policy),
-                "shard_meta": shard_meta,
-                "shard_cache_collect": bool(collect_cache_samples),
-                "shard_cache_merged": int(merged_cache_count),
-                "shard_cache_skipped": int(skipped_cache_count),
-            }
-            if bool(collect_perf):
-                meta.update(_scatter_perf_meta(None, 0.0))
-            return n_r, meta
 
     windows: list[tuple[float, float]] = []
     bisection_samples = 0
@@ -3936,7 +4110,11 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             theta_scout_max_spacing = scout_meta["max_spacing"]
             scout_vals = eval_energy_batch(scout_nodes.tolist())
             scout_deltas = [d_val for _, d_val in scout_vals]
-            theta_roots = locate_theta_roots(scout_nodes, scout_deltas)
+            # QuantumContinuumScattering.density can discard scout-only phase
+            # samples when no caller cache is requested. Do not extend this
+            # identity to small/nonzero potentials or the full-SCF gamma path.
+            theta_roots = ([] if _density_only and not np.any(v_eff)
+                           else locate_theta_roots(scout_nodes, scout_deltas))
 
             if resonance_window_min is None:
                 resonance_window_min = max(6.0 * refine_min_width, 32.0 * float(theta_root_tol))
@@ -4107,8 +4285,13 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
 
             candidates = []
             max_metric = 0.0
+            mids = 0.5*(e_nodes[:-1] + e_nodes[1:])
+            midpoint_values = eval_energy_batch(mids.tolist())
             for i in range(len(e_nodes) - 1):
-                metric = delta_metric(d_nodes[i], d_nodes[i + 1])
+                metric = panel_phase_change(
+                    e_nodes[i], mids[i], e_nodes[i+1],
+                    d_nodes[i], midpoint_values[i][1], d_nodes[i+1],
+                )
                 max_metric = max(max_metric, metric)
                 if metric > delta_threshold:
                     candidates.append((float(e_nodes[i]), float(e_nodes[i + 1]), d_nodes[i], d_nodes[i + 1], metric))
@@ -4174,6 +4357,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                     for (sa, sb), (nm, _) in zip(segments_coarse, mid_vals):
                         na, _ = cache[sa]
                         nb, _ = cache[sb]
+                        accept_panel(sa, sb)
                         n_r_local += (sb - sa) * (na + 4.0 * nm + nb) / 6.0
 
                 # Refinement segments: adaptive refinement with batched midpoints.
@@ -4212,43 +4396,64 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
 
         return np.zeros_like(r, dtype=float)
 
-    if use_parallel:
-        ctx = mp.get_context("fork")
-        with ctx.Pool(
-            processes=int(n_jobs),
-            initializer=_init_scatter_worker,
-            initargs=(
-                v_eff,
-                r,
-                mu,
-                temperature,
-                l_max,
-                grid_kind,
-                grid_step,
-                l_pad,
-                match_fraction,
-                match_slice,
-                match_r_cut,
-                match_fraction_mode,
-                match_width,
-                match_kr_min,
-                match_v_tol,
-                match_min_points,
-                match_asymptotic,
-                match_coulomb_tol,
-                match_allow_shift,
-                match_fallback,
-                prop_rescale_limit,
-                apply_occ,
-                l_cap_strategy,
-            ),
-        ) as pool:
+    try:
+        if use_parallel:
+            ctx = mp.get_context("fork")
+            with ctx.Pool(
+                processes=int(n_jobs),
+                initializer=_init_scatter_worker,
+                initargs=(
+                    v_eff,
+                    r,
+                    mu,
+                    temperature,
+                    l_max,
+                    grid_kind,
+                    grid_step,
+                    l_pad,
+                    match_fraction,
+                    match_slice,
+                    match_r_cut,
+                    match_fraction_mode,
+                    match_width,
+                    match_kr_min,
+                    match_v_tol,
+                    match_min_points,
+                    match_asymptotic,
+                    match_coulomb_tol,
+                    match_allow_shift,
+                    match_fallback,
+                    prop_rescale_limit,
+                    apply_occ,
+                    l_cap_strategy,
+                    density_rmax,
+                    partial_wave_tol,
+                    l_max_soft,
+                ),
+            ) as pool:
+                n_r = _do_integration()
+        else:
             n_r = _do_integration()
-    else:
-        n_r = _do_integration()
+    finally:
+        # Recursive local functions own their own closure cell. Break that
+        # cycle on success and failure so the per-energy density arrays need
+        # not wait for cyclic GC after this call. Never clear a caller's cache.
+        del integrate_interval
 
+    quad_energies = sorted(quadrature_weights)
     meta = {
+        "quadrature_energies": quad_energies,
+        "quadrature_weights": [quadrature_weights[e] for e in quad_energies],
+        "quadrature_panels": sorted(quadrature_panels),
+        "quadrature_rule": "accepted_simpson_panels",
+        "density_rmax": None if density_rmax is None else float(r[density_end-1]),
+        "partial_wave_tol": float(partial_wave_tol),
+        "l_max_soft": l_max_soft,
         "n_eval": n_eval_new,
+        "n_phase_eval": n_phase_eval,
+        "n_phase_cache_hits": phase_cache_hits,
+        "n_phase_cache_total": len(phase_cache),
+        "theta_single_channel_probes": bool(use_phase_channel and use_theta_detector),
         "n_cache_init": cache_init,
         "n_cache_hits": cache_hits,
         "n_cache_total": len(cache),
@@ -4263,7 +4468,8 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         "delta_tol": float(delta_tol) if delta_tol is not None else None,
         "delta_mode": str(delta_mode),
         "adaptive_mode": adaptive_mode,
-        "adaptive_parallel_mode": "batch",
+        "adaptive_parallel_mode": str(parallel_mode),
+        "adaptive_mesh_policy": "global_shared",
         "adaptive_parallel_mode_requested": str(parallel_mode_requested),
         "theta_shard_mode_forced_batch": bool(theta_shard_mode_forced_batch),
         "adaptive_shards": int(adaptive_shards) if adaptive_shards is not None else (int(n_jobs) if use_parallel else 1),
@@ -4276,6 +4482,10 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
         "bisection_samples": bisection_samples,
         "bisection_max_depth": bisection_depth_max,
         "theta_detector_enabled": adaptive_mode in ("phase-root", "theta-scout", "theta-local"),
+        "theta_free_reference_skipped": bool(
+            _density_only and not np.any(v_eff)
+            and adaptive_mode in ("phase-root", "theta-scout", "theta-local")
+        ),
         "theta_fallback": bool(
             not windows
             and adaptive_mode in ("phase-root", "theta-scout", "theta-local")
@@ -4379,8 +4589,9 @@ class QuantumContinuumScattering(ContinuumModel):
         e_min, e_max, n_e : energy bounds / samples for A3 integral.
         l_max, l_pad      : partial-wave sum parameters.
         l_cap_strategy    : "match" (default), "rmax", or "none".
+        l_max_soft        : optional trial limit; failed remainder checks recover larger l.
         match_*           : asymptotic matching controls.
-        n_jobs            : parallelize across energies (linear) or midpoint batches (adaptive).
+        n_jobs            : parallelize across energies on the shared integration mesh.
         """
         params = params or {}
         v_eff = params.get("v_eff", None)
@@ -4575,6 +4786,9 @@ class QuantumContinuumScattering(ContinuumModel):
                 prop_rescale_limit=prop_rescale_limit,
                 l_cap_strategy=l_cap_strategy,
                 e_tol=e_tol,
+                density_rmax=params.get("density_rmax"),
+                partial_wave_tol=float(params.get("partial_wave_tol", 1e-7)),
+                l_max_soft=params.get("l_max_soft"),
                 e_max_depth=e_max_depth,
                 e_min_width=e_min_width,
                 n_e_base=n_e_base,
@@ -4612,6 +4826,10 @@ class QuantumContinuumScattering(ContinuumModel):
                 adaptive_parallel_mode=adaptive_parallel_mode,
                 adaptive_shards=adaptive_shards,
                 adaptive_shard_policy=str(params.get("adaptive_shard_policy", "egrid")),
+                # This method returns density only. A supplied cache instead
+                # promises all sampled phases to its owner (e.g. gamma), so
+                # retain the ordinary scout searches in that case.
+                _density_only=energy_cache is None,
             )
         else:
             # Fixed energy grid integration.
@@ -4642,6 +4860,8 @@ class QuantumContinuumScattering(ContinuumModel):
                 l_cap_strategy=l_cap_strategy,
                 energy_cache=energy_cache,
                 n_jobs=n_jobs,
+                l_max_soft=params.get("l_max_soft"),
+                partial_wave_tol=float(params.get("partial_wave_tol", 1e-7)),
             )
 
         if tail_match and tail_match_target in ("cont", "both"):

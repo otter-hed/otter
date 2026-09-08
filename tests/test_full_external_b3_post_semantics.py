@@ -35,6 +35,7 @@ def test_post_b3_keeps_fixed_point_potential_separate(monkeypatch) -> None:
         temperature_ev=10.0,
         rho_g_cc=1.0,
         b3_tail_stage2_mode="post",
+        b3_tail_target="cont",
         b3_r_cut_mult=5.0,
         b3_r_fit_max_mult=7.0,
         save_data=False,

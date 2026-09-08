@@ -37,6 +37,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter.numerics.constants import KELVIN_TO_EV
 from otter.plotting import PAIR_COLORS, grid_figsize, save_figure, style_context
 
 
@@ -51,12 +52,9 @@ ELEMENTS = ("C", "H")
 COUNTS = (1.0, 1.36)
 RHO_G_CC = 5.0
 TEMPERATURE_K = 100_000.0
-EV_PER_K = 8.617333262145e-5
-TE_EV = TEMPERATURE_K * EV_PER_K
+TE_EV = TEMPERATURE_K * KELVIN_TO_EV
 TI_EV = TE_EV
 
-CONTINUUM_WORKERS = int(os.environ.get("OTTER_CONTINUUM_WORKERS", "6"))
-CONTINUUM_SHARDS = 32
 COMMON_MU_TOL_HA = 1.0e-4
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TOL = 1.0e-4
@@ -115,8 +113,6 @@ def workflow_config() -> PlasmaWorkflowConfig:
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
         aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS,
-            "cont_shards": CONTINUUM_SHARDS,
             "b3_tail_target": "full",
             "b3_r_cut_mult": 3.0,
             "b3_r_fit_max_mult": 4.0,
@@ -186,6 +182,7 @@ def result_arrays(workflow: dict[str, Any], elapsed_s: float) -> dict[str, np.nd
     )
     arrays = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("gallery_analysis"),
         "species_symbols": np.asarray(ELEMENTS),
         "species_counts": np.asarray(COUNTS, dtype=float),
         "rho_g_cc": np.asarray(RHO_G_CC),

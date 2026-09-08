@@ -1,8 +1,9 @@
 """Compare cached-CH2 HNC with same-potential molecular dynamics.
 
-Edit only the input block below, then run this file directly.  No average-atom
-or common-mu calculation is performed: every case requires an existing,
-converged electronic pickle from the cold CH2 regression.
+Edit only the input block below, then run this file directly. By default every
+case uses an existing converged electronic cache. RECOMPUTE_ELECTRONIC instead
+rebuilds the benchmark's three full+external mixture states with current Otter,
+saving new electronic inputs under OUTPUT_DIR without overwriting old caches.
 
 Otter's present Rosenfeld--Ashcroft/VMHNC bridge is one-component only.  A
 binary CH2 bridge therefore remains explicitly unavailable here; applying one
@@ -10,9 +11,11 @@ scalar hard-sphere bridge to CC, CH, and HH would not be the implemented
 theory.  The MD/HNC comparison measures the correction that a future genuine
 multicomponent bridge needs to reproduce.
 """
+
 from __future__ import annotations
 
 import csv
+from dataclasses import asdict
 import hashlib
 import importlib.util
 import json
@@ -49,6 +52,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from otter import (  # noqa: E402
     PlasmaWorkflowConfig,
+    solve_plasma_workflow,
     continue_plasma_workflow_from_electronic_result,
     prepare_multicomponent_ion_structure_from_electronic_result,
 )
@@ -65,12 +69,21 @@ from otter.plotting import (  # noqa: E402
 TARGET_TE_EV = (10.0, 30.0, 100.0)
 TI_OVER_TE = (0.2, 0.5, 1.0)
 
-CACHE_DIR = (
+DEFAULT_CACHE_DIR = (
     Path(__file__).resolve().parent
     / "outputs/all_electronic_cold_phased_600f772_20260823"
     / "c1h2_rho0p946/electronic_cache"
 )
-OUTPUT_DIR = Path(__file__).resolve().parent / "outputs/ch2_hnc_md_comparison"
+# A validation campaign may supply its newly recomputed full+external states.
+CACHE_DIR = Path(os.environ.get("OTTER_CH2_CACHE_DIR", DEFAULT_CACHE_DIR))
+if not CACHE_DIR.is_absolute():
+    CACHE_DIR = ROOT / CACHE_DIR
+DEFAULT_OUTPUT_DIR = (
+    Path(__file__).resolve().parent / "outputs/ch2_hnc_md_comparison"
+)
+OUTPUT_DIR = Path(os.environ.get("OTTER_CH2_OUTPUT_DIR", DEFAULT_OUTPUT_DIR))
+if not OUTPUT_DIR.is_absolute():
+    OUTPUT_DIR = ROOT / OUTPUT_DIR
 
 # 1024 C + 2048 H gives exact CH2 stoichiometry.  Cases run sequentially and
 # LAMMPS uses only 16 MPI ranks so the workstation remains responsive.
@@ -106,6 +119,9 @@ MIN_VECTORS_PER_K_BIN = 12
 
 PROGRESS_INTERVAL_S = 30.0
 REUSE_COMPLETED_CASES = True
+RUN_MD = os.environ.get("OTTER_CH2_RUN_MD", "1") == "1"
+RECOMPUTE_ELECTRONIC = os.environ.get("OTTER_CH2_RECOMPUTE_ELECTRONIC", "0") == "1"
+REQUIRE_ALL_CASES = os.environ.get("OTTER_REQUIRE_ALL_CH2_HNC_MD", "0") == "1"
 # ============================================================================
 
 
@@ -154,22 +170,33 @@ def select_temperatures(
 
 
 def workflow_config(te_ev: float, ti_ev: float | None) -> PlasmaWorkflowConfig:
-    """Match the production CH2 QOZ/HNC settings without entering AA."""
+    """Use production defaults; Ti=None selects the electronic-only workflow."""
     return PlasmaWorkflowConfig(
         elements=list(ELEMENTS),
         counts=list(COUNTS),
         temperature_ev=float(te_ev),
         ion_temperature_ev=None if ti_ev is None else float(ti_ev),
         rho_g_cc=RHO_G_CC,
-        electronic_model="qm",
-        run_mode="full+ext",
         show_progress=False,
-        show_mu_progress=False,
     )
 
 
 def load_electronic_cache(te_ev: float) -> tuple[str, dict[str, Any]]:
     path = CACHE_DIR / f"C1H2_Te{te_ev:07.3f}.pkl"
+    if RECOMPUTE_ELECTRONIC:
+        print(f"\nTe={te_ev:g} eV: cold common-mu + full/external AA", flush=True)
+        cfg = workflow_config(te_ev, None)
+        cfg.show_progress = True
+        workflow = solve_plasma_workflow(cfg)
+        path = OUTPUT_DIR / "electronic" / path.name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("wb") as stream:
+            pickle.dump({
+                "electronic_kind": workflow["electronic"]["kind"],
+                "electronic_result": workflow["electronic"]["result"],
+                "configuration": asdict(cfg),
+                "runtime_s": workflow["runtime_s"],
+            }, stream, protocol=pickle.HIGHEST_PROTOCOL)
     with path.open("rb") as stream:
         payload = pickle.load(stream)  # trusted, project-generated local cache
     kind = str(payload["electronic_kind"])
@@ -228,11 +255,7 @@ def md_controls(prepared: Any, ti_ev: float) -> dict[str, float | bool]:
     )
     timestep_omega_p_inv = TIMESTEP_OMEGA_P_INV * scale
     thermal_limited = scale < 1.0 - 1.0e-12
-    r_min_bohr = (
-        HOT_MD_R_MIN_BOHR
-        if thermal_limited
-        else DEFAULT_MD_R_MIN_BOHR
-    )
+    r_min_bohr = HOT_MD_R_MIN_BOHR if thermal_limited else DEFAULT_MD_R_MIN_BOHR
     return {
         "omega_max_au": omega_max,
         "timestep_ps": base_timestep_ps * scale,
@@ -261,8 +284,7 @@ def regularize_coulomb_core(
 
     result = matrix.copy()
     blend_x = np.clip(
-        (r - COULOMB_CORE_BOHR)
-        / (COULOMB_BLEND_END_BOHR - COULOMB_CORE_BOHR),
+        (r - COULOMB_CORE_BOHR) / (COULOMB_BLEND_END_BOHR - COULOMB_CORE_BOHR),
         0.0,
         1.0,
     )
@@ -295,6 +317,7 @@ def _case_signature(
 ) -> str:
     payload = {
         "schema": "ch2_hnc_md_comparison_v1",
+        "run_md": RUN_MD,
         "te_ev": te_ev,
         "ti_ev": ti_ev,
         "formula_units": CH2_FORMULA_UNITS,
@@ -307,6 +330,9 @@ def _case_signature(
         "k_max_angstrom_inv": MD_K_MAX_ANGSTROM_INV,
         "k_bin_width_angstrom_inv": MD_K_BIN_WIDTH_ANGSTROM_INV,
     }
+    if RECOMPUTE_ELECTRONIC:
+        path = OUTPUT_DIR / "electronic" / f"C1H2_Te{te_ev:07.3f}.pkl"
+        payload["electronic_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     # Preserve the signatures of accepted cooler runs. Only states requiring
     # the high-T guard are invalidated and recomputed.
     if bool(controls["thermal_limited"]):
@@ -330,9 +356,9 @@ def _completed_case(case_dir: Path, signature: str) -> dict[str, Any] | None:
     if not REUSE_COMPLETED_CASES or not path.is_file():
         return None
     record = json.loads(path.read_text(encoding="utf-8"))
-    required = [case_dir / "md/md_results.npz"]
-    if record.get("hnc_status") == "success":
-        required.append(case_dir / "hnc_results.npz")
+    required = [case_dir / "hnc_results.npz"]
+    if RUN_MD:
+        required.append(case_dir / "md/md_results.npz")
     reusable = record.get("status") in {"success", "partial"}
     return (
         record
@@ -389,9 +415,11 @@ def _monitor_md(
 
 
 def save_hnc(case_dir: Path, te_ev: float, ti_ev: float, ion: dict[str, Any]) -> None:
+    """Save only the HNC quantities used by the comparison and XRTS analysis."""
     np.savez_compressed(
         case_dir / "hnc_results.npz",
-        schema_version=np.asarray("ch2_hnc_result_v1"),
+        schema_version=np.asarray("ch2_hnc_result_v2"),
+        storage_profile=np.asarray("ion_structure"),
         te_ev=np.asarray(te_ev),
         ti_ev=np.asarray(ti_ev),
         bridge_status=np.asarray(BRIDGE_STATUS),
@@ -400,7 +428,8 @@ def save_hnc(case_dir: Path, te_ev: float, ti_ev: float, ion: dict[str, Any]) ->
         k_bohr_inv=np.asarray(ion["k"], dtype=float),
         gij_r=np.asarray(ion["gij_r"], dtype=float),
         sij_k=np.asarray(ion["sij_k"], dtype=float),
-        vij_r_ha=np.asarray(ion["vij_r"], dtype=float),
+        f_k=np.asarray(ion["f_k"], dtype=float),
+        q_k=np.asarray(ion["q_k"], dtype=float),
         n_i_bohr3=np.asarray(ion["n_i"], dtype=float),
         zbar=np.asarray(ion["zbar"], dtype=float),
         hnc_output_residual=np.asarray(ion["hnc_output_residual"]),
@@ -451,8 +480,15 @@ def plot_comparison(
         s_md = np.asarray(md_result["md_sij_k"])[:, pair_index]
         s_sem = np.asarray(md_result["md_sij_frame_sem"])[:, pair_index]
         axes[1, pair_index].errorbar(
-            k_md[reliable_k], s_md[reliable_k], yerr=s_sem[reliable_k],
-            color=color, ls="none", marker="o", ms=3.0, alpha=0.72, label="MD",
+            k_md[reliable_k],
+            s_md[reliable_k],
+            yerr=s_sem[reliable_k],
+            color=color,
+            ls="none",
+            marker="o",
+            ms=3.0,
+            alpha=0.72,
+            label="MD",
         )
         axes[0, pair_index].set_title(label)
         axes[0, pair_index].set_xlabel(r"$r$ [Bohr]")
@@ -472,6 +508,8 @@ def plot_comparison(
 def _write_summary(records: list[dict[str, Any]], selected: list[float]) -> None:
     payload = {
         "schema_version": "ch2_hnc_md_scan_v1",
+        "md_enabled": RUN_MD,
+        "electronic_recomputed": RECOMPUTE_ELECTRONIC,
         "selected_te_ev": selected,
         "ti_over_te": list(TI_OVER_TE),
         "bridge_status": BRIDGE_STATUS,
@@ -494,15 +532,22 @@ def main() -> None:
     except (AttributeError, OSError):
         pass
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    available = available_electronic_temperatures()
+    if RECOMPUTE_ELECTRONIC:
+        manifest = ROOT / "benchmarks/baselines/ch2_hnc_md/manifest.json"
+        available = json.loads(manifest.read_text())["configuration"]["electron_temperatures_ev"]
+    else:
+        available = available_electronic_temperatures()
     selected = select_temperatures(TARGET_TE_EV, available)
     print("Requested Te -> saved electronic Te:")
     for requested, actual in zip(TARGET_TE_EV, selected, strict=True):
         print(f"  {requested:g} -> {actual:g} eV")
-    print(
-        f"Cases: {len(selected) * len(TI_OVER_TE)} sequential MD runs; "
-        f"atoms={3 * CH2_FORMULA_UNITS}, MPI ranks={LAMMPS_MPI_PROCESSES}"
-    )
+    if RUN_MD:
+        print(
+            f"Cases: {len(selected) * len(TI_OVER_TE)} sequential MD runs; "
+            f"atoms={3 * CH2_FORMULA_UNITS}, MPI ranks={LAMMPS_MPI_PROCESSES}"
+        )
+    else:
+        print(f"Cases: {len(selected) * len(TI_OVER_TE)} Otter HNC runs; MD disabled")
     print(f"Bridge: {BRIDGE_STATUS}")
 
     records: list[dict[str, Any]] = []
@@ -511,7 +556,17 @@ def main() -> None:
     scan_started = time.perf_counter()
 
     for te_ev in selected:
-        electronic_kind, electronic_result = load_electronic_cache(te_ev)
+        try:
+            electronic_kind, electronic_result = load_electronic_cache(te_ev)
+        except Exception as exc:
+            print(f"    Electronic FAILED: {type(exc).__name__}: {exc}", flush=True)
+            for alpha in TI_OVER_TE:
+                records.append(dict(te_ev=te_ev, ti_ev=alpha * te_ev,
+                                    status="failed", electronic_error=str(exc),
+                                    hnc_status="not_run", md_status="not_run"))
+            completed += len(TI_OVER_TE)
+            _write_summary(records, selected)
+            continue
         prep_started = time.perf_counter()
         prepared = prepare_multicomponent_ion_structure_from_electronic_result(
             workflow_config(te_ev, None),
@@ -541,7 +596,7 @@ def main() -> None:
                 f"[{completed}/{total_cases}] Te={te_ev:g} eV, "
                 f"Ti={ti_ev:g} eV (alpha={alpha:g})"
             )
-            if bool(controls["thermal_limited"]):
+            if RUN_MD and bool(controls["thermal_limited"]):
                 print(
                     "    high-T MD guard: "
                     f"dt*omega_p={controls['timestep_omega_p_inv']:.3e}, "
@@ -585,6 +640,24 @@ def main() -> None:
                 )
                 print(f"    HNC FAILED: {type(exc).__name__}: {exc}")
 
+            if not RUN_MD:
+                record.update(
+                    md_status="not_requested",
+                    status="success" if ion is not None else "failed",
+                    case_elapsed_s=time.perf_counter() - case_started,
+                )
+                records.append(record)
+                _atomic_json(case_dir / "case_summary.json", record)
+                _write_summary(records, selected)
+                elapsed = time.perf_counter() - scan_started
+                eta = elapsed / completed * (total_cases - completed)
+                print(
+                    f"    Overall: {completed}/{total_cases}, "
+                    f"elapsed={elapsed / 60.0:.2f} min, "
+                    f"ETA={eta / 60.0:.2f} min"
+                )
+                continue
+
             md_result: dict[str, np.ndarray] | None = None
             try:
                 equilibration_steps = int(
@@ -595,18 +668,14 @@ def main() -> None:
                 )
                 production_steps = int(
                     round(
-                        PRODUCTION_OMEGA_P_INV
-                        / float(controls["timestep_omega_p_inv"])
+                        PRODUCTION_OMEGA_P_INV / float(controls["timestep_omega_p_inv"])
                     )
                 )
                 rdf_every = max(
                     1,
-                    production_steps
-                    // (MD_STATISTICAL_BLOCKS * MD_RDF_REPEAT),
+                    production_steps // (MD_STATISTICAL_BLOCKS * MD_RDF_REPEAT),
                 )
-                trajectory_every = max(
-                    1, production_steps // MD_STATISTICAL_BLOCKS
-                )
+                trajectory_every = max(1, production_steps // MD_STATISTICAL_BLOCKS)
                 md_config = md.MDConfig(
                     output_dir=case_dir / "md",
                     species=(
@@ -638,8 +707,7 @@ def main() -> None:
                     k_max_angstrom_inv=MD_K_MAX_ANGSTROM_INV,
                     k_bin_width_angstrom_inv=MD_K_BIN_WIDTH_ANGSTROM_INV,
                     structure_factor_workers=STRUCTURE_FACTOR_WORKERS,
-                    random_seed=20_260_825
-                    + int(round(100.0 * te_ev + 1000.0 * alpha)),
+                    random_seed=20_260_825 + int(round(100.0 * te_ev + 1000.0 * alpha)),
                     mpi_processes=LAMMPS_MPI_PROCESSES,
                     reuse_completed=True,
                 )
@@ -688,23 +756,17 @@ def main() -> None:
                     md_reused_existing_run=bool(md_result["md_reused_existing_run"]),
                     omega_max_au=float(controls["omega_max_au"]),
                     timestep_ps=float(controls["timestep_ps"]),
-                    timestep_omega_p_inv=float(
-                        controls["timestep_omega_p_inv"]
-                    ),
+                    timestep_omega_p_inv=float(controls["timestep_omega_p_inv"]),
                     thermal_step_bohr=float(controls["thermal_step_bohr"]),
                     thermal_limited=bool(controls["thermal_limited"]),
                     md_r_min_bohr=float(controls["r_min_bohr"]),
                     md_rdf_every=rdf_every,
                     md_trajectory_every=trajectory_every,
-                    md_coulomb_core_regularized=bool(
-                        controls["thermal_limited"]
-                    ),
+                    md_coulomb_core_regularized=bool(controls["thermal_limited"]),
                 )
                 drift = abs(float(record["md_nve_relative_energy_drift"]))
                 record["md_energy_quality"] = (
-                    "passed"
-                    if drift <= MAX_NVE_RELATIVE_ENERGY_DRIFT
-                    else "warning"
+                    "passed" if drift <= MAX_NVE_RELATIVE_ENERGY_DRIFT else "warning"
                 )
                 record["status"] = "success" if ion is not None else "partial"
                 print(
@@ -747,8 +809,15 @@ def main() -> None:
 
     _write_summary(records, selected)
     failures = sum(record.get("status") != "success" for record in records)
-    print(f"\nFinished: {len(records) - failures}/{len(records)} successful")
+    successes = len(records) - failures
+    print(f"\nFinished: {successes}/{len(records)} successful")
     print(f"Results: {OUTPUT_DIR}")
+    if REQUIRE_ALL_CASES and successes != total_cases:
+        raise RuntimeError(
+            "Full CH2 benchmark recomputation requires every case to succeed; "
+            f"got {successes}/{total_cases}. Inspect summary.json and the "
+            "per-case md/screen.log files."
+        )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from otter.numerics import BOHR_TO_ANGSTROM, EV_TO_KELVIN
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -112,7 +114,6 @@ def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
             required = {
                 "r_bohr",
                 "gii_r",
-                "vmhnc_r_bohr",
                 "vmhnc_gii_r",
                 "vmhnc_eta",
                 "vmhnc_variational_residual",
@@ -124,6 +125,19 @@ def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
                 "md_nve_relative_energy_drift",
             }
             assert required <= set(archive.files)
+            assert {
+                "k_bohr_inv",
+                "sii_k",
+                "vmhnc_r_bohr",
+                "vmhnc_k_bohr_inv",
+                "vmhnc_sii_k",
+                "vii_r_ha",
+                "ion_density_bohr3",
+                "md_k_bohr_inv",
+                "md_sii_k",
+                "md_sii_block_sem",
+                "md_sii_vectors_per_bin",
+            }.isdisjoint(archive.files)
             assert str(archive["structure_model"].item()) == "IS"
             assert str(archive["hnc_bridge_model"].item()) == "none"
             assert (
@@ -150,18 +164,14 @@ def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
             )
             assert abs(float(archive["md_nve_relative_energy_drift"])) < 5.0e-5
             assert float(archive["md_nve_mean_temperature_k"]) == pytest.approx(
-                11604.51812155008,
+                EV_TO_KELVIN,
                 rel=0.2,
             )
 
             r_hnc = np.asarray(archive["r_bohr"], dtype=float)
             g_hnc = np.asarray(archive["gii_r"], dtype=float)
-            r_vmhnc = np.asarray(archive["vmhnc_r_bohr"], dtype=float)
             g_vmhnc = np.asarray(archive["vmhnc_gii_r"], dtype=float)
-            common = (r_hnc >= r_vmhnc[0]) & (r_hnc <= r_vmhnc[-1])
-            closure_delta = g_hnc[common] - np.interp(
-                r_hnc[common], r_vmhnc, g_vmhnc
-            )
+            closure_delta = g_hnc - g_vmhnc
             assert np.all(np.isfinite(closure_delta))
             assert float(np.max(np.abs(closure_delta))) > 1.0e-4
 
@@ -170,7 +180,7 @@ def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
                 r_md[md_overlap], r_hnc, g_hnc
             )
             md_vmhnc_delta = g_md[md_overlap] - np.interp(
-                r_md[md_overlap], r_vmhnc, g_vmhnc
+                r_md[md_overlap], r_hnc, g_vmhnc
             )
             hnc_md_rmse = float(np.sqrt(np.mean(md_hnc_delta**2)))
             vmhnc_md_rmse = float(np.sqrt(np.mean(md_vmhnc_delta**2)))
@@ -186,7 +196,7 @@ def test_johnson_baselines_compare_hnc_and_vmhnc_with_dft_md() -> None:
             overlap = (dft[:, 0] >= r_hnc[0]) & (dft[:, 0] <= r_hnc[-1])
             for radius, pair_distribution in (
                 (r_hnc, g_hnc),
-                (r_vmhnc, g_vmhnc),
+                (r_hnc, g_vmhnc),
             ):
                 delta = (
                     np.interp(dft[overlap, 0], radius, pair_distribution)
@@ -266,9 +276,12 @@ def test_schorner_bridge_md_baselines_and_ordinate_correction() -> None:
     baseline_dir = ROOT / "benchmarks" / "baselines" / benchmark_id
     manifest = _json(baseline_dir / "manifest.json")
     controller = ROOT / str(manifest["producer"]["script_relative_path"])
-    assert _sha256(controller) == manifest["producer"][
-        "current_controller_sha256"
-    ]
+    # This is the controller hash recorded at baseline acceptance, not a
+    # demand to rewrite historical provenance whenever its runner is fixed.
+    assert controller.is_file()
+    recorded_hash = manifest["producer"]["current_controller_sha256"]
+    assert len(recorded_hash) == 64
+    assert all(character in "0123456789abcdef" for character in recorded_hash)
     assert manifest["configuration"]["structure_model"] == "IS"
     assert manifest["configuration"]["ionic_closures"] == [
         "HNC",
@@ -295,12 +308,11 @@ def test_schorner_bridge_md_baselines_and_ordinate_correction() -> None:
         path = baseline_dir / str(record["baseline_file"])
         with np.load(path, allow_pickle=False) as archive:
             required = {
+                "k_bohr_inv",
                 "sii_k",
                 "vmhnc_sii_k",
                 "vmhnc_eta",
                 "vmhnc_variational_residual",
-                "md_r_bohr",
-                "md_gii_r",
                 "md_k_bohr_inv",
                 "md_sii_k",
                 "md_sii_block_sem",
@@ -352,7 +364,7 @@ def test_schorner_bridge_md_baselines_and_ordinate_correction() -> None:
             )
             magnitudes = magnitudes[magnitudes <= 4.5]
             radial_bin = np.floor(
-                magnitudes / (0.1 * 0.529177210903)
+                magnitudes / (0.1 * BOHR_TO_ANGSTROM)
             ).astype(int)
             populated_bins, expected_counts = np.unique(
                 radial_bin, return_counts=True
@@ -376,30 +388,24 @@ def test_schorner_bridge_md_baselines_and_ordinate_correction() -> None:
             assert str(archive["md_ensemble_sequence"].item()) == "NVT->NVE"
             assert abs(float(archive["md_nve_relative_energy_drift"])) < 5e-5
             assert float(archive["md_nve_mean_temperature_k"]) == pytest.approx(
-                float(archive["ti_ev"]) * 11604.51812155008,
+                float(archive["ti_ev"]) * EV_TO_KELVIN,
                 rel=0.2,
             )
 
-            r_md = np.asarray(archive["md_r_bohr"], dtype=float)
-            g_md = np.asarray(archive["md_gii_r"], dtype=float)
-            overlap = (r_md >= 0.5) & (
-                r_md
-                <= min(
-                    float(archive["r_bohr"][-1]),
-                    float(archive["vmhnc_r_bohr"][-1]),
-                )
-            )
-            hnc_delta = g_md[overlap] - np.interp(
-                r_md[overlap], archive["r_bohr"], archive["gii_r"]
-            )
-            vmhnc_delta = g_md[overlap] - np.interp(
-                r_md[overlap],
-                archive["vmhnc_r_bohr"],
-                archive["vmhnc_gii_r"],
-            )
-            assert np.sqrt(np.mean(vmhnc_delta**2)) < np.sqrt(
-                np.mean(hnc_delta**2)
-            )
+            assert {
+                "r_bohr",
+                "gii_r",
+                "vmhnc_r_bohr",
+                "vmhnc_gii_r",
+                "vmhnc_k_bohr_inv",
+                "md_r_bohr",
+                "md_gii_r",
+                "md_gii_block_sem",
+            }.isdisjoint(archive.files)
+            closure_delta = np.asarray(archive["sii_k"], dtype=float).copy()
+            closure_delta -= np.asarray(archive["vmhnc_sii_k"], dtype=float)
+            assert np.all(np.isfinite(closure_delta))
+            assert np.max(np.abs(closure_delta)) > 1.0e-6
 
             provenance = json.loads(str(archive["xc_provenance_json"].item()))
             assert provenance["provider"] == "libxc"

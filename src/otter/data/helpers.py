@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 import numpy as np
 
-from otter.numerics.constants import CM_TO_BOHR
+from otter.numerics.constants import AVOGADRO_CONSTANT_MOL, CM_TO_BOHR
 from otter.data.elements import atomic_weight as element_atomic_weight
 
 
@@ -16,8 +16,7 @@ def ion_density_bohr3(rho_g_cc: float, atomic_weight: float) -> float:
     """Return ion number density (Bohr^-3) from mass density and atomic weight."""
     if atomic_weight <= 0.0:
         raise ValueError("atomic_weight must be positive.")
-    avogadro = 6.02214076e23
-    n_i_cm3 = rho_g_cc / atomic_weight * avogadro
+    n_i_cm3 = rho_g_cc / atomic_weight * AVOGADRO_CONSTANT_MOL
     return n_i_cm3 / (CM_TO_BOHR ** 3)
 
 

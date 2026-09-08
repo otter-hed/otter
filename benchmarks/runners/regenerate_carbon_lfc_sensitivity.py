@@ -33,6 +33,7 @@ from otter import (  # noqa: E402
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
 )
+from otter.electronic import FullExternalConfig  # noqa: E402
 
 
 RHO_G_CC = 5.0
@@ -46,8 +47,6 @@ LFC_MODELS = (
 )
 REFERENCE_LFC = "chabrier1990"
 MAX_STATE_WORKERS = 2
-CONTINUUM_WORKERS_PER_STATE = 6
-AA_N_POINTS = 4096
 QOZ_N_POINTS = 8192
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TRANSFORM_TOL = 1.0e-4
@@ -61,6 +60,7 @@ OUTPUT_DIR = (
     / "recomputed"
 )
 SCHEMA = "otter_carbon_lfc_sensitivity_state_v2"
+STORAGE_PROFILE = "benchmark_analysis"
 
 
 def _git_commit() -> str:
@@ -139,8 +139,6 @@ def _configuration(
         ),
         rho_g_cc=float(RHO_G_CC),
         aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
             "bound_zero_tail_refine": True,
             "bound_zero_tail_max_binding_ha": 1.0e-2,
             "bound_zero_tail_scan_points": 48,
@@ -226,23 +224,18 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
             )
         ion_results.append(ion)
 
-    r_e, n_full = _trim(
+    r_e, n_bound = _trim(
         electronic["r"],
-        electronic["n_full"],
+        electronic["n_bound"],
         R_RETAIN_MAX_BOHR,
     )
     electronic_arrays: dict[str, np.ndarray] = {
         "electronic_r_bohr": r_e,
-        "n_full_bohr3": n_full,
+        "n_bound_bohr3": n_bound,
     }
     for source, target in (
-        ("n_bound", "n_bound_bohr3"),
-        ("n_cont", "n_cont_bohr3"),
-        ("n_ext", "n_ext_bohr3"),
         ("n_ion", "n_ion_bohr3"),
         ("n_scr", "n_scr_bohr3"),
-        ("v_full", "v_full_ha"),
-        ("v_xc", "v_xc_ha"),
     ):
         _, values = _trim(
             electronic["r"],
@@ -282,8 +275,8 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         "structure_model": "IS",
         "lfc_models": list(LFC_MODELS),
         "reference_lfc": REFERENCE_LFC,
-        "aa_n_points": AA_N_POINTS,
-        "continuum_workers_per_state": CONTINUUM_WORKERS_PER_STATE,
+        "aa_n_points": int(FullExternalConfig.n_points),
+        "continuum_workers_per_state": FullExternalConfig.cont_n_jobs,
         "bound_occ_mode": "fd",
         "bound_rmax_mult": None,
         "bound_zero_tail_refine": True,
@@ -303,6 +296,7 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "benchmark_id": np.asarray("carbon_lfc_sensitivity"),
+        "storage_profile": np.asarray(STORAGE_PROFILE),
         "element_symbol": np.asarray("C"),
         "rho_g_cc": np.asarray(RHO_G_CC),
         "temperature_ev": np.asarray(float(temperature_ev)),
@@ -325,15 +319,13 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         "k_bohr_inv": k,
         "gii_r": np.asarray([on_r(ion, "gii_r") for ion in ion_results]),
         "sii_k": np.asarray([on_k(ion, "sii_k") for ion in ion_results]),
-        "vii_r_ha": np.asarray([on_r(ion, "vii_r") for ion in ion_results]),
         "vii_k_ha_bohr3": np.asarray(
             [on_k(ion, "vii_k") for ion in ion_results]
         ),
+        "gee_k": np.asarray([on_k(ion, "gee_k") for ion in ion_results]),
         "chi_ee_k": np.asarray(
             [on_k(ion, "chi_ee_k") for ion in ion_results]
         ),
-        "gee_k": np.asarray([on_k(ion, "gee_k") for ion in ion_results]),
-        "n_scr_r_bohr3": on_r(reference_ion, "n_scr_r"),
         "n_scr_k": on_k(reference_ion, "n_scr_k"),
         "chi0_k": on_k(reference_ion, "chi0_k"),
         "zbar_qoz": np.asarray(
@@ -514,20 +506,18 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
             "radius": "Bohr",
             "wavenumber": "Bohr^-1",
             "electron_density": "Bohr^-3",
-            "electron_response": "Bohr^-3 Hartree^-1",
-            "screening_cloud_k": "electron number",
-            "effective_pair_potential_r": "Hartree",
             "effective_pair_potential_k": "Hartree Bohr^3",
             "gii": "dimensionless",
             "sii": "dimensionless",
         },
         "configuration": {
             "rho_g_cc": RHO_G_CC,
+            "storage_profile": STORAGE_PROFILE,
             "temperatures_ev": list(TEMPERATURES_EV),
             "models": list(LFC_MODELS),
             "reference_model": REFERENCE_LFC,
             "structure_model": "IS",
-            "aa_n_points": AA_N_POINTS,
+            "aa_n_points": int(FullExternalConfig.n_points),
             "bound_occ_mode": "fd",
             "bound_rmax_mult": None,
             "bound_zero_tail_refine": True,

@@ -17,6 +17,11 @@ while keeping the converged IS chemical potential fixed.  Otter labels this
 path experimental because validation across a broader state space is still
 in progress.
 
+The refreshed results use adaptive QM full-AA precision in the final SC
+iterations. Outer acceptance also checks the current, unmixed correlation-
+potential residual. This improves the accuracy of the coupled iteration;
+it does not change the IS initial state or the physical feedback equations.
+
 Set ``RECOMPUTE_WITH_OTTER = True`` below to calculate every curve directly
 with the public Otter API.  The default ``False`` path loads the reviewed,
 checksummed Otter result so that the gallery builds quickly.  A fresh result
@@ -37,6 +42,7 @@ import numpy as np
 
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
 from otter.experimental import SCFeedbackConfig, solve_sc_feedback_workflow
+from otter.numerics.constants import HA_TO_EV
 from otter.plotting import (
     MODEL_STYLES,
     PALETTES,
@@ -51,13 +57,12 @@ from otter.plotting import (
 # -------------
 # ``RECOMPUTE_WITH_OTTER`` is the only switch required for a normal run.
 # Two independent electronic models may be evaluated concurrently.  Reduce
-# either worker count on a small machine.
+# the state-worker count on a small machine.
 
 RECOMPUTE_WITH_OTTER = False
 if os.environ.get("OTTER_RECOMPUTE_AL_IS_SC", "0") == "1":
     RECOMPUTE_WITH_OTTER = True
 RECOMPUTE_MODEL_WORKERS = 2
-CONTINUUM_WORKERS = 8
 
 ELEMENT = "Al"
 RHO_G_CC = 8.1
@@ -67,7 +72,6 @@ MODELS = ("qm", "tf")
 MODEL_DISPLAY_LABELS = ("KS-DFT", "Thomas--Fermi")
 STRUCTURES = ("is", "sc")
 
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -80,7 +84,6 @@ SC_CONTROLS = SCFeedbackConfig(
 )
 
 SCHEMA = "otter_al_is_sc_comparison_v1"
-HARTREE_TO_EV = 27.211386245988
 
 
 def _repository_root() -> Path:
@@ -127,16 +130,13 @@ def workflow_config(model: str) -> PlasmaWorkflowConfig:
     model_key = str(model).strip().lower()
     if model_key not in MODELS:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}.")
+    model_override = {} if model_key == "qm" else {"electronic_model": model_key}
     return PlasmaWorkflowConfig(
         elements=[ELEMENT],
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
-        electronic_model=model_key,
-        aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS,
-            "cont_shards": 2 * CONTINUUM_WORKERS,
-        },
+        **model_override,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
         hnc_max_iter=500,
     )
@@ -251,6 +251,12 @@ def _solve_model(model: str) -> dict[str, Any]:
             [float(item["max_v_corr_change_ha"]) for item in history],
             dtype=float,
         ),
+        "history_max_v_corr_residual_ha": np.asarray(
+            [float(item["max_v_corr_residual_ha"]) for item in history],
+        ),
+        "history_inner_full_refined": np.asarray(
+            [bool(item["inner_full_refined"]) for item in history],
+        ),
     }
 
 
@@ -294,6 +300,7 @@ def _pack_state(by_model: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "example_id": np.asarray("al_is_sc_comparison"),
+        "storage_profile": np.asarray("gallery_analysis"),
         "element_symbol": np.asarray(ELEMENT),
         "rho_g_cc": np.asarray(RHO_G_CC),
         "te_ev": np.asarray(TE_EV),
@@ -351,6 +358,8 @@ def _pack_state(by_model: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
         payload[f"{model}_sc_history_max_v_corr_change_ha"] = np.asarray(
             by_model[model]["history_max_v_corr_change_ha"]
         )
+        for field in ("history_max_v_corr_residual_ha", "history_inner_full_refined"):
+            payload[f"{model}_sc_{field}"] = np.asarray(by_model[model][field])
     return payload
 
 
@@ -394,7 +403,10 @@ def validate_state(state: dict[str, np.ndarray]) -> None:
         raise ValueError("SC must remain explicitly labelled experimental.")
     if not np.all(np.asarray(state["sc_converged"], dtype=bool)):
         raise ValueError("An experimental SC calculation is unconverged.")
-    if np.any(np.asarray(state["hnc_residual"], dtype=float) > HNC_TOL):
+    if np.any(
+        np.asarray(state["hnc_residual"], dtype=float)
+        > float(workflow_config("qm").hnc_tol)
+    ):
         raise ValueError("An HNC residual exceeds the documented tolerance.")
     r = np.asarray(state["r_bohr"], dtype=float)
     k = np.asarray(state["k_bohr_inv"], dtype=float)
@@ -464,7 +476,7 @@ def level_rows(
             {
                 "level": label,
                 "energy_ha": float(energy),
-                "energy_ev": HARTREE_TO_EV * float(energy),
+                "energy_ev": HA_TO_EV * float(energy),
                 "fd": float(fd),
                 "occupation": float(occupation),
             }
@@ -749,7 +761,7 @@ with style_context("thesis", palette="bing"):
             state[f"{model}_sc_history_max_g_change"], dtype=float
         )
         dv = np.asarray(
-            state[f"{model}_sc_history_max_v_corr_change_ha"],
+            state[f"{model}_sc_history_max_v_corr_residual_ha"],
             dtype=float,
         )
         ax_history.semilogy(
@@ -767,7 +779,7 @@ with style_context("thesis", palette="bing"):
             ls="--",
             marker="s",
             ms=4.0,
-            label=model_name + r" $\max|\Delta V^C|$ [Ha]",
+            label=model_name + r" $\max|V^C_{\rm out}-V^C_{\rm in}|$ [Ha]",
         )
     ax_history.axhline(
         SC_CONTROLS.g_tol,

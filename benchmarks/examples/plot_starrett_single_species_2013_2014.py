@@ -40,6 +40,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter.numerics.constants import (
+    ATOMIC_MASS_UNIT_TO_G,
+    BOHR_TO_ANGSTROM,
+    BOHR_TO_CM,
+)
 from otter.plotting import grid_figsize, save_figure, set_style
 
 
@@ -48,16 +53,14 @@ from otter.plotting import grid_figsize, save_figure, set_style
 # =============================================================================
 USE_PRECOMPUTED_DATA = True
 
-# Three state processes, each with six continuum workers.  Use one state
-# worker on a memory-constrained host.
+# Three state processes, each with one AA worker. Use one state process on a
+# memory-constrained host.
 MAX_STATE_WORKERS = 3
-CONTINUUM_WORKERS_PER_STATE = 6
-QOZ_N_POINTS = int(
-    os.environ.get("OTTER_STARRETT_SINGLE_QOZ_POINTS", "4096")
+_QOZ_POINTS_ENV = os.environ.get("OTTER_STARRETT_SINGLE_QOZ_POINTS")
+QOZ_N_POINTS_OVERRIDE = (
+    None if _QOZ_POINTS_ENV is None else int(_QOZ_POINTS_ENV)
 )
 
-LFC_MODEL = "chabrier1990"
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -78,9 +81,6 @@ if selected_ids := os.environ.get("OTTER_STARRETT_SINGLE_STATE_IDS"):
 
 BENCHMARK_ID = "starrett_single_species_2013_2014"
 SCHEMA = "otter_starrett_single_species_state_v1"
-BOHR_TO_ANGSTROM = 0.529177210903
-AMU_TO_G = 1.66053906660e-24
-BOHR_TO_CM = BOHR_TO_ANGSTROM * 1.0e-8
 
 PHYSICAL_STATES: tuple[dict[str, Any], ...] = (
     {
@@ -319,7 +319,7 @@ def validated_two_column_curve(path: Path) -> np.ndarray:
 def ion_sphere_radius_bohr(state: dict[str, Any]) -> float:
     """Return R_WS from mass density and the standard atomic mass."""
     ion_density_cm3 = float(state["rho_g_cc"]) / (
-        float(state["atomic_mass"]) * AMU_TO_G
+        float(state["atomic_mass"]) * ATOMIC_MASS_UNIT_TO_G
     )
     radius_cm = (3.0 / (4.0 * np.pi * ion_density_cm3)) ** (1.0 / 3.0)
     return float(radius_cm / BOHR_TO_CM)
@@ -451,7 +451,8 @@ def validate_baseline_payload(
     threshold = str(np.asarray(payload["threshold_state_status"]).item()).lower()
     if not np.isfinite(zbar) or zbar <= 0.0:
         raise ValueError(f"{path}: invalid pseudoatom-partition Zbar.")
-    if not np.isfinite(residual) or residual > HNC_TOL:
+    configured_hnc_tol = float(workflow_config(state).hnc_tol)
+    if not np.isfinite(residual) or residual > configured_hnc_tol:
         raise ValueError(f"{path}: HNC residual does not pass the strict gate.")
     if not np.isfinite(closure) or closure > HNC_CLOSURE_TOL:
         raise ValueError(f"{path}: transform closure does not pass the gate.")
@@ -526,18 +527,20 @@ def load_precomputed_states() -> dict[str, dict[str, np.ndarray]]:
 
 def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
     """Build one complete public Otter IS-QOZ/HNC calculation."""
+    model = str(state["model"])
+    model_override = {} if model == "qm" else {"electronic_model": model}
+    qoz_override = (
+        {}
+        if QOZ_N_POINTS_OVERRIDE is None
+        else {"qoz_linear_n_points": QOZ_N_POINTS_OVERRIDE}
+    )
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
         temperature_ev=float(state["te_ev"]),
         ion_temperature_ev=float(state["ti_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
-        electronic_model=str(state["model"]),
-        aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-        },
-        qoz_linear_n_points=int(QOZ_N_POINTS),
-        hnc_tol=float(HNC_TOL),
+        **model_override,
+        **qoz_override,
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=1000,
     )
@@ -564,9 +567,10 @@ def pack_result(
         raise RuntimeError("HNC did not reach a physical fixed point")
     residual = float(ion["hnc_output_residual"])
     closure = float(ion["closure_transform_max_abs"])
-    if residual > HNC_TOL:
+    configured_hnc_tol = float(workflow["configuration"]["hnc_tol"])
+    if residual > configured_hnc_tol:
         raise RuntimeError(
-            f"HNC residual {residual:.6e} exceeds {HNC_TOL:.6e}"
+            f"HNC residual {residual:.6e} exceeds {configured_hnc_tol:.6e}"
         )
     if closure > HNC_CLOSURE_TOL:
         raise RuntimeError(
@@ -581,6 +585,7 @@ def pack_result(
     rws = float(electronic["r_ws"])
     return {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(str(state["state_id"])),
         "panel_id": np.asarray(str(state["panel_id"])),
         "element": np.asarray(str(state["element"])),

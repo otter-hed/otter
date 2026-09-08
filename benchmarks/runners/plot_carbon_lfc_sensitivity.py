@@ -175,10 +175,9 @@ def load_state(path: Path) -> dict[str, np.ndarray]:
         raise ValueError(f"Retained carbon data exceed the v2 20-Bohr limit in {path}.")
     expected_r_shape = (len(MODEL_ORDER), r.size)
     expected_k_shape = (len(MODEL_ORDER), k.size)
-    for key in ("gii_r", "vii_r_ha"):
-        if result[key].shape != expected_r_shape:
-            raise ValueError(f"Unexpected {key} shape in {path}.")
-    for key in ("sii_k", "vii_k_ha_bohr3", "chi_ee_k", "gee_k"):
+    if result["gii_r"].shape != expected_r_shape:
+        raise ValueError(f"Unexpected gii_r shape in {path}.")
+    for key in ("sii_k", "vii_k_ha_bohr3", "gee_k"):
         if result[key].shape != expected_k_shape:
             raise ValueError(f"Unexpected {key} shape in {path}.")
     if np.max(result["hnc_output_residual"]) > 1.0e-5:

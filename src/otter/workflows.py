@@ -26,6 +26,7 @@ Review E 90, 033110 (2014), DOI 10.1103/PhysRevE.90.033110.  Workflow
 dispatch, validation gates, caching, and portable state export are Otter
 software conventions.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -195,7 +196,9 @@ def resolve_plasma_composition(
     has_formula = formula is not None and str(formula).strip() != ""
     has_explicit = elements is not None
     if has_formula and has_explicit:
-        raise ValueError("Specify either formula or elements-based composition, not both.")
+        raise ValueError(
+            "Specify either formula or elements-based composition, not both."
+        )
     if has_formula:
         return parse_formula_composition(str(formula))
     return _resolve_explicit_composition(
@@ -322,7 +325,10 @@ def _species_entries_from_electronic(
                 result=dict(electronic_result),
             )
         ]
-    return [{**dict(sp), "result": dict(sp["result"])} for sp in electronic_result["species"]]
+    return [
+        {**dict(sp), "result": dict(sp["result"])}
+        for sp in electronic_result["species"]
+    ]
 
 
 def _electronic_result_with_qoz_safe_threshold_tails(
@@ -366,6 +372,10 @@ def _electronic_convergence_issues(
             "stage2_unconverged": "full AA stage-2 unconverged",
             "mu_nonfinite": "non-finite electron chemical potential",
             "threshold_state_unresolved": "unresolved threshold bound state",
+            "diffuse_threshold_requires_full_b3": (
+                "diffuse threshold state requires a self-consistent "
+                "b3_tail_target='full' calculation"
+            ),
             "b3_full_tail_unapplied": (
                 "requested full-density B3 tail was not applied"
             ),
@@ -390,7 +400,11 @@ def _electronic_convergence_issues(
             if isinstance(ext_raw, dict) and ext_raw:
                 ext_status = dict(ext_raw)
                 ext_active = bool(ext_status.get("enabled", True))
-                if ext_active and "converged" in ext_status and not bool(ext_status["converged"]):
+                if (
+                    ext_active
+                    and "converged" in ext_status
+                    and not bool(ext_status["converged"])
+                ):
                     issues.append(f"{symbol}: external fixed-mu SCF unconverged")
 
         # QOZ renormalizes the finite-box screening charge to the pseudoatom
@@ -412,9 +426,7 @@ def _electronic_convergence_issues(
                 q_scr = np.nan
                 zbar_partition = np.nan
             if not np.isfinite(q_scr) or not np.isfinite(zbar_partition):
-                issues.append(
-                    f"{symbol}: non-finite raw screening charge diagnostic"
-                )
+                issues.append(f"{symbol}: non-finite raw screening charge diagnostic")
             else:
                 relative_error = abs(q_scr - zbar_partition) / max(
                     abs(zbar_partition), 1.0e-12
@@ -480,8 +492,9 @@ class PlasmaWorkflowConfig(CitationMixin):
         Add charge, continuum, tail, mixer, and timing diagnostics to the
         compact report.
     save_state_npz
-        Save the converged electronic, pseudoatom, response, potential, and
-        QOZ/HNC arrays as a portable NPZ state.
+        Save a profile-selected portable NPZ state.  ``complete`` preserves
+        the historical electronic/pseudoatom/QOZ/HNC payload; electronic-only
+        summary and level profiles do not require an ion temperature.
     """
 
     temperature_ev: float
@@ -504,6 +517,8 @@ class PlasmaWorkflowConfig(CitationMixin):
 
     run_mode: str = "full+ext"
     mu_e_tol: float = 1.0e-4
+    # Outer mixture-coordinate tolerance; N>2 common-mu solves refine it
+    # adaptively only when the physical mu_e_tol has not yet been reached.
     root_tol: float = 1.0e-4
     root_maxfev: int = 20
     root_brent_maxiter: int = 16
@@ -526,9 +541,11 @@ class PlasmaWorkflowConfig(CitationMixin):
     save_output_dir: str | Path = "outputs"
     save_suffix: str = ""
     save_state_npz: bool = False
-    # Save the portable electronic/pseudoatom/QOZ/HNC state after a successful
-    # ion-structure calculation.
+    # Save a profile-selected portable state.  Electronic-only profiles do not
+    # require an ion-temperature or QOZ/HNC stage.
     save_state_path: str | Path | None = None
+    state_export_profile: str = "complete"
+    state_include_groups: tuple[str, ...] = ()
     state_r_max_bohr: float = 20.0
     state_k_max_bohr_inv: float = 20.0
     save_common_linear_grid: bool = True
@@ -617,10 +634,7 @@ class PlasmaWorkflowConfig(CitationMixin):
         self.gga_core_mode = str(self.gga_core_mode).strip().lower()
         if self.gga_core_mode not in {"finite", "strict"}:
             raise ValueError("gga_core_mode must be 'finite' or 'strict'.")
-        if (
-            not np.isfinite(float(self.gga_core_zr))
-            or float(self.gga_core_zr) <= 0.0
-        ):
+        if not np.isfinite(float(self.gga_core_zr)) or float(self.gga_core_zr) <= 0.0:
             raise ValueError("gga_core_zr must be finite and positive.")
         if float(self.mu_e_tol) <= 0.0 or float(self.root_tol) <= 0.0:
             raise ValueError("mu_e_tol and root_tol must be positive.")
@@ -643,11 +657,22 @@ class PlasmaWorkflowConfig(CitationMixin):
             )
         if self.ion_temperature_ev is not None and float(self.ion_temperature_ev) < 0.0:
             raise ValueError("ion_temperature_ev must be non-negative when provided.")
-        if bool(self.save_state_npz) and self.ion_temperature_ev is None:
-            raise ValueError(
-                "save_state_npz requires ion_temperature_ev so q/f/g/S share "
-                "the converged QOZ/HNC lattice."
+        if bool(self.save_state_npz):
+            from otter.io.state import StateExportOptions
+
+            state_options = StateExportOptions(
+                profile=self.state_export_profile,
+                include_groups=tuple(self.state_include_groups),
+                r_max_bohr=float(self.state_r_max_bohr),
+                k_max_bohr_inv=float(self.state_k_max_bohr_inv),
             )
+            self.state_export_profile = state_options.profile
+            self.state_include_groups = tuple(state_options.include_groups)
+            if state_options.requires_ion_stage and self.ion_temperature_ev is None:
+                raise ValueError(
+                    "save_state_npz requires ion_temperature_ev for profile "
+                    f"{state_options.profile!r} and its QOZ/HNC data groups."
+                )
         if float(self.state_r_max_bohr) <= 0.0:
             raise ValueError("state_r_max_bohr must be positive.")
         if float(self.state_k_max_bohr_inv) <= 0.0:
@@ -681,7 +706,10 @@ class PlasmaWorkflowConfig(CitationMixin):
                 "'screening_integral', or 'electronic'."
             )
         if qoz_zbar_mode_key in {
-            "pseudoatom_partition", "partition", "pa_partition", "z_minus_qion_all"
+            "pseudoatom_partition",
+            "partition",
+            "pa_partition",
+            "z_minus_qion_all",
         } and not bool(self.qoz_renormalize_nscr_to_zbar):
             raise ValueError(
                 "pseudoatom_partition requires qoz_renormalize_nscr_to_zbar=True "
@@ -690,7 +718,9 @@ class PlasmaWorkflowConfig(CitationMixin):
         if self.qoz_high_k_taper_start_frac is not None and not (
             0.0 < float(self.qoz_high_k_taper_start_frac) < 1.0
         ):
-            raise ValueError("qoz_high_k_taper_start_frac must lie in (0, 1) when provided.")
+            raise ValueError(
+                "qoz_high_k_taper_start_frac must lie in (0, 1) when provided."
+            )
         if float(self.hnc_tol) <= 0.0:
             raise ValueError("hnc_tol must be positive.")
         if int(self.hnc_max_iter) < 4:
@@ -727,17 +757,13 @@ class PlasmaWorkflowConfig(CitationMixin):
         elif bridge_key in {"ra", "vmhnc", "rosenfeld_ashcroft_vmhnc"}:
             bridge_key = "rosenfeld_ashcroft"
         if bridge_key not in {"none", "rosenfeld_ashcroft"}:
-            raise ValueError(
-                "hnc_bridge_model must be 'none' or 'rosenfeld_ashcroft'."
-            )
+            raise ValueError("hnc_bridge_model must be 'none' or 'rosenfeld_ashcroft'.")
         self.hnc_bridge_model = bridge_key
         if int(self.vmhnc_points_per_diameter) < 32:
             raise ValueError("vmhnc_points_per_diameter must be at least 32.")
         eta_low, eta_high = (float(value) for value in self.vmhnc_eta_bounds)
         if not 0.0 < eta_low < eta_high < 0.5:
-            raise ValueError(
-                "vmhnc_eta_bounds must satisfy 0 < low < high < 0.5."
-            )
+            raise ValueError("vmhnc_eta_bounds must satisfy 0 < low < high < 0.5.")
         self.vmhnc_eta_bounds = (eta_low, eta_high)
         if float(self.vmhnc_eta_tol) <= 0.0:
             raise ValueError("vmhnc_eta_tol must be positive.")
@@ -753,8 +779,13 @@ class PlasmaWorkflowConfig(CitationMixin):
                 )
         if str(self.run_mode).strip().lower() not in ("full", "full+ext", "full_ext"):
             raise ValueError("run_mode must be 'full' or 'full+ext'.")
-        if self.ion_temperature_ev is not None and str(self.run_mode).strip().lower() == "full":
-            raise ValueError("Ion-structure workflow requires run_mode='full+ext' to provide n_scr.")
+        if (
+            self.ion_temperature_ev is not None
+            and str(self.run_mode).strip().lower() == "full"
+        ):
+            raise ValueError(
+                "Ion-structure workflow requires run_mode='full+ext' to provide n_scr."
+            )
 
     @property
     def citation_keys(self) -> tuple[str, ...]:
@@ -830,9 +861,8 @@ def _solve_electronic_structure(
             "aa_overrides."
         )
     configured_gga_core_zr = aa_overrides.pop("gga_core_zr", None)
-    if (
-        configured_gga_core_zr is not None
-        and not np.isclose(float(configured_gga_core_zr), float(cfg.gga_core_zr))
+    if configured_gga_core_zr is not None and not np.isclose(
+        float(configured_gga_core_zr), float(cfg.gga_core_zr)
     ):
         raise ValueError(
             "Conflicting gga_core_zr values in PlasmaWorkflowConfig and "
@@ -863,18 +893,20 @@ def _solve_electronic_structure(
         temperature_ev=float(cfg.temperature_ev),
         rho_g_cc=float(cfg.rho_g_cc),
         aa_overrides=aa_overrides,
-        species_overrides={key: dict(val) for key, val in cfg.species_overrides.items()},
+        species_overrides={
+            key: dict(val) for key, val in cfg.species_overrides.items()
+        },
         mu_e_tol=float(cfg.mu_e_tol),
         root_tol=float(cfg.root_tol),
         root_maxfev=int(cfg.root_maxfev),
         root_brent_maxiter=int(cfg.root_brent_maxiter),
-        root_threshold_b3_surrogate_mode=str(
-            cfg.root_threshold_b3_surrogate_mode
-        ),
+        root_threshold_b3_surrogate_mode=str(cfg.root_threshold_b3_surrogate_mode),
         root_threshold_refine_retry=bool(cfg.root_threshold_refine_retry),
         allow_unconverged_root=bool(cfg.allow_unconverged_root),
         volume_weights_init=(
-            None if cfg.volume_weights_init is None else [float(val) for val in cfg.volume_weights_init]
+            None
+            if cfg.volume_weights_init is None
+            else [float(val) for val in cfg.volume_weights_init]
         ),
         show_progress=bool(cfg.show_progress),
         show_mu_progress=bool(cfg.show_mu_progress),
@@ -963,7 +995,10 @@ def _one_component_ion_structure(
     else:
         mode_key = str(cfg.qoz_zbar_mode).strip().lower().replace("-", "_")
         if mode_key in {
-            "pseudoatom_partition", "partition", "pa_partition", "z_minus_qion_all"
+            "pseudoatom_partition",
+            "partition",
+            "pa_partition",
+            "z_minus_qion_all",
         }:
             raise ValueError(
                 "The pseudoatom_partition QOZ convention requires zbar_partition "
@@ -1016,7 +1051,9 @@ def _one_component_ion_structure(
                 electron_temperature_ha=float(cfg.temperature_ev) * EV_TO_HA,
             ),
             high_k_taper_start_frac=(
-                None if cfg.qoz_high_k_taper_start_frac is None else float(cfg.qoz_high_k_taper_start_frac)
+                None
+                if cfg.qoz_high_k_taper_start_frac is None
+                else float(cfg.qoz_high_k_taper_start_frac)
             ),
         ),
     )
@@ -1109,25 +1146,17 @@ def _one_component_ion_structure(
             else np.inf
         )
         s_min_local = (
-            float(np.min(s_arr_local))
-            if np.all(np.isfinite(s_arr_local))
-            else -np.inf
+            float(np.min(s_arr_local)) if np.all(np.isfinite(s_arr_local)) else -np.inf
         )
         s_max_local = (
-            float(np.max(s_arr_local))
-            if np.all(np.isfinite(s_arr_local))
-            else np.inf
+            float(np.max(s_arr_local)) if np.all(np.isfinite(s_arr_local)) else np.inf
         )
         g_min_local = (
-            float(np.min(g_arr_local))
-            if np.all(np.isfinite(g_arr_local))
-            else -np.inf
+            float(np.min(g_arr_local)) if np.all(np.isfinite(g_arr_local)) else -np.inf
         )
         g_tail_local = float(
             np.mean(
-                g_arr_local[
-                    -min(max(int(cfg.hnc_tail_points), 8), g_arr_local.size) :
-                ]
+                g_arr_local[-min(max(int(cfg.hnc_tail_points), 8), g_arr_local.size) :]
             )
         )
         converged_local = bool(
@@ -1198,9 +1227,7 @@ def _one_component_ion_structure(
                     dtype=float,
                 ),
                 ion_temperature_ha,
-                potential_scales=tuple(
-                    float(val) for val in cfg.hnc_potential_scales
-                ),
+                potential_scales=tuple(float(val) for val in cfg.hnc_potential_scales),
                 mix=float(cfg.hnc_mix),
                 tol=float(cfg.hnc_tol),
                 max_iter=int(cfg.hnc_max_iter),
@@ -1231,15 +1258,12 @@ def _one_component_ion_structure(
             c_r = np.asarray(c_matrix[0, 0], dtype=float)
             fallback_used = True
             hnc_solver_path = (
-                f"direct_{direct_mixing_scheme}->continuation_"
-                f"{continuation_scheme}"
+                f"direct_{direct_mixing_scheme}->continuation_" f"{continuation_scheme}"
             )
 
     hnc_solve_s = time.perf_counter() - t_hnc
     final_hnc = _diagnose_one_component_hnc(g_r, s_k, residual_history)
-    closure_transform_max_abs = float(
-        final_hnc["closure_transform_max_abs"]
-    )
+    closure_transform_max_abs = float(final_hnc["closure_transform_max_abs"])
     hnc_best_residual = float(final_hnc["best_residual"])
     hnc_s_min = float(final_hnc["s_min"])
     hnc_s_max = float(final_hnc["s_max"])
@@ -1298,16 +1322,12 @@ def _one_component_ion_structure(
             if vmhnc_result is None
             else np.asarray(vmhnc_result.effective_potential_r, dtype=float)
         ),
-        "vmhnc_eta": (
-            None if vmhnc_result is None else float(vmhnc_result.eta)
-        ),
+        "vmhnc_eta": (None if vmhnc_result is None else float(vmhnc_result.eta)),
         "vmhnc_sigma_bohr": (
             None if vmhnc_result is None else float(vmhnc_result.sigma_bohr)
         ),
         "vmhnc_variational_residual": (
-            None
-            if vmhnc_result is None
-            else float(vmhnc_result.variational_residual)
+            None if vmhnc_result is None else float(vmhnc_result.variational_residual)
         ),
         "vmhnc_eta_history": (
             []
@@ -1437,9 +1457,11 @@ def _multicomponent_qoz_signature(cfg: PlasmaWorkflowConfig) -> tuple[Any, ...]:
         bool(cfg.qoz_renormalize_nscr_to_zbar),
         str(cfg.qoz_response_chi0_model),
         str(cfg.qoz_response_lfc_model),
-        None
-        if cfg.qoz_high_k_taper_start_frac is None
-        else float(cfg.qoz_high_k_taper_start_frac),
+        (
+            None
+            if cfg.qoz_high_k_taper_start_frac is None
+            else float(cfg.qoz_high_k_taper_start_frac)
+        ),
     )
 
 
@@ -1447,6 +1469,7 @@ def _multicomponent_electronic_signature(
     species_entries: list[dict[str, Any]],
 ) -> tuple[Any, ...]:
     """Identify the converged species states used to prepare QOZ arrays."""
+
     def _digest(values: np.ndarray) -> str:
         canonical = np.ascontiguousarray(np.asarray(values, dtype="<f8"))
         return hashlib.sha256(canonical.tobytes()).hexdigest()
@@ -1483,8 +1506,7 @@ def _prepare_multicomponent_ion_structure(
     """Build the part of mixture QOZ/HNC that is invariant under ``T_i``."""
     started = time.perf_counter()
     common_rmax = max(
-        float(np.asarray(sp["result"]["r"], dtype=float)[-1])
-        for sp in species_entries
+        float(np.asarray(sp["result"]["r"], dtype=float)[-1]) for sp in species_entries
     )
     r_work = _build_qoz_linear_grid(
         r_max=float(common_rmax),
@@ -1683,41 +1705,42 @@ def _multicomponent_ion_structure(
     c_ee_r = -v_ee_r / max(float(cfg.temperature_ev) * EV_TO_HA, 1.0e-12)
     qoz_build_s = 0.0 if reused_preparation else float(prepared.preparation_s)
     t_hnc = time.perf_counter()
-    g_r, s_k, h_r, c_r, residual_history, stage_meta = hnc_solver_multicomponent_continuation(
-        r,
-        k,
-        qoz.vij_r,
-        transform,
-        n_i,
-        ion_temperature_ha,
-        potential_scales=tuple(float(val) for val in cfg.hnc_potential_scales),
-        mix=float(cfg.hnc_mix),
-        tol=float(cfg.hnc_tol),
-        max_iter=int(cfg.hnc_max_iter),
-        mixing_scheme=(
-            "newton_krylov"
-            if str(cfg.hnc_mixing_scheme).strip().lower() == "auto"
-            else str(cfg.hnc_mixing_scheme)
-        ),
-        tail_points=int(cfg.hnc_tail_points),
-        c_map_clip=float(cfg.hnc_nodal_clip),
-        enforce_h_tail_zero=bool(cfg.hnc_enforce_nodal_tail_zero),
-        s_min_floor=1.0e-8,
-        s_max_ceil=1.0e6,
-        s_projection_mode=str(cfg.hnc_s_projection_mode),
-        adaptive=bool(cfg.hnc_adaptive_continuation),
-        min_scale_step=float(cfg.hnc_min_scale_step),
-        max_stage_attempts=int(cfg.hnc_max_stage_attempts),
-        require_converged=bool(cfg.hnc_require_converged),
-        fallback_mixing_scheme=cfg.hnc_fallback_mixing_scheme,
-        newton_max_iter=int(cfg.hnc_newton_max_iter),
+    g_r, s_k, h_r, c_r, residual_history, stage_meta = (
+        hnc_solver_multicomponent_continuation(
+            r,
+            k,
+            qoz.vij_r,
+            transform,
+            n_i,
+            ion_temperature_ha,
+            potential_scales=tuple(float(val) for val in cfg.hnc_potential_scales),
+            mix=float(cfg.hnc_mix),
+            tol=float(cfg.hnc_tol),
+            max_iter=int(cfg.hnc_max_iter),
+            mixing_scheme=(
+                "newton_krylov"
+                if str(cfg.hnc_mixing_scheme).strip().lower() == "auto"
+                else str(cfg.hnc_mixing_scheme)
+            ),
+            tail_points=int(cfg.hnc_tail_points),
+            c_map_clip=float(cfg.hnc_nodal_clip),
+            enforce_h_tail_zero=bool(cfg.hnc_enforce_nodal_tail_zero),
+            s_min_floor=1.0e-8,
+            s_max_ceil=1.0e6,
+            s_projection_mode=str(cfg.hnc_s_projection_mode),
+            adaptive=bool(cfg.hnc_adaptive_continuation),
+            min_scale_step=float(cfg.hnc_min_scale_step),
+            max_stage_attempts=int(cfg.hnc_max_stage_attempts),
+            require_converged=bool(cfg.hnc_require_converged),
+            fallback_mixing_scheme=cfg.hnc_fallback_mixing_scheme,
+            newton_max_iter=int(cfg.hnc_newton_max_iter),
+        )
     )
     hnc_solve_s = time.perf_counter() - t_hnc
     sqrt_n = np.sqrt(np.outer(n_i, n_i))
-    s_from_g = (
-        np.eye(n_species, dtype=float)[:, :, np.newaxis]
-        + sqrt_n[:, :, np.newaxis] * radial_forward(np.asarray(g_r, dtype=float) - 1.0, transform)
-    )
+    s_from_g = np.eye(n_species, dtype=float)[:, :, np.newaxis] + sqrt_n[
+        :, :, np.newaxis
+    ] * radial_forward(np.asarray(g_r, dtype=float) - 1.0, transform)
     closure_transform_max_abs = float(
         np.max(np.abs(np.asarray(s_k, dtype=float) - np.asarray(s_from_g, dtype=float)))
     )
@@ -1738,13 +1761,10 @@ def _multicomponent_ion_structure(
         hnc_s_max = np.inf
     final_stage = dict(stage_meta[-1]) if stage_meta else {}
     requested_scale = float(max(cfg.hnc_potential_scales))
-    hnc_output_residual = float(
-        final_stage.get("res_final", hnc_best_residual)
-    )
+    hnc_output_residual = float(final_stage.get("res_final", hnc_best_residual))
     hnc_converged = bool(
         final_stage.get("converged", False)
-        and float(final_stage.get("potential_scale", 0.0))
-        >= requested_scale - 1.0e-12
+        and float(final_stage.get("potential_scale", 0.0)) >= requested_scale - 1.0e-12
         and np.isfinite(hnc_output_residual)
         and hnc_output_residual <= float(cfg.hnc_tol)
     )
@@ -1874,8 +1894,7 @@ def solve_plasma_workflow(cfg: PlasmaWorkflowConfig) -> dict[str, Any]:
             symbols[0]
             if len(symbols) == 1
             else " ".join(
-                f"{symbol}:{float(count):g}"
-                for symbol, count in zip(symbols, counts)
+                f"{symbol}:{float(count):g}" for symbol, count in zip(symbols, counts)
             )
         )
         ti = (
@@ -1960,8 +1979,7 @@ def _validate_electronic_for_ion_structure(
             except (TypeError, ValueError):
                 final_mu_value = np.inf
             final_mu_success = bool(
-                np.isfinite(final_mu_value)
-                and final_mu_value <= float(cfg.mu_e_tol)
+                np.isfinite(final_mu_value) and final_mu_value <= float(cfg.mu_e_tol)
             )
         if (
             final_mu_success is not None
@@ -2095,9 +2113,7 @@ def continue_plasma_workflow_from_electronic_result(
             species_entries=species_entries,
         )
     elif multicomponent_preparation is not None:
-        raise ValueError(
-            "multicomponent_preparation requires cfg.ion_temperature_ev."
-        )
+        raise ValueError("multicomponent_preparation requires cfg.ion_temperature_ev.")
 
     ion_result: dict[str, Any] | None = None
     if cfg.ion_temperature_ev is not None:
@@ -2143,10 +2159,12 @@ def continue_plasma_workflow_from_electronic_result(
 
         if cfg.save_state_path is None:
             species_label = "-".join(str(symbol) for symbol in symbols)
+            temperature_label = f"Te{float(cfg.temperature_ev):.6g}"
+            if cfg.ion_temperature_ev is not None:
+                temperature_label += f"_Ti{float(cfg.ion_temperature_ev):.6g}"
             filename = (
                 f"{species_label}_rho{float(cfg.rho_g_cc):.6g}_"
-                f"Te{float(cfg.temperature_ev):.6g}_"
-                f"Ti{float(cfg.ion_temperature_ev):.6g}_state.npz"
+                f"{temperature_label}_state.npz"
             )
             state_path = Path(cfg.save_output_dir) / filename
         else:
@@ -2155,6 +2173,8 @@ def continue_plasma_workflow_from_electronic_result(
             state_path,
             result,
             options=StateExportOptions(
+                profile=str(cfg.state_export_profile),
+                include_groups=tuple(cfg.state_include_groups),
                 r_max_bohr=float(cfg.state_r_max_bohr),
                 k_max_bohr_inv=float(cfg.state_k_max_bohr_inv),
             ),

@@ -18,6 +18,8 @@ import pytest
 from scipy.optimize import brentq
 
 from otter.electronic.ks_dft import (
+    KSDTFConfig,
+    _audit_bound_spectrum,
     _annotate_zero_tail_bound_diagnostics,
     _bound_diagnostic_result_fields,
     _refine_shallow_bound_states_zero_tail,
@@ -293,6 +295,38 @@ def test_zero_tail_matching_rejects_nonasymptotic_potential_edge() -> None:
         )
 
 
+@pytest.mark.parametrize("outer_tail", [0., -0.01])
+def test_final_scout_flags_missing_pole_without_changing_density_basis(outer_tail):
+    grid = create_sqrt_grid(rmax=12., N=6000)
+    r = grid.r
+    potential = np.where(r < 2., -.36, outer_tail)
+    values = np.asarray([[np.inf]])
+    vectors = np.zeros((1, len(r), 1))
+    cfg = KSDTFConfig(Z=1, temperature=1., mu=-1., l_list=[0])
+    out = _audit_bound_spectrum(cfg, {}, r, values, vectors, r, potential)
+    assert out["threshold_status_override"] == "unresolved"
+    assert out["spectrum_check"]["status"] == "candidate_missing"
+    candidate = out["spectrum_check"]["candidates"][0]
+    if outer_tail == 0.:
+        assert candidate["energy_ha"] == pytest.approx(
+            _shallow_square_well_energy(.36, 2.), abs=1e-4)
+    else:
+        assert candidate["reason"] == "scf_potential_not_asymptotic_at_physical_boundary"
+    assert np.isinf(values).all() and not vectors.any()
+
+
+def test_final_scout_no_pole_or_explicit_disable_is_not_a_completeness_claim():
+    grid = create_sqrt_grid(rmax=12., N=800)
+    cfg = KSDTFConfig(Z=1, temperature=1., mu=-1., l_list=[0])
+    args = ({}, grid.r, np.array([[np.inf]]), np.zeros((1, 800, 1)),
+            grid.r, np.zeros(800))
+    out = _audit_bound_spectrum(cfg, *args)
+    assert out["spectrum_check"]["status"] == "no_additional_pole_in_window"
+    assert "threshold_status_override" not in out
+    cfg.bound_spectrum_check = False
+    assert _audit_bound_spectrum(cfg, *args)["spectrum_check"]["status"] == "not_checked"
+
+
 def test_ks_zero_tail_refinement_adds_pole_missed_by_finite_box() -> None:
     radius = 2.0
     depth = 0.36
@@ -468,6 +502,39 @@ def test_ks_zero_tail_refinement_rejects_large_scf_edge() -> None:
             "zero_tail_candidate_rejected"
         )
         assert flattened["threshold_tail_domain_status"] == "unresolved"
+
+
+@pytest.mark.parametrize("edge", [-1e-3, 1e-3])
+def test_provisional_pole_keeps_scf_map_but_not_physical_acceptance(
+    monkeypatch: pytest.MonkeyPatch, edge: float,
+) -> None:
+    """A quality guard must not delete a pole from SCF or certify its tail."""
+    grid = create_sqrt_grid(rmax=20., N=200)
+    r = grid.r
+    energy = -1e-4
+    y = np.exp(-np.sqrt(2*abs(energy))*r) / np.sqrt(r)
+    monkeypatch.setattr("otter.electronic.ks_dft.find_shallowest_zero_tail_bound_state",
+                        lambda *args, **kwargs: (energy, y, {}))
+    settings = dict(potential_r=r, potential=np.full_like(r, edge), enabled=True,
+                    min_binding=1e-8, max_binding=.01, scan_points=24,
+                    l_max=0, edge_rel_tol=.25)
+    args = (r, grid.dxi, np.array([[np.inf]]), np.zeros((1, r.size, 1)),
+            np.array([0]), settings["potential"])
+    rejected, _, _ = _refine_shallow_bound_states_zero_tail(*args, **settings)
+    assert not np.isfinite(rejected[0, 0])
+    values, vectors, meta = _refine_shallow_bound_states_zero_tail(
+        *args, **settings, provisional=True)
+    assert values[0, 0] == energy
+    np.testing.assert_array_equal(vectors[0, :, 0], y)
+    assert meta["states"][0]["boundary_guard_passed"] is False
+    diagnostics = bound_state_reliability_diagnostics(
+        r, values, vectors, np.array([0]), r_ws=2.,
+        potential_r=r, potential=settings["potential"])
+    flattened = _bound_diagnostic_result_fields(
+        _annotate_zero_tail_bound_diagnostics(diagnostics, meta))
+    assert flattened["threshold_state_status"] == "unresolved"
+    assert flattened["threshold_tail_domain_status"] == "unresolved"
+    assert flattened["threshold_state_representation"] == "provisional_zero_tail_candidate"
 
 
 @pytest.mark.parametrize(

@@ -17,10 +17,12 @@
     "git_commit": "f47610cb802699e108248fa7fc138e7cbede282e",
     "worktree_dirty": true,
     "script_sha256_at_calculation": "54d58decedd1fbed436638a7ba50a0cb3389167b6c0eafc802e57582679756bf",
-    "current_controller_sha256": "abb6727ce214e1e860c58c59928f6dd49fc76564086d57c30a8d55f732c36fc1",
+    "current_controller_sha256": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
     "note": "All five displayed PA-HNC curves were computed with Otter and passed the AA stage-2, external-AA, threshold-state, HNC fixed-point, and transform-closure gates.",
-    "script_sha256_current": "abb6727ce214e1e860c58c59928f6dd49fc76564086d57c30a8d55f732c36fc1",
-    "script_sha256_at_generation": "abb6727ce214e1e860c58c59928f6dd49fc76564086d57c30a8d55f732c36fc1"
+    "script_sha256_current": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
+    "script_sha256_at_generation": "abb6727ce214e1e860c58c59928f6dd49fc76564086d57c30a8d55f732c36fc1",
+    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+    "source_inventory": "../validation_20260908.json"
   },
   "configuration": {
     "electronic_model": "qm",
@@ -64,10 +66,10 @@
       "threshold_state_status": "resolved",
       "threshold_state_representation": "zero_tail_matched",
       "baseline_file": "c_rho3p51538_te020_ti020.npz",
-      "baseline_sha256": "78ae278578895c3c390915d08d9804afb2698b41e8d16f5623c5e9fb04d68150",
-      "zbar_partition": 3.9956983689667087,
-      "hnc_output_residual": 7.065711214816942e-05,
-      "closure_transform_max_abs": 0.0013702671261922594
+      "baseline_sha256": "4abcba4d15b62afb2db8e48107db9f526f46a76634260e787fcbc67f219f0683",
+      "zbar_partition": 3.995196705865022,
+      "hnc_output_residual": 1.8846593691115757e-06,
+      "closure_transform_max_abs": 7.90456388921612e-06
     },
     {
       "state_id": "c_rho3p51538_te030_ti030",
@@ -79,10 +81,10 @@
       "threshold_state_status": "resolved",
       "threshold_state_representation": "zero_tail_matched",
       "baseline_file": "c_rho3p51538_te030_ti030.npz",
-      "baseline_sha256": "d4e3cc88ffc833d8fd2d8571868a6dfdc8dc11f69c660ddc193b3a28e9080959",
-      "zbar_partition": 3.994861007583446,
-      "hnc_output_residual": 1.704011269449967e-05,
-      "closure_transform_max_abs": 0.0001338485995624472
+      "baseline_sha256": "80b0b4fd1aacfe2cd5af8842ca22b31b10f4a28ba1dab99f8b479d64b5921558",
+      "zbar_partition": 3.9941080686394352,
+      "hnc_output_residual": 1.0685172443129097e-05,
+      "closure_transform_max_abs": 8.515668652497865e-05
     },
     {
       "state_id": "c_rho3p51538_te040_ti040",
@@ -94,10 +96,10 @@
       "threshold_state_status": "resolved",
       "threshold_state_representation": "zero_tail_matched",
       "baseline_file": "c_rho3p51538_te040_ti040.npz",
-      "baseline_sha256": "1d57fce5cc79b0c1d56a488947ecddfe4f99095c3fe0e1339e81d29168be46fe",
-      "zbar_partition": 4.000683431350434,
-      "hnc_output_residual": 4.024246470331396e-06,
-      "closure_transform_max_abs": 1.1749009842243474e-05
+      "baseline_sha256": "bc7865cd5ece0040c5e6ad19498b0b0e1b455792247d6fdf300503fd1aacfd00",
+      "zbar_partition": 3.9994979208731247,
+      "hnc_output_residual": 3.3757192644941147e-06,
+      "closure_transform_max_abs": 1.1440962910724828e-05
     },
     {
       "state_id": "c_rho3p51538_te050_ti050",
@@ -109,10 +111,10 @@
       "threshold_state_status": "marginal",
       "threshold_state_representation": "finite_dirichlet_box",
       "baseline_file": "c_rho3p51538_te050_ti050.npz",
-      "baseline_sha256": "63088749c56f5324310c2ec97c0066b2afaa3b575f15c78252931d24dc79859a",
-      "zbar_partition": 4.027907548314509,
-      "hnc_output_residual": 5.636275003196095e-06,
-      "closure_transform_max_abs": 4.6819844392920196e-05
+      "baseline_sha256": "bc17cbfc81ca27b11ecca8c64940fdf38e7f83583dbd4a11f6d1e8882f0ceecd",
+      "zbar_partition": 4.026497820272723,
+      "hnc_output_residual": 6.106918591052319e-06,
+      "closure_transform_max_abs": 5.1198898656568126e-05
     },
     {
       "state_id": "c_rho3p51538_te100_ti100",
@@ -122,12 +124,14 @@
       "ti_ev": 100.0,
       "status": "accepted",
       "threshold_state_status": "resolved",
-      "threshold_state_representation": "finite_dirichlet_box",
+      "threshold_state_representation": "zero_tail_matched",
       "baseline_file": "c_rho3p51538_te100_ti100.npz",
-      "baseline_sha256": "2d9f371b1b053d5037f31127295fe2b2c9948b26d2fdf8cbac7991692d659c63",
-      "zbar_partition": 4.492476599774806,
-      "hnc_output_residual": 1.392599406711526e-06,
-      "closure_transform_max_abs": 1.2868556128808883e-05
+      "baseline_sha256": "d2d273724a0276a28e7f42ded96df4d1783f64d6b95bec56fe1ef99ffbc5cddf",
+      "zbar_partition": 4.4907961005347214,
+      "hnc_output_residual": 1.5299922782329416e-06,
+      "closure_transform_max_abs": 1.3736146414200512e-05
     }
-  ]
+  ],
+  "validation_scope": "completed_is_campaign",
+  "validation_inventory": "../validation_20260908.json"
 }

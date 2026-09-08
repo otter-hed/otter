@@ -2,6 +2,12 @@
 Ion-structure literature library
 ================================
 
+.. note::
+
+   This library retains its archived baseline, including the matched HNC,
+   VMHNC and MD beryllium comparison. It is not relabelled as a rerun of the
+   updated AA solver. See :doc:`/benchmarks/validation_20260908`.
+
 This benchmark compares Otter ion-structure results with literature curves for
 aluminium, beryllium, and carbon.  ``USE_PRECOMPUTED_DATA = True`` verifies
 and loads checksummed Otter NPZ files.  With ``False``, this file
@@ -52,6 +58,7 @@ from otter import (
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
 )
+from otter.numerics.constants import BOHR_TO_ANGSTROM
 from otter.plotting import (
     MODEL_STYLES,
     grid_figsize,
@@ -67,12 +74,10 @@ USE_PRECOMPUTED_DATA = True
 if os.environ.get("OTTER_RECOMPUTE_ION_STRUCTURE_LIBRARY", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 
-# Three independent state groups, each with six continuum workers.  The two
+# Three independent state groups, each with the default AA worker. The two
 # Al 8.1-g/cc states share one electronic calculation because only the ion
 # temperature differs.
 MAX_STATE_WORKERS = 3
-CONTINUUM_WORKERS_PER_STATE = 6
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -88,7 +93,6 @@ MD_MIN_HALF_SPACE_MODES_PER_BIN = 4
 # =============================================================================
 
 
-BOHR_TO_ANGSTROM = 0.529177210903
 
 STATE_GROUPS: dict[str, tuple[dict[str, Any], ...]] = {
     "al_gill": (
@@ -179,10 +183,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "Clérouin OFMD",
-            "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti10.csv"
-            ),
+            "file": ("clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti10.csv"),
             "x_unit": "angstrom^-1",
         },
     ),
@@ -191,18 +192,14 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
             "observable": "sii",
             "label": "Clérouin OFMD",
             "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_OFMD.csv"
+                "clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_OFMD.csv"
             ),
             "x_unit": "angstrom^-1",
         },
         {
             "observable": "sii",
             "label": "HNC-Y-SRR",
-            "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_SRR.csv"
-            ),
+            "file": ("clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_SRR.csv"),
             "x_unit": "angstrom^-1",
         },
     ),
@@ -210,73 +207,53 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "Wünsch DFT-MD",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
         },
         {
             "observable": "sii",
             "label": "HNC-Y-SRR",
             "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
+                "wunsch_et_al_2009/" "Sii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
             ),
             "x_unit": "angstrom^-1",
         },
         {
             "observable": "sii",
             "label": "HNC-KK",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNCKK_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_HNCKK_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
         },
         {
             "observable": "sii",
             "label": "HNC-Y",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNCY_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_HNCY_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
         },
         {
             "observable": "gii",
             "label": "Wünsch DFT-MD",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
         },
         {
             "observable": "gii",
             "label": "HNC-Y-SRR",
             "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
+                "wunsch_et_al_2009/" "gii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
             ),
             "x_unit": "angstrom",
         },
         {
             "observable": "gii",
             "label": "HNC-KK",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-KK_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_HNC-KK_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
         },
         {
             "observable": "gii",
             "label": "HNC-Y",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-Y_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_HNC-Y_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
         },
     ),
@@ -284,36 +261,24 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "gii",
             "label": "Starrett PA-HNC",
-            "file": (
-                "starrett_saumon_2013/"
-                "gii_C_20gcc_50.0ev_starrett.csv"
-            ),
+            "file": ("starrett_saumon_2013/" "gii_C_20gcc_50.0ev_starrett.csv"),
             "x_unit": "bohr",
         },
     ),
 }
 
 STATE_TITLES = {
-    "al_gill_rho2p7_te5_ti5": (
-        r"Al: $\rho=2.7$ g cm$^{-3}$, $T_e=T_i=5$ eV"
-    ),
-    "al_clerouin_rho8p1_te10_ti10": (
-        r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=10$ eV"
-    ),
+    "al_gill_rho2p7_te5_ti5": (r"Al: $\rho=2.7$ g cm$^{-3}$, $T_e=T_i=5$ eV"),
+    "al_clerouin_rho8p1_te10_ti10": (r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=10$ eV"),
     "al_clerouin_rho8p1_te10_ti2": (
         r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=10$, $T_i=2$ eV"
     ),
-    "be_wunsch_rho5p544_te13_ti13": (
-        r"Be: $\rho=5.544$ g cm$^{-3}$, $T_e=T_i=13$ eV"
-    ),
-    "c_starrett_rho20_te50_ti50": (
-        r"C: $\rho=20$ g cm$^{-3}$, $T_e=T_i=50$ eV"
-    ),
+    "be_wunsch_rho5p544_te13_ti13": (r"Be: $\rho=5.544$ g cm$^{-3}$, $T_e=T_i=13$ eV"),
+    "c_starrett_rho20_te50_ti50": (r"C: $\rho=20$ g cm$^{-3}$, $T_e=T_i=50$ eV"),
 }
 
 OTTER_SERIES = {
-    state_id: ((state_id, "Otter KS", "-", ""),)
-    for state_id in REFERENCE_SERIES
+    state_id: ((state_id, "Otter KS", "-", ""),) for state_id in REFERENCE_SERIES
 }
 OTTER_SERIES.update(
     {
@@ -361,22 +326,12 @@ def repository_root() -> Path:
 ROOT = repository_root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-PRECOMPUTED_DIR = (
-    ROOT / "benchmarks" / "baselines" / "ion_structure_library"
-)
-REFERENCE_DIR = (
-    ROOT / "benchmarks" / "reference_data" / "ion_structure_library"
-)
+PRECOMPUTED_DIR = ROOT / "benchmarks" / "baselines" / "ion_structure_library"
+REFERENCE_DIR = ROOT / "benchmarks" / "reference_data" / "ion_structure_library"
 OUTPUT_DIR = (
-    ROOT
-    / "benchmarks"
-    / "outputs"
-    / "ion_structure_library"
-    / "gallery_recomputed"
+    ROOT / "benchmarks" / "outputs" / "ion_structure_library" / "gallery_recomputed"
 )
-FIGURE_DIR = (
-    ROOT / "benchmarks" / "outputs" / "ion_structure_library" / "figures"
-)
+FIGURE_DIR = ROOT / "benchmarks" / "outputs" / "ion_structure_library" / "figures"
 
 
 def sha256_file(path: Path) -> str:
@@ -422,6 +377,8 @@ def workflow_config(
     bridge_model: str = "none",
 ) -> PlasmaWorkflowConfig:
     """Build the complete public Otter workflow for one thermodynamic state."""
+    model = str(state.get("electronic_model", "qm"))
+    model_override = {} if model == "qm" else {"electronic_model": model}
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
         temperature_ev=float(state["te_ev"]),
@@ -429,12 +386,7 @@ def workflow_config(
             None if ion_temperature_ev is None else float(ion_temperature_ev)
         ),
         rho_g_cc=float(state["rho_g_cc"]),
-        electronic_model=str(state.get("electronic_model", "qm")),
-        aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-        },
-        hnc_tol=float(HNC_TOL),
+        **model_override,
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=500,
         hnc_bridge_model=bridge_model,
@@ -456,7 +408,9 @@ def strict_check(
         raise RuntimeError("The threshold-state representation is unresolved.")
     if ion.get("hnc_converged") is not True:
         raise RuntimeError("HNC did not reach a physical fixed point.")
-    if float(ion["hnc_output_residual"]) > HNC_TOL:
+    if float(ion["hnc_output_residual"]) > float(
+        workflow["configuration"]["hnc_tol"]
+    ):
         raise RuntimeError("HNC residual exceeds the configured tolerance.")
     if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
         raise RuntimeError("The g/S transform-closure audit failed.")
@@ -471,37 +425,30 @@ def pack_result(
 ) -> dict[str, np.ndarray]:
     """Keep the portable arrays needed by this benchmark and downstream use."""
     electronic, ion = strict_check(workflow)
-    r_e = np.asarray(electronic["r"], dtype=float)
     r = np.asarray(ion["r"], dtype=float)
     k = np.asarray(ion["k"], dtype=float)
-    e_mask = r_e <= R_RETAIN_MAX_BOHR
     r_mask = r <= R_RETAIN_MAX_BOHR
     k_mask = k <= K_RETAIN_MAX_BOHR_INV
     return {
-        "schema_version": np.asarray("otter_gallery_ion_library_v1"),
+        "schema_version": np.asarray("otter_gallery_ion_library_v2"),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(str(state["state_id"])),
-        "electronic_model": np.asarray(
-            str(state.get("electronic_model", "qm"))
-        ),
+        "electronic_model": np.asarray(str(state.get("electronic_model", "qm"))),
         "element": np.asarray(str(state["element"])),
         "rho_g_cc": np.asarray(float(state["rho_g_cc"])),
         "te_ev": np.asarray(float(state["te_ev"])),
         "ti_ev": np.asarray(float(state["ti_ev"])),
         "producer_elapsed_s": np.asarray(float(elapsed_s)),
-        "r_e_bohr": r_e[e_mask],
-        "n_full_bohr3": np.asarray(electronic["n_full"])[e_mask],
-        "n_scr_bohr3": np.asarray(electronic["n_scr"])[e_mask],
+        "n0_bohr3": np.asarray(float(electronic["n0"])),
+        "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
+        "mu_ha": np.asarray(float(electronic["mu"])),
         "r_bohr": r[r_mask],
         "gii_r": np.asarray(ion["gii_r"])[r_mask],
         "k_bohr_inv": k[k_mask],
         "sii_k": np.asarray(ion["sii_k"])[k_mask],
-        "vii_k_ha_bohr3": np.asarray(ion["vii_k"])[k_mask],
-        "n_scr_k_electrons": np.asarray(ion["n_scr_k"])[k_mask],
         "zbar_partition": np.asarray(float(ion["zbar_partition"])),
         "hnc_best_residual": np.asarray(float(ion["hnc_output_residual"])),
-        "hnc_closure_mismatch": np.asarray(
-            float(ion["closure_transform_max_abs"])
-        ),
+        "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
     }
 
 
@@ -524,9 +471,7 @@ def add_wunsch_vmhnc(
     r_mask, k_mask = r <= R_RETAIN_MAX_BOHR, k <= K_RETAIN_MAX_BOHR_INV
     payload.update(
         {
-            "vmhnc_r_bohr": r[r_mask],
             "vmhnc_gii_r": np.asarray(vmhnc["gii_r"])[r_mask],
-            "vmhnc_k_bohr_inv": k[k_mask],
             "vmhnc_sii_k": np.asarray(vmhnc["sii_k"])[k_mask],
             "vmhnc_best_residual": np.asarray(float(vmhnc["hnc_output_residual"])),
             "vmhnc_closure_mismatch": np.asarray(
@@ -594,9 +539,17 @@ def add_wunsch_md(
     payload["md_gii_block_sem"] = np.asarray(result["md_gij_block_sem"])[:, 0]
     payload["md_sii_k"] = np.asarray(result["md_snn_k"])
     payload["md_sii_frame_sem"] = np.asarray(result["md_snn_frame_sem"])
-    payload["md_sii_vectors_per_bin"] = np.asarray(
-        result["md_vectors_per_k_bin"]
-    )
+    payload["md_sii_vectors_per_bin"] = np.asarray(result["md_vectors_per_k_bin"])
+    for key in (
+        "md_gij_r",
+        "md_gij_block_sem",
+        "md_snn_k",
+        "md_snn_frame_sem",
+        "md_sij_k",
+        "md_sij_frame_sem",
+        "md_vectors_per_k_bin",
+    ):
+        payload.pop(key, None)
 
 
 def solve_group(
@@ -683,8 +636,9 @@ def otter_curve(
     prefix: str = "",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert only the Otter coordinate to the publication's stated unit."""
+    coordinate_prefix = "" if prefix == "vmhnc_" else prefix
     if observable == "sii":
-        x = np.asarray(state[f"{prefix}k_bohr_inv"], dtype=float)
+        x = np.asarray(state[f"{coordinate_prefix}k_bohr_inv"], dtype=float)
         y = np.asarray(state[f"{prefix}sii_k"], dtype=float)
         if prefix == "md_":
             reliable = (
@@ -698,7 +652,7 @@ def otter_curve(
             raise ValueError(f"Unsupported reciprocal unit {x_unit!r}.")
         return x, y
     if observable == "gii":
-        x = np.asarray(state[f"{prefix}r_bohr"], dtype=float)
+        x = np.asarray(state[f"{coordinate_prefix}r_bohr"], dtype=float)
         y = np.asarray(state[f"{prefix}gii_r"], dtype=float)
         if x_unit == "angstrom":
             x = x * BOHR_TO_ANGSTROM
@@ -724,9 +678,7 @@ def print_metrics(states: dict[str, dict[str, np.ndarray]]) -> None:
                     prefix,
                 )
                 mask = (x_ref >= x_otter[0]) & (x_ref <= x_otter[-1])
-                delta = (
-                    np.interp(x_ref[mask], x_otter, y_otter) - y_ref[mask]
-                )
+                delta = np.interp(x_ref[mask], x_otter, y_otter) - y_ref[mask]
                 print(
                     f"{state_id:42s} {model_label:10s} "
                     f"{series['observable']:>3s} "
@@ -737,11 +689,7 @@ def print_metrics(states: dict[str, dict[str, np.ndarray]]) -> None:
                 )
 
 
-states = (
-    load_precomputed_states()
-    if USE_PRECOMPUTED_DATA
-    else solve_all_states()
-)
+states = load_precomputed_states() if USE_PRECOMPUTED_DATA else solve_all_states()
 print(
     "Using "
     + (
@@ -838,9 +786,7 @@ def plot_observable(
                 scatter_options["edgecolors"] = color
             axis.scatter(x_ref, y_ref, **scatter_options)
         axis.set_title(STATE_TITLES[state_id], fontsize=10)
-        axis.set_ylabel(
-            r"$S_{ii}(k)$" if observable == "sii" else r"$g_{ii}(r)$"
-        )
+        axis.set_ylabel(r"$S_{ii}(k)$" if observable == "sii" else r"$g_{ii}(r)$")
         if display_unit == "angstrom^-1":
             axis.set_xlabel(r"$k$ [$\mathrm{\AA}^{-1}$]")
         elif display_unit == "angstrom":

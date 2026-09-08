@@ -125,17 +125,17 @@ def _as_array_like(x: float | np.ndarray, ref: np.ndarray) -> np.ndarray:
     return arr
 
 
-def _ion_sphere_background_hartree(
+def _ion_sphere_cavity_hartree(
     r: np.ndarray,
     *,
     n0: float,
     r_ws: float,
 ) -> np.ndarray:
-    """Analytic Hartree potential of ``-n0 Theta(r-r_ws)`` in the box.
+    """Analytic Hartree potential of ``+n0 Theta(r_ws-r)``.
 
-    Sampling the ion-sphere discontinuity on a nonuniform radial grid creates
-    a grid-dependent background charge.  The analytic expression keeps the
-    full and external Thomas--Fermi maps neutral to the requested tolerance.
+    In Eqs. (4)/(7), write the source as ``(n-n0) + n0 Theta(r_ws-r)``.
+    Subtracting the uniform density *before* radial quadrature avoids leaving
+    its quadrature error behind when cancelling an analytic background.
     """
     r_arr = np.asarray(r, dtype=float)
     if r_arr.ndim != 1 or r_arr.size == 0:
@@ -144,16 +144,13 @@ def _ion_sphere_background_hartree(
         raise ValueError("r must be positive and strictly increasing.")
     r_box = float(r_arr[-1])
     radius = float(np.clip(float(r_ws), 0.0, r_box))
-    density = -float(n0)
+    density = float(n0)
     out = np.empty_like(r_arr)
     inside = r_arr < radius
-    out[inside] = 2.0 * np.pi * density * (r_box**2 - radius**2)
+    out[inside] = 2.0 * np.pi * density * (radius**2 - r_arr[inside]**2 / 3.0)
     outside = ~inside
     r_out = r_arr[outside]
-    out[outside] = 4.0 * np.pi * density * (
-        (r_out**3 - radius**3) / (3.0 * r_out)
-        + 0.5 * (r_box**2 - r_out**2)
-    )
+    out[outside] = 4.0 * np.pi * density * radius**3 / (3.0 * r_out)
     return out
 
 
@@ -243,8 +240,8 @@ def effective_potential_full(
             g_ii,
             float(ion_sphere_radius),
         )
-        v_h = spherical_hartree_potential(r, n_full)
-        v_h = v_h + _ion_sphere_background_hartree(
+        v_h = spherical_hartree_potential(r, n_full - n0_arr)
+        v_h = v_h + _ion_sphere_cavity_hartree(
             r,
             n0=float(np.asarray(n0)),
             r_ws=float(ion_sphere_radius),
@@ -341,8 +338,8 @@ def effective_potential_external(
             g_ii,
             float(ion_sphere_radius),
         )
-        v_h = spherical_hartree_potential(r, n_ext)
-        v_h = v_h + _ion_sphere_background_hartree(
+        v_h = spherical_hartree_potential(r, n_ext - n0_arr)
+        v_h = v_h + _ion_sphere_cavity_hartree(
             r,
             n0=float(np.asarray(n0)),
             r_ws=float(ion_sphere_radius),

@@ -42,12 +42,11 @@ disappearance density from such points.  The bound/continuum construction
 and ionic-density partition follow :cite:t:`StarrettSaumon2014`; the
 negative-energy exterior matching used for shallow states follows the
 boundary-matching construction discussed by :cite:t:`StarrettEtAl2019`.
-For this scan the displayed edge is
-:math:`E_{\mathrm{cut}}=V_{\mathrm{eff}}(0.70R_{\mathrm{max}})`.  This is the
-local continuum reference used consistently by the finite-domain orbital
-partition.  It need not be zero because the finite numerical potential has
-not necessarily reached its asymptotic gauge value at that radius.  Energies
-shown in the plot are :math:`E_{nl}-E_{\mathrm{cut}}`.
+New calculations use Otter's default :math:`E_{\mathrm{cut}}=0`.
+Historical accepted archives retain their recorded continuum convention;
+they are not reused as seeds after changes to the numerical setup or source.
+Energies shown in the plot are :math:`E_{nl}-E_{\mathrm{cut}}`, using the edge
+actually returned by each AA calculation.
 
 For context, the ionization figure overlays the model-dependent
 :math:`Z^{\mathrm{free}}` curves digitized from Fig. 3(a) of
@@ -58,13 +57,17 @@ The default verifies and loads a checksummed 4096-point Otter scan.  If the
 requested density grid contains new points, Otter reuses the accepted states
 and calculates only the missing densities.  New files are staged under
 ``benchmarks/outputs`` and do not overwrite accepted data.  States that fail
-the SCF or threshold-state checks are recorded as failures rather than plotted
-as physical results.  Both figures are exported as PNG and PDF.
+the SCF check are recorded as failures. Unresolved threshold states retain
+diagnostic ionization data but not shallow level energies; they prevent the
+recomputation queue from accepting the candidate. Both figures are exported
+as PNG and PDF.
 
 """
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -76,6 +79,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from otter.electronic import FullExternalConfig, solve_full_only
+from otter.numerics.constants import HA_TO_EV
 from otter.plotting import PALETTES, grid_figsize, save_figure, style_context
 
 
@@ -188,20 +192,17 @@ DENSITIES_G_CC = np.asarray(
     dtype=float,
 )
 
-# Two independent AA states, each with four continuum workers, use eight
-# explicit workers.  This is faster than a sequential scan without the large
-# memory peak caused by nested state and continuum process pools.
+# Two independent states run concurrently; each AA uses the default worker.
 MAX_STATE_WORKERS = 2
-CONTINUUM_WORKERS_PER_STATE = 2
 # Incremental extension is the normal workflow: reuse every requested point
 # already present in the checksummed accepted scan, then calculate only new
 # densities.  Set this to False only to force an independent full scan.
 REUSE_ACCEPTED_POINTS_WHEN_RECOMPUTING = (
     os.environ.get("OTTER_REUSE_ACCEPTED_CARBON_IONIZATION", "1") == "1"
 )
-AA_N_POINTS = 2**12
-BOUND_ENERGY_CUT_MODE = "v_frac"
-BOUND_ENERGY_CUT_VALUE = 0.70
+AA_N_POINTS = FullExternalConfig.__dataclass_fields__["n_points"].default
+BOUND_ENERGY_CUT_MODE = FullExternalConfig.__dataclass_fields__["bound_energy_cut_mode"].default
+BOUND_ENERGY_CUT_VALUE = FullExternalConfig.__dataclass_fields__["bound_energy_cut"].default
 
 SCHEMA = "otter_carbon_ionization_levels_v3"
 LEGACY_BASELINE_SCHEMAS = {
@@ -214,7 +215,6 @@ class DensityGridMismatchError(RuntimeError):
     """The requested density grid differs from the accepted archive."""
 
 
-HARTREE_TO_EV = 27.211386245988
 ORBITAL_LETTERS = ("s", "p", "d", "f", "g", "h")
 DISPLAYED_SHELLS = ("1s", "2s", "2p", "3s", "3p", "3d")
 
@@ -304,8 +304,6 @@ def _configuration(rho_g_cc: float) -> FullExternalConfig:
         # Retain headroom on the steep high-density ionization branch.  The
         # convergence criterion itself is unchanged.
         stage2_max_iter=180,
-        cont_n_jobs=int(CONTINUUM_WORKERS_PER_STATE),
-        cont_shards=int(2 * CONTINUUM_WORKERS_PER_STATE),
         # Match a shallow negative-energy orbital at the common outer SCF
         # boundary, with no separate enlarged bound-only box.  This optional
         # numerical refinement is motivated by the exterior matching in
@@ -341,7 +339,7 @@ def _finite_levels(
                 label = _level_label(int(l_value), int(state_index + 1))
                 levels[label] = (
                     energy_ha - float(continuum_edge_ha)
-                ) * HARTREE_TO_EV
+                ) * HA_TO_EV
     return levels
 
 
@@ -505,13 +503,27 @@ def _point_failure_cache_path(rho_g_cc: float) -> Path:
     return _point_cache_path(rho_g_cc).with_suffix(".failure.json")
 
 
+@lru_cache(maxsize=1)
+def _calculation_fingerprint() -> str:
+    """Do not mix old AA spectra into a scan after code or controls change."""
+    digest = hashlib.sha256(
+        json.dumps(asdict(_configuration(1.0)), sort_keys=True).encode()
+    )
+    root = _repository_root()
+    for path in sorted((root / "src/otter/electronic").rglob("*.py")):
+        digest.update(str(path.relative_to(root)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def _cache_payload(record: dict[str, Any]) -> dict[str, Any]:
     """Return method metadata shared by converged and failed point caches."""
     return {
         "schema_version": SCHEMA,
+        "calculation_fingerprint": _calculation_fingerprint(),
         "temperature_ev": TEMPERATURE_EV,
         "aa_n_points": AA_N_POINTS,
-        "continuum_workers": CONTINUUM_WORKERS_PER_STATE,
+        "continuum_workers": FullExternalConfig.cont_n_jobs,
         "bound_occ_mode": "fd",
         "bound_energy_cut_mode": BOUND_ENERGY_CUT_MODE,
         "bound_energy_cut_value": BOUND_ENERGY_CUT_VALUE,
@@ -523,6 +535,7 @@ def _cache_metadata_matches(payload: dict[str, Any]) -> bool:
     """Check the immutable scientific controls represented by a point cache."""
     return bool(
         payload.get("schema_version") == SCHEMA
+        and payload.get("calculation_fingerprint") == _calculation_fingerprint()
         and np.isclose(
             float(payload.get("temperature_ev", np.nan)),
             TEMPERATURE_EV,
@@ -631,7 +644,9 @@ def _accepted_seed_rows(densities: np.ndarray) -> list[dict[str, Any]]:
     # Never mix a coarse archive into a production 4096-point regeneration,
     # and never reconstruct spatial Q_ion data from energies.
     if (
-        int(np.asarray(old.get("aa_n_points", -1)).item()) != AA_N_POINTS
+        manifest.get("configuration", {}).get("calculation_fingerprint")
+        != _calculation_fingerprint()
+        or int(np.asarray(old.get("aa_n_points", -1)).item()) != AA_N_POINTS
         or "level_q_ion_ws" not in old
         or "level_q_ion_ws_is_available" not in old
     ):
@@ -778,6 +793,7 @@ def _compute_scan() -> dict[str, np.ndarray]:
 
     return {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("electronic_summary"),
         "element_symbol": np.asarray(ELEMENT),
         "temperature_ev": np.asarray(TEMPERATURE_EV),
         "rho_g_cc": np.asarray([row["rho_g_cc"] for row in rows]),
@@ -899,6 +915,7 @@ def _upgrade_accepted_state(
     ).shape
     upgraded.update({
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("electronic_summary"),
         "level_q_ion_ws": np.zeros(level_shape, dtype=float),
         "level_q_ion_ws_is_available": np.zeros(level_shape, dtype=bool),
         "level_q_ion_ws_available": np.asarray(False),
@@ -914,7 +931,9 @@ def _upgrade_accepted_state(
     return upgraded
 
 
-def _validate_state(state: dict[str, np.ndarray]) -> None:
+def _validate_state(
+    state: dict[str, np.ndarray], *, require_current_configuration: bool = True,
+) -> None:
     required = {
         "schema_version",
         "element_symbol",
@@ -954,9 +973,9 @@ def _validate_state(state: dict[str, np.ndarray]) -> None:
         raise ValueError("Unexpected element in carbon ionization state.")
     if not np.isclose(float(state["temperature_ev"]), TEMPERATURE_EV):
         raise ValueError("Unexpected temperature in carbon ionization state.")
-    if str(state["bound_energy_cut_mode"].item()) != BOUND_ENERGY_CUT_MODE:
+    if require_current_configuration and str(state["bound_energy_cut_mode"].item()) != BOUND_ENERGY_CUT_MODE:
         raise ValueError("Unexpected bound/continuum edge convention.")
-    if not np.isclose(
+    if require_current_configuration and not np.isclose(
         float(state["bound_energy_cut_value"]),
         BOUND_ENERGY_CUT_VALUE,
     ):
@@ -1078,6 +1097,7 @@ def _save_candidate(state: dict[str, np.ndarray]) -> Path:
             "data_sha256": _sha256(CANDIDATE_PATH),
         },
         "configuration": {
+            "calculation_fingerprint": _calculation_fingerprint(),
             "element": ELEMENT,
             "temperature_ev": TEMPERATURE_EV,
             "densities_g_cc": np.asarray(DENSITIES_G_CC, dtype=float).tolist(),
@@ -1183,7 +1203,7 @@ def _load_precomputed() -> dict[str, np.ndarray]:
             "The requested density grid differs from the accepted "
             f"{stored_rho.size}-state grid."
         )
-    _validate_state(state)
+    _validate_state(state, require_current_configuration=False)
     return state
 
 

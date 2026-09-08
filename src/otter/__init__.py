@@ -14,6 +14,8 @@ from otter.workflows import (
     solve_plasma_workflow,
 )
 from otter.io.state import (
+    STATE_EXPORT_GROUPS,
+    STATE_EXPORT_PROFILES,
     StateExportOptions,
     load_plasma_state,
     save_plasma_state,
@@ -32,6 +34,8 @@ __all__ = [
     "CitationMixin",
     "PlasmaWorkflowConfig",
     "PreparedMulticomponentIonStructure",
+    "STATE_EXPORT_GROUPS",
+    "STATE_EXPORT_PROFILES",
     "StateExportOptions",
     "continue_plasma_workflow_from_electronic_result",
     "bibliography_entries",

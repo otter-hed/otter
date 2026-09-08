@@ -16,8 +16,6 @@ below.
    PlasmaWorkflowConfig
    solve_plasma_workflow
    continue_plasma_workflow_from_electronic_result
-   PreparedMulticomponentIonStructure
-   prepare_multicomponent_ion_structure_from_electronic_result
    run_formula_workflow
    parse_formula_composition
    resolve_plasma_composition
@@ -39,10 +37,11 @@ Workflow results and state files
    :math:`g_{ab}(r)`, and :math:`S_{ab}(k)`, where :math:`a,b` label ionic
    species.
 
-The stable state-file interface stores the native average-atom profiles and
-levels together with :math:`q(k)`, :math:`f(k)`, electron response and LFC,
-interaction channels, :math:`V_{ab}`, :math:`g_{ab}`, and :math:`S_{ab}`
-without pickled Python objects.
+The stable state-file interface offers selective electronic-summary,
+electronic-level, ion-structure, and complete profiles.  The complete profile
+stores native average-atom fields, :math:`q(k)`, :math:`f(k)`, electron
+response and LFC, interaction channels, :math:`V_{ab}`, :math:`g_{ab}`, and
+:math:`S_{ab}` without pickled Python objects.
 
 .. currentmodule:: otter.io.state
 

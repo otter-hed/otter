@@ -71,11 +71,12 @@
   ],
   "producer": {
     "script_relative_path": "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py",
-    "script_sha256": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34",
+    "script_sha256": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0",
     "git_commit": "d734f28cb5d58977b911866b53faf557dd81edb9",
     "worktree_dirty": true,
     "script_sha256_at_generation": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34",
-    "current_controller_sha256": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34"
+    "current_controller_sha256": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0",
+    "script_sha256_current": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0"
   },
   "configuration": {
     "aa_n_points": 4096,
@@ -134,7 +135,7 @@
       "paper_panel": "Fig. 2(a)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te1_ti1.npz",
-      "baseline_sha256": "5aa59757f4ebd51fe44c2a22d022e61583eb2d675d2c21387b3a8214f3572479",
+      "baseline_sha256": "ba97371088bcb5930fa050103df3d8c9235758d0f017fa49a6daf441d54be3a6",
       "structure_model": "IS",
       "zbar_partition": 3.0004785063680224,
       "hnc_solver_path": "direct_anderson",
@@ -151,7 +152,8 @@
       "md_nve_relative_energy_drift": 1.6278429985603756e-06,
       "hnc_vs_same_potential_md_rmse": 0.03257079657972685,
       "vmhnc_vs_same_potential_md_rmse": 0.008527748353877507,
-      "n_model_points": 1826
+      "n_model_points": 1826,
+      "same_potential_md": true
     },
     {
       "state_id": "al_rho2p7_te3_ti1",
@@ -162,7 +164,7 @@
       "paper_panel": "Fig. 2(b)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te3_ti1.npz",
-      "baseline_sha256": "813e70ce34a746168668fbbe30464ff9e38f3daae027586b819637d6199064c8",
+      "baseline_sha256": "0cf396fb1435b9dc7930ff9b9c8f67e71114fa3c3acf5eb58d7d305b73fe4f4b",
       "structure_model": "IS",
       "zbar_partition": 3.000480415414515,
       "hnc_solver_path": "direct_anderson",
@@ -179,7 +181,8 @@
       "md_nve_relative_energy_drift": -1.8728957987472975e-06,
       "hnc_vs_same_potential_md_rmse": 0.040447161609408526,
       "vmhnc_vs_same_potential_md_rmse": 0.008711096144807697,
-      "n_model_points": 1826
+      "n_model_points": 1826,
+      "same_potential_md": true
     },
     {
       "state_id": "al_rho2p7_te10_ti1",
@@ -190,7 +193,7 @@
       "paper_panel": "Fig. 2(c)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te10_ti1.npz",
-      "baseline_sha256": "3cf1a9f93c785aee47aacc120dd2a8c06174c1c124b93e4122fdff93692b7c20",
+      "baseline_sha256": "cc583ecbdb6cf271d7641efa5712e7411f967aaddd288b16925a3b2683b6740d",
       "structure_model": "IS",
       "zbar_partition": 3.026669348039084,
       "hnc_solver_path": "direct_anderson",
@@ -207,7 +210,8 @@
       "md_nve_relative_energy_drift": 7.939229672006248e-07,
       "hnc_vs_same_potential_md_rmse": 0.0464534509876449,
       "vmhnc_vs_same_potential_md_rmse": 0.008571697227312906,
-      "n_model_points": 1826
+      "n_model_points": 1826,
+      "same_potential_md": true
     },
     {
       "state_id": "al_rho2p7_te30_ti1",
@@ -218,7 +222,7 @@
       "paper_panel": "Fig. 2(d)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te30_ti1.npz",
-      "baseline_sha256": "2268da7b64863a94e05d50d5def2c7ce136e7075e25714af9e4875fa4a5cbb84",
+      "baseline_sha256": "6b06c0867e52b547ec6c620ad3609638bdb5fb057659beb7d332745610bd5c72",
       "structure_model": "IS",
       "zbar_partition": 4.480388184562944,
       "hnc_solver_path": "direct_anderson->continuation_newton_krylov",
@@ -235,7 +239,10 @@
       "md_nve_relative_energy_drift": -2.5920293541134466e-07,
       "hnc_vs_same_potential_md_rmse": 0.08496803192533574,
       "vmhnc_vs_same_potential_md_rmse": 0.01624246758793603,
-      "n_model_points": 1826
+      "n_model_points": 1826,
+      "same_potential_md": true
     }
-  ]
+  ],
+  "validation_scope": "archived_matched_potential_comparison",
+  "validation_inventory": "../validation_20260908.json"
 }

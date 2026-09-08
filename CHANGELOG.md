@@ -5,6 +5,49 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+### Changed
+
+- Add `otter_state_v5` selective NPZ exports. The default remains `complete`;
+  electronic summaries include compact levels and ionization, and optional
+  groups select response functions, densities, potentials or histories.
+  Earlier schemas remain readable. Gallery producers retain only needed
+  arrays together with input, convergence, units and provenance metadata.
+- Use total-full-density B3 tails by default. Keep explicit continuum-tail
+  selection available for sensitivity studies. The bound/free edge stays at
+  the asymptotic potential zero; pressure-ionization weights partition the
+  ionic density, not the bound/free state sum.
+- Refine near-converged multicomponent chemical-potential roots locally when
+  the initial root-coordinate tolerance is insufficient for the requested
+  chemical-potential agreement. Never accept an unconverged root silently.
+
+### Fixed
+
+- Make continuum worker/shard counts dispatch the same global adaptive mesh;
+  preserve accepted Simpson panels and resolve Fermi occupation separately.
+  Bound omitted high-energy density and retain evanescent partial waves.
+  The default soft angular trial limit of 250 recovers automatically when
+  density/transport remainder checks fail; it is not a hard cutoff.
+- Use consistent physical WS charge quadrature and analytic IS cavities;
+  cancel uniform background contributions before integration. Audit returned
+  SCF maps and shallow spectra, and retry stalled solves with bounded energy
+  or domain refinement without weakening convergence/threshold criteria.
+- Match continuation potentials to the actual radial grid. Reuse only
+  fixed-input continuum/Bessel/transport preparations and bound search work;
+  preserve acceptance tests while reducing allocations and repeated solves.
+- Make experimental SC feedback adapt QM full-AA precision near outer
+  convergence or stagnation (`inner_full_tol_scale=0.01`). Also check the
+  current unmixed correlation-potential residual. Ordinary IS/full+external
+  defaults are unchanged by this SC-specific precision safeguard; TF uses
+  the new outer residual check but not QM precision refinement. Preserve
+  failed SC histories in `SCFeedbackConvergenceError`.
+- Refresh reviewed Otter-only example/benchmark data and Al/Fe SC tables.
+  Preserve archived same-potential MD comparisons as complete matched sets,
+  explicitly distinct from validation of the updated AA solver. No MD was
+  rerun for this update. HTML table values are checked against stored arrays.
+
+These changes are on the development `main` branch; the package version
+remains 0.2.4. They do not replace the existing PyPI artifact or release tag.
+
 ## 0.2.4 - 2026-08-26
 
 ### Added

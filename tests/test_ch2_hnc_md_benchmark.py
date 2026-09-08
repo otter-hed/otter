@@ -38,6 +38,8 @@ def test_ch2_baseline_covers_six_two_temperature_states_and_controls() -> None:
     assert manifest["status"] == "accepted"
     assert str(data["schema_version"].item()) == "otter_ch2_hnc_md_v2"
     assert data["te_ev"].shape == data["ti_ev"].shape == (9,)
+    assert data["hnc_r_bohr"].ndim == 1
+    assert data["hnc_k_bohr_inv"].ndim == 1
     np.testing.assert_allclose(np.unique(data["te_ev"]), [9.0, 29.0, 99.0])
     np.testing.assert_allclose(np.unique(data["alpha"]), [0.2, 0.5, 1.0])
     assert np.count_nonzero(~np.isclose(data["te_ev"], data["ti_ev"])) == 6

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -66,6 +67,18 @@ TASKS: dict[str, Task] = {
         {},
         ("benchmarks/outputs/carbon_lfc_sensitivity/recomputed",),
     ),
+    "ch2_hnc_md": Task(
+        "applications/ch2_xrts_dataset/compare_hnc_md.py",
+        {
+            "OTTER_CH2_RUN_MD": "0",
+            "OTTER_CH2_RECOMPUTE_ELECTRONIC": "1",
+            "OTTER_CH2_OUTPUT_DIR": (
+                "benchmarks/outputs/ch2_hnc_md/hnc_recomputed"
+            ),
+            "OTTER_REQUIRE_ALL_CH2_HNC_MD": "1",
+        },
+        ("benchmarks/outputs/ch2_hnc_md/hnc_recomputed",),
+    ),
     "ch136_workflow": Task(
         "docs/examples/plot_ch136_mixture_workflow.py",
         {"OTTER_RECOMPUTE_CH136_EXAMPLE": "1"},
@@ -73,12 +86,18 @@ TASKS: dict[str, Task] = {
     ),
     "ion_structure_library": Task(
         "benchmarks/runners/regenerate_ion_structure_library.py",
-        {},
+        {
+            "OTTER_RUN_WUNSCH_SAME_POTENTIAL_MD": "0",
+            "OTTER_REUSE_ION_STRUCTURE_GROUPS": "1",
+        },
         ("benchmarks/outputs/ion_structure_library/recomputed",),
     ),
     "johnson_al": Task(
         "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py",
-        {"OTTER_RECOMPUTE_JOHNSON_AL": "1"},
+        {
+            "OTTER_RECOMPUTE_JOHNSON_AL": "1",
+            "OTTER_RUN_JOHNSON_SAME_POTENTIAL_MD": "0",
+        },
         (
             "benchmarks/outputs/"
             "johnson_et_al_2025_two_temperature_al/gallery_recomputed",
@@ -86,29 +105,56 @@ TASKS: dict[str, Task] = {
     ),
     "schorner_al_sii": Task(
         "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py",
-        {"OTTER_RECOMPUTE_SCHORNER_AL": "1"},
-        (
-            "benchmarks/outputs/"
-            "schorner_et_al_2022_al_sii/gallery_recomputed",
-        ),
+        {
+            "OTTER_RECOMPUTE_SCHORNER_AL": "1",
+            "OTTER_RUN_SCHORNER_SAME_POTENTIAL_MD": "0",
+        },
+        ("benchmarks/outputs/" "schorner_et_al_2022_al_sii/gallery_recomputed",),
     ),
     "starrett_fig3": Task(
         "benchmarks/examples/plot_starrett_et_al_2014_mixtures_fig3.py",
         {"OTTER_RECOMPUTE_STARRETT_FIG3": "1"},
-        (
-            "benchmarks/outputs/"
-            "starrett_et_al_2014_mixtures_fig3/gallery_recomputed",
-        ),
+        ("benchmarks/outputs/" "starrett_et_al_2014_mixtures_fig3/gallery_recomputed",),
+    ),
+    "starrett_saumon_electronic": Task(
+        "benchmarks/examples/plot_starrett_saumon_2013_electronic.py",
+        {"OTTER_RECOMPUTE_STARRETT_SAUMON_ELECTRONIC": "1"},
+        ("benchmarks/outputs/starrett_saumon_2013_electronic",),
     ),
     "starrett_single_species": Task(
         "benchmarks/examples/plot_starrett_single_species_2013_2014.py",
         {"OTTER_RECOMPUTE_STARRETT_SINGLE": "1"},
-        (
-            "benchmarks/outputs/"
-            "starrett_single_species_2013_2014/gallery_recomputed",
-        ),
+        ("benchmarks/outputs/" "starrett_single_species_2013_2014/gallery_recomputed",),
     ),
 }
+
+
+def candidate_failures(task: Task) -> list[str]:
+    """Audit known per-state failure records even after a zero process exit."""
+    import numpy as np
+
+    issues = []
+    for relative in task.clean_paths:
+        directory = ROOT / relative
+        for path in directory.glob("*.json"):
+            record = json.loads(path.read_text())
+            if not isinstance(record, dict):
+                continue
+            if path.name == "failures.json" and record:
+                issues.append(f"{path.name}: {record}")
+            audit = record.get("scientific_audit", {})
+            if audit.get("stage2_nonconverged_states", 0):
+                issues.append(f"{path.name}: {audit['stage2_nonconverged_states']} SCF failures")
+            for state in record.get("states", []):
+                if any(word in state.get("status", "") for word in ("failed", "rejected")):
+                    issues.append(f"{state.get('state_id')}: {state.get('reason', state['status'])}")
+        for path in directory.glob("*.npz"):
+            with np.load(path, allow_pickle=False) as data:
+                if "threshold_status" in data:
+                    count = int(np.count_nonzero(data["threshold_status"] == "unresolved"))
+                    if count:
+                        issues.append(f"{path.name}: {count} unresolved threshold states")
+    return issues
 
 
 def _remove(path: Path) -> None:
@@ -156,6 +202,7 @@ def main() -> None:
         )
 
     selected = tuple(args.only) if args.only else tuple(TASKS)
+    print(f"Python executable: {sys.executable}", flush=True)
     if args.fresh:
         for name in selected:
             for relative in TASKS[name].clean_paths:
@@ -168,6 +215,13 @@ def main() -> None:
     common_environment.setdefault("MPLBACKEND", "Agg")
     common_environment.setdefault("MPLCONFIGDIR", "/tmp/otter-matplotlib")
     common_environment.setdefault("PYTHONUNBUFFERED", "1")
+    source_path = str(ROOT / "src")
+    existing_pythonpath = common_environment.get("PYTHONPATH")
+    common_environment["PYTHONPATH"] = (
+        source_path
+        if not existing_pythonpath
+        else source_path + os.pathsep + existing_pythonpath
+    )
 
     for index, name in enumerate(selected, start=1):
         task = TASKS[name]
@@ -179,7 +233,9 @@ def main() -> None:
             env=environment,
             check=True,
         )
-
+        issues = candidate_failures(task)
+        if issues:
+            raise RuntimeError(f"{name}: candidate audit failed: {issues}")
     print("\nAll selected candidate calculations completed.")
     if args.replace_baselines:
         subprocess.run(

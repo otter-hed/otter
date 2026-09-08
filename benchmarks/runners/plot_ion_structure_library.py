@@ -4,6 +4,7 @@ This runner is offline with respect to the scientific solvers: it uses only
 Otter's shared plotting style, verifies portable result checksums, converts
 reference units explicitly, and recomputes pointwise interpolation metrics.
 """
+
 from __future__ import annotations
 
 import csv
@@ -14,22 +15,25 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import otter.numerics.constants as otter_constants
 import otter.plotting as otter_plotting
 
 
 SHOW_FIGURES = False
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE_DIR = ROOT / "benchmarks" / "baselines" / "ion_structure_library"
-REFERENCE_DIR = (
-    ROOT / "benchmarks" / "reference_data" / "ion_structure_library"
-)
+REFERENCE_DIR = ROOT / "benchmarks" / "reference_data" / "ion_structure_library"
 OUTPUT_DIR = ROOT / "benchmarks" / "outputs" / "ion_structure_library"
 MANIFEST_PATH = BASELINE_DIR / "manifest.json"
 METRICS_PATH = OUTPUT_DIR / "metrics.csv"
 FIGURE_SII_PATH = OUTPUT_DIR / "ion_structure_library_sii.png"
 FIGURE_GII_PATH = OUTPUT_DIR / "ion_structure_library_gii.png"
-BOHR_TO_ANGSTROM = 0.529177210903
-SCHEMA = "otter_ion_structure_library_state_v1"
+# Compatibility name for callers of this standalone reader; the value itself
+# has a single source in ``otter.numerics.constants``.
+SCHEMAS = {
+    "otter_ion_structure_library_state_v1",
+    "otter_ion_structure_library_state_v2",
+}
 
 
 REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
@@ -60,10 +64,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "Clérouin OFMD",
-            "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti10.csv"
-            ),
+            "file": ("clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti10.csv"),
             "x_unit": "angstrom^-1",
             "role": "primary",
         },
@@ -73,8 +74,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
             "observable": "sii",
             "label": "Clérouin OFMD",
             "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_OFMD.csv"
+                "clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_OFMD.csv"
             ),
             "x_unit": "angstrom^-1",
             "role": "primary",
@@ -82,10 +82,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "HNC-Y-SRR",
-            "file": (
-                "clerouin_et_al_2015/"
-                "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_SRR.csv"
-            ),
+            "file": ("clerouin_et_al_2015/" "Jean_2015_Al_rho8.1_Te10.0_Ti2.0_SRR.csv"),
             "x_unit": "angstrom^-1",
             "role": "published_model",
         },
@@ -94,10 +91,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "Wünsch DFT-MD",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
             "role": "primary",
         },
@@ -105,8 +99,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
             "observable": "sii",
             "label": "HNC-Y-SRR",
             "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
+                "wunsch_et_al_2009/" "Sii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
             ),
             "x_unit": "angstrom^-1",
             "role": "published_model",
@@ -114,30 +107,21 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "sii",
             "label": "HNC-KK",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNCKK_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_HNCKK_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
             "role": "published_model",
         },
         {
             "observable": "sii",
             "label": "HNC-Y",
-            "file": (
-                "wunsch_et_al_2009/"
-                "Sii_HNCY_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "Sii_HNCY_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom^-1",
             "role": "published_model",
         },
         {
             "observable": "gii",
             "label": "Wünsch DFT-MD",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_DFTMD_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
             "role": "primary",
         },
@@ -145,8 +129,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
             "observable": "gii",
             "label": "HNC-Y-SRR",
             "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
+                "wunsch_et_al_2009/" "gii_HNC-YSRR_Be_3rho0_T13_Z2_wunsch2009.csv"
             ),
             "x_unit": "angstrom",
             "role": "published_model",
@@ -154,20 +137,14 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "gii",
             "label": "HNC-KK",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-KK_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_HNC-KK_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
             "role": "published_model",
         },
         {
             "observable": "gii",
             "label": "HNC-Y",
-            "file": (
-                "wunsch_et_al_2009/"
-                "gii_HNC-Y_Be_3rho0_T13_Z2_wunsch2009.csv"
-            ),
+            "file": ("wunsch_et_al_2009/" "gii_HNC-Y_Be_3rho0_T13_Z2_wunsch2009.csv"),
             "x_unit": "angstrom",
             "role": "published_model",
         },
@@ -176,10 +153,7 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
         {
             "observable": "gii",
             "label": "Starrett PA-HNC",
-            "file": (
-                "starrett_saumon_2013/"
-                "gii_C_20gcc_50.0ev_starrett.csv"
-            ),
+            "file": ("starrett_saumon_2013/" "gii_C_20gcc_50.0ev_starrett.csv"),
             "x_unit": "bohr",
             "role": "primary",
         },
@@ -188,26 +162,17 @@ REFERENCE_SERIES: dict[str, tuple[dict[str, str], ...]] = {
 
 
 STATE_TITLES = {
-    "al_gill_rho2p7_te5_ti5": (
-        r"Al: $\rho=2.7$ g cm$^{-3}$, $T_e=T_i=5$ eV"
-    ),
-    "al_clerouin_rho8p1_te10_ti10": (
-        r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=10$ eV"
-    ),
+    "al_gill_rho2p7_te5_ti5": (r"Al: $\rho=2.7$ g cm$^{-3}$, $T_e=T_i=5$ eV"),
+    "al_clerouin_rho8p1_te10_ti10": (r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=10$ eV"),
     "al_clerouin_rho8p1_te10_ti2": (
         r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=10$, $T_i=2$ eV"
     ),
-    "be_wunsch_rho5p544_te13_ti13": (
-        r"Be: $\rho=5.544$ g cm$^{-3}$, $T_e=T_i=13$ eV"
-    ),
-    "c_starrett_rho20_te50_ti50": (
-        r"C: $\rho=20$ g cm$^{-3}$, $T_e=T_i=50$ eV"
-    ),
+    "be_wunsch_rho5p544_te13_ti13": (r"Be: $\rho=5.544$ g cm$^{-3}$, $T_e=T_i=13$ eV"),
+    "c_starrett_rho20_te50_ti50": (r"C: $\rho=20$ g cm$^{-3}$, $T_e=T_i=50$ eV"),
 }
 
 OTTER_SERIES = {
-    state_id: ((state_id, "Otter KS", "-", ""),)
-    for state_id in REFERENCE_SERIES
+    state_id: ((state_id, "Otter KS", "-", ""),) for state_id in REFERENCE_SERIES
 }
 OTTER_SERIES.update(
     {
@@ -264,7 +229,7 @@ def load_manifest(path: Path = MANIFEST_PATH) -> dict[str, Any]:
 def load_baseline(path: Path) -> dict[str, np.ndarray]:
     with np.load(path, allow_pickle=False) as archive:
         data = {key: np.asarray(archive[key]) for key in archive.files}
-    if data["schema_version"].item() != SCHEMA:
+    if str(data["schema_version"].item()) not in SCHEMAS:
         raise ValueError(f"Unsupported baseline schema in {path}.")
     for key, value in data.items():
         if value.dtype.hasobject:
@@ -315,8 +280,9 @@ def _otter_curve(
     x_unit: str,
     prefix: str = "",
 ) -> tuple[np.ndarray, np.ndarray]:
+    coordinate_prefix = "" if prefix == "vmhnc_" else prefix
     if observable == "sii":
-        x = np.asarray(state[f"{prefix}k_bohr_inv"], dtype=float)
+        x = np.asarray(state[f"{coordinate_prefix}k_bohr_inv"], dtype=float)
         y = np.asarray(state[f"{prefix}sii_k"], dtype=float)
         if prefix == "md_":
             reliable = (
@@ -325,15 +291,15 @@ def _otter_curve(
             )
             x, y = x[reliable], y[reliable]
         if x_unit == "angstrom^-1":
-            x = x / BOHR_TO_ANGSTROM
+            x = x / otter_constants.BOHR_TO_ANGSTROM
         elif x_unit != "bohr^-1":
             raise ValueError(f"Unsupported reciprocal unit {x_unit!r}.")
         return x, y
     if observable == "gii":
-        x = np.asarray(state[f"{prefix}r_bohr"], dtype=float)
+        x = np.asarray(state[f"{coordinate_prefix}r_bohr"], dtype=float)
         y = np.asarray(state[f"{prefix}gii_r"], dtype=float)
         if x_unit == "angstrom":
-            x = x * BOHR_TO_ANGSTROM
+            x = x * otter_constants.BOHR_TO_ANGSTROM
         elif x_unit != "bohr":
             raise ValueError(f"Unsupported radius unit {x_unit!r}.")
         return x, y
@@ -357,12 +323,8 @@ def evaluate(
                 )
                 mask = (x_ref >= x_otter[0]) & (x_ref <= x_otter[-1])
                 if not np.any(mask):
-                    raise ValueError(
-                        f"No overlap for {result_id}: {series['label']}"
-                    )
-                delta = (
-                    np.interp(x_ref[mask], x_otter, y_otter) - y_ref[mask]
-                )
+                    raise ValueError(f"No overlap for {result_id}: {series['label']}")
+                delta = np.interp(x_ref[mask], x_otter, y_otter) - y_ref[mask]
                 rows.append(
                     {
                         "state_id": state_id,
@@ -376,9 +338,7 @@ def evaluate(
                         "max_abs": float(np.max(np.abs(delta))),
                         "zbar_partition": float(state["zbar_partition"]),
                         "hnc_residual": float(state["hnc_best_residual"]),
-                        "closure_mismatch": float(
-                            state["hnc_closure_mismatch"]
-                        ),
+                        "closure_mismatch": float(state["hnc_closure_mismatch"]),
                     }
                 )
     return rows
@@ -505,9 +465,7 @@ def _plot_observable(
                     s=25,
                     marker=marker,
                     facecolors="none",
-                    edgecolors=reference_colors[
-                        index % len(reference_colors)
-                    ],
+                    edgecolors=reference_colors[index % len(reference_colors)],
                     linewidths=1.2,
                     label=series["label"],
                     zorder=3,

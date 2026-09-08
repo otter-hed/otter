@@ -46,6 +46,14 @@ def test_model_dispatchers_return_registered_canonical_keys() -> None:
     assert "LehtolaEtAl2018" in citation_keys_for_xc_model("libxc:gga_x_pbe")
 
 
+def test_online_corporate_reference_preserves_name_and_url() -> None:
+    ref = get_formatted_ref_string("NISTDLMF")
+    assert "National Institute of Standards and Technology." in ref
+    assert "https://dlmf.nist.gov/" in ref
+    assert "Functions.." not in ref
+    assert "LAMMPS—a flexible" in get_formatted_ref_string("ThompsonEtAl2022")
+
+
 def test_configuration_citation_api_is_auditable() -> None:
     configs = [
         FullExternalConfig("C", 2.0, 1.0, xc_model="lda_pw"),

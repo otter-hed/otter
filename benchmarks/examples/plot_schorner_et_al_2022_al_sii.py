@@ -2,6 +2,12 @@ r"""
 Equilibrium aluminium structure factors: Schörner et al. (2022)
 ================================================================
 
+.. note::
+
+   The displayed HNC, VMHNC and MD curves retain their original matched
+   potentials. They are archived comparisons, not validation of the updated
+   September 2026 AA solver. See :doc:`/benchmarks/validation_20260908`.
+
 This benchmark compares Otter :math:`S_{ii}(k)` with two curves
 digitized from Figure 2 of :cite:t:`SchornerEtAl2022`. Each state is calculated
 with LDA-PW92 and PBE.  For each XC model, ordinary HNC and
@@ -45,13 +51,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.constants import physical_constants
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import (
     PlasmaWorkflowConfig,
-    __version__ as otter_version,
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
 )
 from otter.literature import citation_keys_for_xc_model
+from otter.numerics.constants import BOHR_TO_ANGSTROM, EV_TO_KELVIN, HA_TO_EV
 from otter.plotting import (
     MODEL_STYLES,
     PALETTES,
@@ -69,11 +76,9 @@ if os.environ.get("OTTER_RECOMPUTE_SCHORNER_AL", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 USE_RECOMPUTED_CANDIDATES = False
 
-# Four independent state/XC cases x four continuum workers use at most about
-# sixteen CPU workers.  MD uses at most twenty MPI ranks at once.
+# Four independent state/XC cases; each AA uses the single-worker default.
+# The optional MD protocol has its own MPI controls.
 MAX_CASE_WORKERS = 4
-CONTINUUM_WORKERS_PER_CASE = 4
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 HNC_MAX_ITER = 1000
 VMHNC_ETA_TOL = 1.0e-6
@@ -81,6 +86,8 @@ K_RETAIN_MAX_BOHR_INV = 20.0
 R_RETAIN_MAX_BOHR = 20.0
 
 RUN_SAME_POTENTIAL_MD = True
+if os.environ.get("OTTER_RUN_SCHORNER_SAME_POTENTIAL_MD", "1") == "0":
+    RUN_SAME_POTENTIAL_MD = False
 LAMMPS_EXECUTABLE = "lmp"
 MPI_LAUNCHER = "mpirun"
 MAX_PARALLEL_MD_CASES = 2
@@ -98,7 +105,6 @@ MD_RECIPROCAL_BATCH_SIZE = 512
 
 BENCHMARK_ID = "schorner_et_al_2022_al_sii"
 SCHEMA = "otter_schorner_2022_al_sii_v4"
-BOHR_TO_ANGSTROM = 0.529177210903
 REFERENCE_SII_OFFSET = {
     "al_rho4p712_te1_ti1": 1.5,
     "al_rho8p1_te5_ti5": 0.0,
@@ -287,11 +293,6 @@ def workflow_config(
         ion_temperature_ev=float(state["ti_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
         xc_model=str(xc["xc_model"]),
-        aa_overrides={
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_CASE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_CASE),
-        },
-        hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=int(HNC_MAX_ITER),
         hnc_bridge_model=str(bridge_model),
@@ -312,7 +313,9 @@ def _pack_structure_result(workflow: dict[str, Any]) -> dict[str, np.ndarray]:
         raise RuntimeError("The threshold-state representation is unresolved.")
     if ion.get("hnc_converged") is not True:
         raise RuntimeError("The ionic closure did not reach a physical point.")
-    if float(ion["hnc_output_residual"]) > HNC_TOL:
+    if float(ion["hnc_output_residual"]) > float(
+        workflow["configuration"]["hnc_tol"]
+    ):
         raise RuntimeError("Ionic closure residual exceeds its tolerance.")
     if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
         raise RuntimeError("The g/S transform-closure audit failed.")
@@ -375,6 +378,7 @@ def pack_result(
 
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(case_id(state, xc)),
         "thermodynamic_state_id": np.asarray(str(state["state_id"])),
         "element": np.asarray("Al"),
@@ -396,9 +400,6 @@ def pack_result(
             for key, value in vmhnc.items()
             if key
             in {
-                "r_bohr",
-                "gii_r",
-                "k_bohr_inv",
                 "sii_k",
                 "hnc_solver_path",
                 "hnc_output_residual",
@@ -426,8 +427,8 @@ def pack_result(
             "xc_model": xc_model,
             "ionic_closures": ["HNC", "Rosenfeld--Ashcroft VMHNC"],
             "electronic_state_reused_between_closures": True,
-            "continuum_workers_per_case": CONTINUUM_WORKERS_PER_CASE,
-            "hnc_tolerance": HNC_TOL,
+            "continuum_workers_per_case": FullExternalConfig.cont_n_jobs,
+            "hnc_tolerance": float(workflow_config(state, xc).hnc_tol),
             "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
             "vmhnc_eta_tolerance": VMHNC_ETA_TOL,
         },
@@ -443,7 +444,7 @@ def pack_result(
         },
         "producer": {
             "project": "Otter",
-            "version": otter_version,
+            "version": "0.2.2",
             "script_relative_path": str(SCRIPT_PATH.relative_to(ROOT)),
             "script_sha256": sha256_file(SCRIPT_PATH),
         },
@@ -486,7 +487,7 @@ def _write_lammps_pair_table(
     """Write a shifted-force Al pair table in LAMMPS metal units."""
     selected = (r_bohr >= 0.1) & (r_bohr <= R_RETAIN_MAX_BOHR)
     radius = np.asarray(r_bohr[selected], dtype=float) * BOHR_TO_ANGSTROM
-    energy = np.asarray(potential_ha[selected], dtype=float) * 27.211386245988
+    energy = np.asarray(potential_ha[selected], dtype=float) * HA_TO_EV
     force = -np.gradient(energy, radius, edge_order=2)
     force_cutoff = force[-1]
     energy = energy - energy[-1] + (radius - radius[-1]) * force_cutoff
@@ -693,7 +694,7 @@ def run_same_potential_md(payload: dict[str, np.ndarray]) -> dict[str, np.ndarra
     rdf_block_steps = rdf_every * rdf_repeat
     lattice_angstrom = (4.0 / (n_i / BOHR_TO_ANGSTROM**3)) ** (1.0 / 3.0)
     seed = 20260825 + sum((i + 1) * ord(char) for i, char in enumerate(identifier))
-    temperature_k = float(payload["ti_ev"]) * 11604.51812155008
+    temperature_k = float(payload["ti_ev"]) * EV_TO_KELVIN
     cells = MD_CELLS_PER_AXIS
     thermostat_fix = (
         f"fix             thermostat all nvt temp {temperature_k:.8f} "
@@ -824,22 +825,26 @@ def add_same_potential_md(states: dict[str, dict[str, np.ndarray]]) -> None:
 def _refresh_metadata(payload: dict[str, np.ndarray]) -> None:
     """Record MD diagnostics and the final portable field inventory."""
     metadata = json.loads(str(payload["metadata_json"].item()))
+    md_enabled = "md_sii_k" in payload
     metadata["configuration"]["same_potential_md"] = {
-        "enabled": bool("md_sii_k" in payload),
+        "enabled": md_enabled,
         "atoms": 4 * MD_CELLS_PER_AXIS**3,
         "ensemble_sequence": "NVT->NVE",
         "timestep_omega_p_inv": MD_TIMESTEP_OMEGA_P_INV,
         "equilibration_omega_p_inv": MD_EQUILIBRATION_OMEGA_P_INV,
         "production_omega_p_inv": MD_PRODUCTION_OMEGA_P_INV,
         "rdf_bins": MD_RDF_BINS,
-        "trajectory_frames": int(payload["md_trajectory_frames"]),
+        "trajectory_frames": (
+            int(payload["md_trajectory_frames"]) if md_enabled else None
+        ),
         "sii_estimator": "complete periodic reciprocal-shell average",
         "reciprocal_vectors_per_bin": "all available half-space modes",
         "uncertainty": "SEM across shell-averaged saved production frames",
     }
-    metadata["convergence"]["md_nve_relative_energy_drift"] = float(
-        payload["md_nve_relative_energy_drift"]
-    )
+    if md_enabled:
+        metadata["convergence"]["md_nve_relative_energy_drift"] = float(
+            payload["md_nve_relative_energy_drift"]
+        )
     metadata["fields"] = sorted(key for key in payload if key != "metadata_json")
     payload["metadata_json"] = np.asarray(
         json.dumps(metadata, sort_keys=True, separators=(",", ":"))
@@ -851,6 +856,19 @@ def save_candidates(states: dict[str, dict[str, np.ndarray]]) -> None:
     CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, Any]] = []
     for identifier, payload in sorted(states.items()):
+        for key in (
+            "r_bohr",
+            "gii_r",
+            "vmhnc_r_bohr",
+            "vmhnc_gii_r",
+            "vmhnc_k_bohr_inv",
+            "vii_r_ha",
+            "ion_density_bohr3",
+            "md_r_bohr",
+            "md_gii_r",
+            "md_gii_block_sem",
+        ):
+            payload.pop(key, None)
         _refresh_metadata(payload)
         path = CANDIDATE_DIR / f"{identifier}.npz"
         np.savez_compressed(path, **payload)
@@ -869,9 +887,15 @@ def save_candidates(states: dict[str, dict[str, np.ndarray]]) -> None:
                 "vmhnc_variational_residual": float(
                     payload["vmhnc_variational_residual"]
                 ),
-                "same_potential_md": True,
-                "md_nve_relative_energy_drift": float(
-                    payload["md_nve_relative_energy_drift"]
+                "same_potential_md": "md_sii_k" in payload,
+                **(
+                    {
+                        "md_nve_relative_energy_drift": float(
+                            payload["md_nve_relative_energy_drift"]
+                        )
+                    }
+                    if "md_nve_relative_energy_drift" in payload
+                    else {}
                 ),
             }
         )
@@ -881,7 +905,7 @@ def save_candidates(states: dict[str, dict[str, np.ndarray]]) -> None:
         "benchmark_id": BENCHMARK_ID,
         "producer": {
             "project": "Otter",
-            "project_version": otter_version,
+            "project_version": "0.2.2",
             "script_relative_path": str(SCRIPT_PATH.relative_to(ROOT)),
             "script_sha256": sha256_file(SCRIPT_PATH),
         },
@@ -891,6 +915,7 @@ def save_candidates(states: dict[str, dict[str, np.ndarray]]) -> None:
             "ionic_closures": ["HNC", "Rosenfeld--Ashcroft VMHNC"],
             "electronic_state_reused_between_closures": True,
             "same_potential_md": {
+                "enabled": bool(RUN_SAME_POTENTIAL_MD),
                 "atoms": 4 * MD_CELLS_PER_AXIS**3,
                 "ensemble_sequence": "NVT->NVE",
                 "timestep_omega_p_inv": MD_TIMESTEP_OMEGA_P_INV,
@@ -944,6 +969,7 @@ def solve_case(
 def solve_all_states() -> dict[str, dict[str, np.ndarray]]:
     """Calculate all state/XC closures and same-potential MD cases."""
     solved: dict[str, dict[str, np.ndarray]] = {}
+    failures: dict[str, str] = {}
     cases = [(state, xc) for state in STATES for xc in XC_MODELS]
     workers = max(1, min(int(MAX_CASE_WORKERS), len(cases)))
     with ProcessPoolExecutor(max_workers=workers) as pool:
@@ -952,12 +978,21 @@ def solve_all_states() -> dict[str, dict[str, np.ndarray]]:
             for state, xc in cases
         }
         for future in as_completed(futures):
-            identifier, payload = future.result()
+            state, xc = futures[future]
+            try:
+                identifier, payload = future.result()
+            except Exception as exc:
+                failures[case_id(state, xc)] = f"{type(exc).__name__}: {exc}"
+                continue
             solved[identifier] = payload
             print(f"[computed closures] {identifier}")
-    if RUN_SAME_POTENTIAL_MD:
+    if RUN_SAME_POTENTIAL_MD and not failures:
         add_same_potential_md(solved)
+    # Preserve successful closures even if a different state/XC failed.
     save_candidates(solved)
+    (CANDIDATE_DIR / "failures.json").write_text(json.dumps(failures, indent=2))
+    if failures:
+        raise RuntimeError(f"Schörner state/XC failures: {failures}")
     return solved
 
 
@@ -993,10 +1028,12 @@ for state in STATES:
         payload = otter_states[identifier]
         methods = (
             ("HNC", "k_bohr_inv", "sii_k"),
-            ("VMHNC", "vmhnc_k_bohr_inv", "vmhnc_sii_k"),
+            ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
             ("MD", "md_k_bohr_inv", "md_sii_k"),
         )
         for method, k_key, sii_key in methods:
+            if k_key not in payload or sii_key not in payload:
+                continue
             k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
             mask = (k_ref >= k_otter[0]) & (k_ref <= k_otter[-1])
             delta = np.interp(k_ref[mask], k_otter, sii_otter) - sii_ref[mask]
@@ -1006,15 +1043,16 @@ for state in STATES:
                 f"{np.mean(np.abs(delta)):12.4e} "
                 f"{np.max(np.abs(delta)):12.4e}"
             )
-        k_md, sii_md = inverse_bohr_sii(payload, "md_k_bohr_inv", "md_sii_k")
-        for method, k_key, sii_key in methods[:2]:
-            k_closure, sii_closure = inverse_bohr_sii(payload, k_key, sii_key)
-            mask = (k_md >= k_closure[0]) & (k_md <= k_closure[-1])
-            delta = np.interp(k_md[mask], k_closure, sii_closure) - sii_md[mask]
-            print(
-                f"{identifier:>29s} {method + '-MD':>8s} "
-                f"{np.sqrt(np.mean(delta**2)):12.4e}"
-            )
+        if "md_k_bohr_inv" in payload and "md_sii_k" in payload:
+            k_md, sii_md = inverse_bohr_sii(payload, "md_k_bohr_inv", "md_sii_k")
+            for method, k_key, sii_key in methods[:2]:
+                k_closure, sii_closure = inverse_bohr_sii(payload, k_key, sii_key)
+                mask = (k_md >= k_closure[0]) & (k_md <= k_closure[-1])
+                delta = np.interp(k_md[mask], k_closure, sii_closure) - sii_md[mask]
+                print(
+                    f"{identifier:>29s} {method + '-MD':>8s} "
+                    f"{np.sqrt(np.mean(delta**2)):12.4e}"
+                )
 
 
 # %%
@@ -1039,7 +1077,7 @@ curve_styles = {
 }
 method_fields = (
     ("HNC", "k_bohr_inv", "sii_k"),
-    ("VMHNC", "vmhnc_k_bohr_inv", "vmhnc_sii_k"),
+    ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
     ("MD", "md_k_bohr_inv", "md_sii_k"),
 )
 for axis, state in zip(axes, STATES, strict=True):
@@ -1048,6 +1086,8 @@ for axis, state in zip(axes, STATES, strict=True):
     for xc in XC_MODELS:
         payload = otter_states[case_id(state, xc)]
         for method, k_key, sii_key in method_fields:
+            if k_key not in payload or sii_key not in payload:
+                continue
             color, linestyle, linewidth = curve_styles[(xc["key"], method)]
             k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
             axis.plot(

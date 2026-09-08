@@ -101,9 +101,13 @@ For mixtures, run [mixture_workflow.py](examples/mixture_workflow.py).
 
 ### Saved workflow state
 
-The versioned NPZ schema stores the native electronic profiles and bound
-levels, `q/f`, electron response and LFC, electron/ion interaction channels,
-and `g_ij/S_ij`, together with units and convergence metadata.  In particular:
+The versioned NPZ schema stores units and convergence metadata together with
+the selected scientific quantities. The default `complete` profile retains
+native electronic profiles and levels, `q/f`, electron response and LFC,
+interaction channels, and `g_ij/S_ij`. The smaller `electronic_summary`
+profile includes compact bound levels; `ion_structure` retains `f/q/g/S`.
+Optional groups add quantities such as `chi_ee_k` without requiring a complete
+export. Existing state schemas remain readable. In a complete archive:
 
 - `q_k == n_scr_k` and `f_k == n_ion_k`;
 - `G_ee_k`, `chi0_k`, `chi_ee_k`, `v_ie_k`, `c_ie_k`, `v_ee_k`, and `c_ee_k`;

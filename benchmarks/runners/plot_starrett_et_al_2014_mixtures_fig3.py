@@ -11,6 +11,7 @@ Reference
 C. E. Starrett, D. Saumon, J. Daligault, and S. Hamel, Physical Review E
 90, 033110 (2014), Figure 3. DOI: 10.1103/PhysRevE.90.033110.
 """
+
 from __future__ import annotations
 
 import csv
@@ -31,12 +32,8 @@ FIGURE_DPI = 220
 R_COMPARE_MAX_BOHR = 6.0
 
 BENCHMARKS_DIR = Path(__file__).resolve().parents[1]
-BASELINE_DIR = (
-    BENCHMARKS_DIR / "baselines" / "starrett_et_al_2014_mixtures_fig3"
-)
-OUTPUT_DIR = (
-    BENCHMARKS_DIR / "outputs" / "starrett_et_al_2014_mixtures_fig3"
-)
+BASELINE_DIR = BENCHMARKS_DIR / "baselines" / "starrett_et_al_2014_mixtures_fig3"
+OUTPUT_DIR = BENCHMARKS_DIR / "outputs" / "starrett_et_al_2014_mixtures_fig3"
 MANIFEST_PATH = BASELINE_DIR / "manifest.json"
 FIGURE_PATH = OUTPUT_DIR / "fig3_ch1p36_offline_overlay.png"
 METRICS_PATH = OUTPUT_DIR / "fig3_ch1p36_offline_metrics.csv"
@@ -82,9 +79,7 @@ def load_manifest(
         "otter_starrett_fig3_recompute_manifest_v1",
     }:
         raise ValueError("Unsupported Starrett Figure 3 manifest schema.")
-    if manifest.get("benchmark_id") != (
-        "starrett_et_al_2014_mixtures_fig3_ch1p36"
-    ):
+    if manifest.get("benchmark_id") != ("starrett_et_al_2014_mixtures_fig3_ch1p36"):
         raise ValueError("Manifest belongs to a different benchmark.")
     states = manifest.get("states", [])
     if len(states) != int(expected_state_count):
@@ -177,6 +172,7 @@ def load_result(path: Path) -> dict[str, np.ndarray]:
         "otter_state_v2",
         "otter_state_v3",
         "otter_state_v4",
+        "otter_state_v5",
     }:
         symbols = tuple(str(value) for value in result["species_symbols"])
         if symbols != ("C", "H"):
@@ -209,10 +205,7 @@ def curve_metrics(
         np.isfinite(r_reference)
         & np.isfinite(g_reference)
         & (r_reference >= max(0.0, float(r_model[0])))
-        & (
-            r_reference
-            <= min(R_COMPARE_MAX_BOHR, float(r_model[-1]))
-        )
+        & (r_reference <= min(R_COMPARE_MAX_BOHR, float(r_model[-1])))
     )
     r_ref = r_reference[mask]
     g_ref = g_reference[mask]
@@ -221,9 +214,7 @@ def curve_metrics(
     predicted = np.interp(r_ref, r_model, g_model)
     delta = predicted - g_ref
 
-    ref_peak_indices = np.flatnonzero(
-        (r_ref >= 0.2) & (r_ref <= R_COMPARE_MAX_BOHR)
-    )
+    ref_peak_indices = np.flatnonzero((r_ref >= 0.2) & (r_ref <= R_COMPARE_MAX_BOHR))
     model_peak_indices = np.flatnonzero(
         (r_model >= 0.2) & (r_model <= R_COMPARE_MAX_BOHR)
     )
@@ -275,9 +266,7 @@ def evaluate_states(
                     "temperature_kk": temperature_kk,
                     "temperature_ev": float(state["temperature_ev"]),
                     "pair": pair,
-                    **curve_metrics(
-                        r_model, g_ab[pair_index], r_ref, g_ref
-                    ),
+                    **curve_metrics(r_model, g_ab[pair_index], r_ref, g_ref),
                 }
             )
     return metrics, loaded
@@ -292,9 +281,7 @@ def plot_states(
     """Create the 3x3 Figure 3-style overlay from already loaded data."""
     # Keep Matplotlib and font caches inside the already ignored output tree.
     # Import lazily so data-only tests do not create plotting artifacts at all.
-    os.environ.setdefault(
-        "MPLCONFIGDIR", str(OUTPUT_DIR / ".matplotlib")
-    )
+    os.environ.setdefault("MPLCONFIGDIR", str(OUTPUT_DIR / ".matplotlib"))
     os.environ.setdefault("XDG_CACHE_HOME", str(OUTPUT_DIR / ".cache"))
     import matplotlib
 
@@ -343,11 +330,7 @@ def plot_states(
             if row == 0:
                 ax.set_title(f"{temperature_kk} kK")
             if column == 0:
-                ax.set_ylabel(
-                    rf"$\rho={rho:g}$ g cm$^{{-3}}$"
-                    + "\n"
-                    + r"$g_{ab}(r)$"
-                )
+                ax.set_ylabel(rf"$\rho={rho:g}$ g cm$^{{-3}}$" + "\n" + r"$g_{ab}(r)$")
             if row == 2:
                 ax.set_xlabel(r"$r$ [$a_{\rm B}$]")
 
@@ -409,7 +392,11 @@ def write_metrics(
     metrics_path = Path(metrics_path)
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     with metrics_path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=METRIC_FIELDS)
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=METRIC_FIELDS,
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(metrics)
 
@@ -441,16 +428,13 @@ def main(
     """Validate data, redraw the comparison, and report fresh metrics."""
     data_dir = Path(data_dir)
     selected_manifest = (
-        data_dir / "manifest.json"
-        if manifest_path is None
-        else Path(manifest_path)
+        data_dir / "manifest.json" if manifest_path is None else Path(manifest_path)
     )
     manifest = load_manifest(manifest_path=selected_manifest)
     metrics, loaded = evaluate_states(manifest, data_dir=data_dir)
     model_label = (
         "Otter (recomputed)"
-        if manifest.get("schema_version")
-        == "otter_starrett_fig3_recompute_manifest_v1"
+        if manifest.get("schema_version") == "otter_starrett_fig3_recompute_manifest_v1"
         else "Otter"
     )
     plot_states(

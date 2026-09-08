@@ -25,13 +25,44 @@ from otter.electronic.full_external import (
     FullExternalConfig,
     _apply_paired_pseudoatom_b3_charge_closure,
     _build_continuum_params,
+    _needs_threshold_state_refine_retry,
     _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz,
+    _threshold_refine_cont_rmax_mult,
+    _threshold_energy_refinement,
     solve_full_then_external,
 )
 
 
 def _charge(r: np.ndarray, density: np.ndarray) -> float:
     return float(4.0 * np.pi * trapz_integral((r**2) * density, r))
+
+
+@pytest.mark.parametrize("already_fine", [False, True])
+def test_threshold_energy_recovery_is_consistent_and_preserves_finer_requests(
+    already_fine: bool,
+) -> None:
+    from otter.electronic.mixture import _threshold_refine_config
+
+    cfg = FullExternalConfig(element="H", temperature_ev=9., rho_g_cc=.946)
+    if already_fine:
+        cfg.bound_zero_tail_min_binding_ha = 1e-14
+        cfg.cont_e_min, cfg.cont_e_tol, cfg.cont_dE_min = 1e-12, 1e-6, 1e-12
+        cfg.cont_near_zero_log_points_per_decade = 16
+        cfg.cont_near_zero_log_max_nodes = 160
+    refined = _threshold_energy_refinement(cfg)
+    mixture = _threshold_refine_config(cfg, l_max=0)
+    for field in ("bound_zero_tail_min_binding_ha", "cont_e_min", "cont_e_tol", "cont_dE_min"):
+        assert getattr(refined, field) <= getattr(cfg, field)
+        assert getattr(mixture, field) == getattr(refined, field)
+    for field in ("bound_zero_tail_scan_points", "cont_near_zero_log_points_per_decade",
+                  "cont_near_zero_log_max_nodes"):
+        assert getattr(refined, field) >= getattr(cfg, field)
+        assert getattr(mixture, field) == getattr(refined, field)
+    assert (refined.rmax_mult, refined.n_points, refined.scf_dn_tol, refined.scf_dv_tol) == (
+        cfg.rmax_mult, cfg.n_points, cfg.scf_dn_tol, cfg.scf_dv_tol)
+    if not already_fine:
+        assert cfg.cont_e_min == 1e-6  # Ordinary AA and the input object stay unchanged.
+        assert refined.cont_e_min == 1e-10
 
 
 def test_b3_charge_constraint_includes_hermite_bridge() -> None:
@@ -81,7 +112,8 @@ def test_b3_charge_constraint_includes_hermite_bridge() -> None:
     assert float(meta["charge_constraint_tail_min"]) >= 0.0
 
 
-def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles() -> None:
+@pytest.mark.parametrize("exact_ws", [True, False])
+def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles(exact_ws) -> None:
     r_ws = 1.5
     r = np.linspace(0.02, 15.0 * r_ws, 2400)
     n0 = 0.02
@@ -101,10 +133,15 @@ def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles() -> None:
     ) - n0
     b3_response[r < r_cut] = 0.0
     compensation_shell = np.asarray((r >= r_ws) & (r < r_cut), dtype=float)
+    # Construct a neutral external source under the SAME background policy
+    # being tested; a sampled step is not an exactly integrated sharp cavity.
+    external_charge = _source_electron_charge_target(
+        r, n0, g_ii, 0., ion_sphere_radius=r_ws if exact_ws else None)
     n_ext_pre_tail = (
         n0 * g_ii
         + b3_response
-        + normalized_profile(compensation_shell, -_charge(r, b3_response))
+        + normalized_profile(compensation_shell,
+            external_charge - _charge(r, n0*g_ii + b3_response))
     )
     n_cont_pre_tail = n_ext_pre_tail + free_inside
 
@@ -140,6 +177,8 @@ def test_paired_b3_closure_repairs_canonical_pseudoatom_profiles() -> None:
         temperature_ev=5.0,
         rho_g_cc=1.0,
         r_ws_override_bohr=r_ws,
+        b3_tail_target="cont",
+        exact_ws_boundary_quadrature=exact_ws,
     )
 
     closed, meta = _apply_paired_pseudoatom_b3_charge_closure(
@@ -238,13 +277,24 @@ def test_diffuse_threshold_closure_fits_total_density_even_when_charge_is_exact(
         temperature_ev=5.0,
         rho_g_cc=1.0,
         r_ws_override_bohr=r_ws,
+        b3_tail_target="cont",
     )
+
+    preserved, preserved_meta = _apply_paired_pseudoatom_b3_charge_closure(
+        result,
+        cfg,
+        r_ws=r_ws,
+        rmax=float(r[-1]),
+    )
+    assert not bool(preserved_meta["applied"]), preserved_meta
+    np.testing.assert_allclose(preserved["n_scr"], result["n_scr"])
 
     closed, meta = _apply_paired_pseudoatom_b3_charge_closure(
         result,
         cfg,
         r_ws=r_ws,
         rmax=float(r[-1]),
+        allow_diffuse_threshold_full_b3=True,
     )
 
     assert bool(meta["applied"]), meta
@@ -285,6 +335,265 @@ def test_diffuse_threshold_closure_fits_total_density_even_when_charge_is_exact(
     assert bool(upgrade_meta["legacy_qoz_compatibility_reclosure"])
     assert upgrade_meta["density_target"] == "full"
     assert abs(_charge(r, upgraded["n_scr"]) - 1.0) < 1.0e-9
+
+    result["meta"]["b3_diffuse_threshold_policy"] = (
+        "self_consistent_explicit_target"
+    )
+    preserved_current, current_meta = (
+        _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(result)
+    )
+    assert not bool(current_meta["applied"]), current_meta
+    np.testing.assert_allclose(preserved_current["n_scr"], result["n_scr"])
+
+
+def test_total_density_b3_is_the_default_target() -> None:
+    cfg = FullExternalConfig(
+        element="C",
+        temperature_ev=30.0,
+        rho_g_cc=3.51538,
+    )
+    assert cfg.b3_tail_target == "full"
+    assert cfg.threshold_state_refine_retry
+    assert cfg.cont_parallel_mode == "shard"
+
+
+@pytest.mark.parametrize("status", ["none", "resolved", "marginal"])
+def test_failed_full_b3_gets_a_domain_check_even_without_unresolved_state(status) -> None:
+    cfg = FullExternalConfig(element="Al", temperature_ev=5.0, rho_g_cc=2.7)
+    result = {"stage2_converged": False, "threshold_state_status": status}
+    assert _needs_threshold_state_refine_retry(result, cfg)
+    assert not _needs_threshold_state_refine_retry({**result, "stage2_converged": True}, cfg)
+    cfg.cont_rmax_mult = cfg.rmax_mult
+    assert not _needs_threshold_state_refine_retry(result, cfg)
+    cfg.cont_rmax_mult = 7.0
+    cfg.b3_tail_target = "cont"
+    assert not _needs_threshold_state_refine_retry(result, cfg)
+
+
+def test_unresolved_threshold_state_gets_one_zero_tail_retry() -> None:
+    result = {
+        "stage2_converged": True,
+        "threshold_state_status": "unresolved",
+    }
+    cfg = FullExternalConfig(
+        element="C",
+        temperature_ev=10.0,
+        rho_g_cc=3.51,
+    )
+    zero_tail_cfg = FullExternalConfig(
+        element="C",
+        temperature_ev=10.0,
+        rho_g_cc=3.51,
+        bound_zero_tail_refine=True,
+        cont_rmax_mult=15.0,
+    )
+    disabled_cfg = FullExternalConfig(
+        element="C",
+        temperature_ev=10.0,
+        rho_g_cc=3.51,
+        threshold_state_refine_retry=False,
+    )
+
+    assert _needs_threshold_state_refine_retry(result, cfg)
+    assert _needs_threshold_state_refine_retry({**result, "stage2_converged": False}, cfg)
+    assert not _needs_threshold_state_refine_retry(result, zero_tail_cfg)
+    zero_tail_cfg.cont_rmax_mult = 7.0
+    assert _needs_threshold_state_refine_retry(result, zero_tail_cfg)
+    assert not _needs_threshold_state_refine_retry(result, disabled_cfg)
+    assert not _needs_threshold_state_refine_retry(
+        {**result, "threshold_state_status": "marginal"}, cfg
+    )
+
+
+def test_threshold_retry_matches_the_continuum_to_the_existing_bound_domain() -> None:
+    cfg = FullExternalConfig(
+        element="H",
+        temperature_ev=7.0,
+        rho_g_cc=0.946,
+    )
+
+    assert cfg.cont_rmax_mult == pytest.approx(7.0)
+    assert _threshold_refine_cont_rmax_mult(cfg) == pytest.approx(15.0)
+    assert (cfg.rmax_mult, cfg.n_points) == (15.0, 4096)
+    assert (cfg.b3_r_cut_mult, cfg.b3_r_fit_max_mult) == (4.0, 5.0)
+
+
+def test_high_level_threshold_retry_is_cold_bounded_and_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    def fake_full(cfg):
+        calls.append(cfg)
+        result = _synthetic_full_result(cfg)
+        refined = bool(cfg.bound_zero_tail_refine)
+        result.update(
+            {
+                "threshold_state_status": "resolved" if refined else "unresolved",
+                "threshold_state_localization": "diffuse",
+                "threshold_state_representation": (
+                    "zero_tail_matched" if refined else "finite_dirichlet_box"
+                ),
+                "bound_state_diagnostics": {
+                    "states": [],
+                    "shallowest": {
+                        "l": 1,
+                        "binding_below_continuum_edge_ha": 2.0e-2,
+                    },
+                    "shallowest_status": "resolved" if refined else "unresolved",
+                },
+            }
+        )
+        return result
+
+    monkeypatch.setattr(full_external, "solve_ks_dft_is", fake_full)
+    monkeypatch.setattr(
+        full_external, "_build_bound_tables_and_dos", lambda **kwargs: {}
+    )
+    monkeypatch.setattr(
+        full_external, "_build_scattering_continuum_dos", lambda **kwargs: {}
+    )
+    result = solve_full_then_external(
+        FullExternalConfig(
+            element="C",
+            temperature_ev=10.0,
+            rho_g_cc=3.51,
+            n_points=48,
+            rmax_mult=4.0,
+            run_mode="full",
+            ext_scf_enabled=False,
+            save_data=False,
+            show_scf_progress=False,
+            verbose=False,
+        )
+    )
+
+    assert len(calls) == 4  # retry stage 1 is a zero-iteration initialization
+    assert calls[2].max_iter == 0
+    assert all(not bool(call.bound_zero_tail_refine) for call in calls[:2])
+    assert all(bool(call.bound_zero_tail_refine) for call in calls[2:])
+    assert int(calls[-1].bound_zero_tail_l_max) == 1
+    assert float(calls[-1].bound_zero_tail_max_binding) >= 2.5e-2
+    assert float(calls[-1].rmax / calls[-1].r_ws) == pytest.approx(4.0)
+    assert int(calls[-1].n_points) == 48
+    assert calls[-1].continuum_params["solve_rmax"] == pytest.approx(calls[-1].rmax)
+    assert calls[-1].continuum_params["adaptive_mode"] == "phase-root"
+    assert result["threshold_state_status"] == "resolved"
+    assert bool(result["threshold_state_refine_retry"]["applied"])
+
+
+@pytest.mark.parametrize("retry_converges", [True, False])
+@pytest.mark.parametrize("fixed_mu", [None, 0.2])
+@pytest.mark.parametrize("bound_search_lmax", [0, 1])
+def test_scf_domain_retry_does_not_match_deep_shells_or_accept_failed_retry(
+    monkeypatch, retry_converges, fixed_mu, bound_search_lmax,
+) -> None:
+    calls = []
+
+    def fake_full(cfg):
+        calls.append(cfg)
+        if fixed_mu is not None:
+            assert cfg.max_iter > 0  # No uninitialized zero-step fixed-mu SCF.
+            assert cfg.mu == fixed_mu
+        result = _synthetic_full_result(cfg)
+        refined = cfg.continuum_params["solve_rmax"] == cfg.rmax
+        result.update(
+            converged=bool(refined and retry_converges),
+            stage2_converged=bool(refined and retry_converges),
+            threshold_state_status="resolved",
+            bound_state_diagnostics={"states": [], "shallowest": {
+                "l": 2, "binding_below_continuum_edge_ha": 2.0,
+            }},
+        )
+        return result
+
+    monkeypatch.setattr(full_external, "solve_ks_dft_is", fake_full)
+    monkeypatch.setattr(full_external, "_build_bound_tables_and_dos", lambda **kw: {})
+    monkeypatch.setattr(full_external, "_build_scattering_continuum_dos", lambda **kw: {})
+    result = solve_full_then_external(FullExternalConfig(
+        element="Al", temperature_ev=5.0, rho_g_cc=2.7,
+        n_points=48, rmax_mult=4.0, cont_rmax_mult=2.0,
+        full_fixed_mu_ha=fixed_mu,
+        bound_zero_tail_l_max=bound_search_lmax,
+        run_mode="full", ext_scf_enabled=False, show_scf_progress=False,
+    ))
+    assert len(calls) == (4 if fixed_mu is None else 3)
+    if fixed_mu is not None:
+        np.testing.assert_allclose(
+            calls[-1].v_full_init,
+            -calls[-1].Z / full_external._target_radial_grid(
+                rmax=calls[-1].rmax, n_points=calls[-1].n_points,
+            ),
+        )
+    assert calls[-1].bound_zero_tail_l_max == bound_search_lmax
+    assert calls[-1].continuum_params["adaptive_parallel_mode"] == "batch"
+    assert calls[-1].bound_zero_tail_max_binding == pytest.approx(0.01)
+    assert calls[-1].continuum_params["adaptive_mode"] == "simpson"
+    assert result["stage2_converged"] is retry_converges
+    assert result["threshold_state_refine_retry"]["reason"] == "unconverged full-B3 SCF"
+
+
+@pytest.mark.parametrize("energy_outcome", ["success", "unconverged", "error"])
+@pytest.mark.parametrize("early_handoff", [False, True])
+def test_energy_refinement_precedes_cold_domain_retry(monkeypatch, energy_outcome, early_handoff):
+    """Try the same-state energy check once; keep the cold recovery on failure."""
+    calls = []
+    cfg = FullExternalConfig(
+        element="Al", temperature_ev=1., rho_g_cc=8.1, n_points=48,
+        run_mode="full", show_scf_progress=False,
+        scf_stagnation_recovery=early_handoff,
+    )
+
+    def fake_full(low):
+        calls.append(low)
+        energy_refined = low.continuum_params["e_tol"] < cfg.cont_e_tol
+        domain_refined = low.continuum_params["solve_rmax"] == low.rmax
+        if energy_refined and not domain_refined and energy_outcome == "error":
+            raise RuntimeError("synthetic quadrature failure")
+        out = _synthetic_full_result(low)
+        converged = domain_refined or (energy_refined and energy_outcome == "success")
+        out.update(converged=converged, stage2_converged=converged,
+                   scf_stop_reason="converged" if converged else "stagnation",
+                   threshold_state_status="resolved",
+                   history=[{"dn_rel": 1e-3, "dv_rel": 1e-3} for _ in range(4)])
+        return out
+
+    monkeypatch.setattr(full_external, "solve_ks_dft_is", fake_full)
+    monkeypatch.setattr(full_external, "_build_bound_tables_and_dos", lambda **kw: {})
+    monkeypatch.setattr(full_external, "_build_scattering_continuum_dos", lambda **kw: {})
+    result = solve_full_then_external(cfg)
+    # Isolate the cheap same-domain retry. The later cold-domain recovery
+    # now also resolves the threshold energy mesh, rather than reverting it.
+    refined = [c for c in calls if c.continuum_params["e_tol"] < cfg.cont_e_tol
+               and c.continuum_params["solve_rmax"] < c.rmax]
+    assert len(refined) == 1  # Direct stage 2, no repeated initialization.
+    local = refined[0]
+    assert local.continuum_params["solve_rmax"] == pytest.approx(cfg.cont_rmax_mult*local.r_ws)
+    assert local.n_points == cfg.n_points
+    assert local.max_iter <= 60
+    assert local.continuum_params["e_tol"] == pytest.approx(cfg.cont_e_tol/10)
+    assert local.continuum_params["e_min_width"] == pytest.approx(cfg.cont_dE_min/10)
+    assert local.continuum_params["n_e_base"] == 2*cfg.cont_n_e_base
+    assert local.mix == cfg.scf_mix
+    assert calls[1].stop_on_stagnation is early_handoff
+    assert not calls[0].stop_on_stagnation
+    assert all(not c.stop_on_stagnation for c in calls[2:])
+    target = full_external._target_radial_grid(rmax=local.rmax, n_points=local.n_points)
+    np.testing.assert_allclose(
+        local.v_full_init, np.interp(target, result["r"], -np.exp(-result["r"])),
+    )
+    assert result["stage2_converged"]
+    assert result["scf_energy_refine_retry"]["accepted"] == (energy_outcome == "success")
+    assert result["scf_energy_refine_retry"]["first_pass_stop_reason"] == "stagnation"
+    assert ("threshold_state_refine_retry" in result) == (energy_outcome != "success")
+
+
+def test_density_domain_cannot_fall_back_to_unconverged_raw_outer_density():
+    ks_dft._require_density_domain_tail({}, {}, {})
+    ks_dft._require_density_domain_tail({"density_rmax": 5.}, {"applied": True}, {})
+    ks_dft._require_density_domain_tail({"density_rmax": 5.}, {}, {"applied": True})
+    with pytest.raises(RuntimeError, match="requires successful tail replacement"):
+        ks_dft._require_density_domain_tail({"density_rmax": 5.}, {}, {})
 
 
 def test_b3_charge_row_survives_tiny_yukawa_basis_without_cancellation() -> None:
@@ -1138,3 +1447,13 @@ def test_full_external_can_reuse_a_converged_full_result(
     assert result["full_result_reused"] is True
     assert result["stage2_converged"] is True
     assert result["ext_status"]["converged"] is True
+
+    # Changing a discretization policy is not an external-only continuation.
+    # Never reinterpret a saved full state as if it used the new WS boundary.
+    with pytest.raises(ValueError, match="WS charge quadrature"):
+        solve_full_then_external(FullExternalConfig(
+            **common, exact_ws_boundary_quadrature=False, full_result_init=full))
+    with pytest.raises(ValueError, match="WS charge quadrature"):
+        solve_full_then_external(FullExternalConfig(
+            **common, full_result_init={**full, "meta": {}}))
+    assert full_calls == calls_after_root

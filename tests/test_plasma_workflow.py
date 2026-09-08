@@ -1,6 +1,7 @@
 """
 Lightweight tests for the unified composition-driven plasma workflow.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -21,7 +22,10 @@ def test_parse_formula_composition_aggregates_repeated_symbols() -> None:
 def test_parse_formula_composition_supports_single_and_multi_digit_counts() -> None:
     """Compact formulas with omitted and explicit counts should both work."""
     assert wf.parse_formula_composition("Al") == (["Al"], [1.0])
-    assert wf.parse_formula_composition("C10H8O4") == (["C", "H", "O"], [10.0, 8.0, 4.0])
+    assert wf.parse_formula_composition("C10H8O4") == (
+        ["C", "H", "O"],
+        [10.0, 8.0, 4.0],
+    )
 
 
 def test_resolve_plasma_composition_supports_explicit_counts() -> None:
@@ -75,7 +79,9 @@ def test_workflow_config_solve_method_uses_high_level_entry_point(monkeypatch) -
         rho_g_cc=1.0,
     )
     expected = {"ok": True}
-    monkeypatch.setattr(wf, "solve_plasma_workflow", lambda value: expected if value is cfg else None)
+    monkeypatch.setattr(
+        wf, "solve_plasma_workflow", lambda value: expected if value is cfg else None
+    )
     assert cfg.solve() is expected
 
 
@@ -273,7 +279,9 @@ def test_solve_plasma_workflow_dispatches_multicomponent_electronic() -> None:
     assert int(seen["cfg"].species_parallel_jobs) == 2
 
 
-def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given() -> None:
+def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given() -> (
+    None
+):
     """Providing Ti for one species should continue to one-component HNC."""
     old_full = wf.solve_full_then_external
     old_build = wf.build_effective_vii_from_nscr
@@ -367,9 +375,7 @@ def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given
     assert float(result["ion"]["hnc_best_residual"]) == pytest.approx(1.0e-5)
     assert float(result["ion"]["hnc_output_residual"]) == pytest.approx(1.0e-5)
     assert float(result["ion"]["closure_transform_max_abs"]) < 1.0e-14
-    assert float(result["ion"]["closure_transform_tol"]) == pytest.approx(
-        1.0e-3
-    )
+    assert float(result["ion"]["closure_transform_tol"]) == pytest.approx(1.0e-3)
     assert result["ion"]["hnc_fallback_used"] is False
     assert result["ion"]["hnc_solver_path"] == "direct_anderson"
 
@@ -417,9 +423,7 @@ def test_one_component_workflow_selects_vmhnc_without_changing_qoz_potential(
             eta=0.4,
             sigma_bohr=2.0,
             variational_residual=2.0e-5,
-            eta_history=(
-                {"eta": 0.4, "variational_residual": 2.0e-5},
-            ),
+            eta_history=({"eta": 0.4, "variational_residual": 2.0e-5},),
             hnc_residual_history=(1.0e-5,),
             hnc_stage_meta=(),
         )
@@ -611,9 +615,7 @@ def test_one_component_ion_structure_falls_back_to_strict_continuation() -> None
     assert result["hnc_converged"] is True
     assert result["hnc_primary_converged"] is False
     assert result["hnc_fallback_used"] is True
-    assert result["hnc_solver_path"] == (
-        "direct_anderson->continuation_newton_krylov"
-    )
+    assert result["hnc_solver_path"] == ("direct_anderson->continuation_newton_krylov")
     assert result["hnc_best_residual"] == pytest.approx(5.0e-6)
     assert result["hnc_s_min"] == pytest.approx(1.0)
     assert result["closure_transform_max_abs"] < 1.0e-14
@@ -624,7 +626,9 @@ def test_one_component_ion_structure_falls_back_to_strict_continuation() -> None
     assert seen["projection"] == "none"
 
 
-def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_given() -> None:
+def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_given() -> (
+    None
+):
     """Providing Ti for a mixture should continue to multicomponent HNC."""
     old_mix = wf.solve_mixture_full_then_ext
     old_build = wf.build_effective_vij_from_nscr
@@ -683,7 +687,9 @@ def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_give
         seen["options"] = kwargs.get("options", None)
         r = np.asarray(kwargs["r"], dtype=float)
         k = np.asarray(kwargs["k"], dtype=float)
-        assert np.allclose(kwargs["n_i"], np.asarray([1.0 / 36.0, 1.0 / 18.0], dtype=float))
+        assert np.allclose(
+            kwargs["n_i"], np.asarray([1.0 / 36.0, 1.0 / 18.0], dtype=float)
+        )
         vij_r = np.zeros((2, 2, r.size), dtype=float)
         vij_k = np.zeros((2, 2, k.size), dtype=float)
         n_scr_k = np.zeros((2, k.size), dtype=float)
@@ -705,7 +711,14 @@ def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_give
         s_k = np.repeat(np.eye(n_species, dtype=float)[:, :, None], k.size, axis=2)
         h_r = np.zeros_like(g_r)
         c_r = np.zeros_like(g_r)
-        return g_r, s_k, h_r, c_r, [1.0e-3, 1.0e-5], [{"potential_scale": 1.0, "res_final": 1.0e-5}]
+        return (
+            g_r,
+            s_k,
+            h_r,
+            c_r,
+            [1.0e-3, 1.0e-5],
+            [{"potential_scale": 1.0, "res_final": 1.0e-5}],
+        )
 
     try:
         wf.solve_mixture_full_then_ext = _fake_mix
@@ -749,7 +762,9 @@ def test_solve_plasma_workflow_runs_multicomponent_ion_structure_when_ti_is_give
     assert float(result["ion"]["closure_transform_max_abs"]) < 1.0e-14
 
 
-def test_continue_plasma_workflow_from_electronic_result_reuses_saved_electronic_payload() -> None:
+def test_continue_plasma_workflow_from_electronic_result_reuses_saved_electronic_payload() -> (
+    None
+):
     """A cached electronic payload should be reusable without rerunning AA."""
     old_build = wf.build_effective_vij_from_nscr
     old_hnc = wf.hnc_solver_multicomponent_continuation
@@ -805,7 +820,9 @@ def test_continue_plasma_workflow_from_electronic_result_reuses_saved_electronic
         seen["options"] = kwargs.get("options", None)
         r = np.asarray(kwargs["r"], dtype=float)
         k = np.asarray(kwargs["k"], dtype=float)
-        assert np.allclose(kwargs["n_i"], np.asarray([1.0 / 36.0, 1.0 / 18.0], dtype=float))
+        assert np.allclose(
+            kwargs["n_i"], np.asarray([1.0 / 36.0, 1.0 / 18.0], dtype=float)
+        )
         vij_r = np.zeros((2, 2, r.size), dtype=float)
         vij_k = np.zeros((2, 2, k.size), dtype=float)
         n_scr_k = np.zeros((2, k.size), dtype=float)
@@ -827,7 +844,14 @@ def test_continue_plasma_workflow_from_electronic_result_reuses_saved_electronic
         s_k = np.repeat(np.eye(n_species, dtype=float)[:, :, None], k.size, axis=2)
         h_r = np.zeros_like(g_r)
         c_r = np.zeros_like(g_r)
-        return g_r, s_k, h_r, c_r, [1.0e-3, 1.0e-5], [{"potential_scale": 1.0, "res_final": 1.0e-5}]
+        return (
+            g_r,
+            s_k,
+            h_r,
+            c_r,
+            [1.0e-3, 1.0e-5],
+            [{"potential_scale": 1.0, "res_final": 1.0e-5}],
+        )
 
     try:
         wf.build_effective_vij_from_nscr = _fake_build
@@ -945,12 +969,10 @@ def test_prepared_multicomponent_qoz_is_reused_across_ion_temperatures() -> None
     try:
         wf.build_effective_vij_from_nscr = _fake_build
         wf.hnc_solver_multicomponent_continuation = _fake_hnc
-        preparation = (
-            wf.prepare_multicomponent_ion_structure_from_electronic_result(
-                _config(None),
-                electronic_kind="mixture",
-                electronic_result=electronic_result,
-            )
+        preparation = wf.prepare_multicomponent_ion_structure_from_electronic_result(
+            _config(None),
+            electronic_kind="mixture",
+            electronic_result=electronic_result,
         )
         low_ti = wf.continue_plasma_workflow_from_electronic_result(
             _config(5.0),

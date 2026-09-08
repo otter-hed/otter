@@ -14,7 +14,9 @@ Notation on this page distinguishes the electron channels
 leading axes are ionic-species axes; they are not electron--ion potentials.
 
 This page describes the portable workflow-state schema
-``otter_state_v4``.  Benchmark baselines may instead use compact,
+``otter_state_v5``.  It adds profile-selected exports while continuing to
+load ``otter_state_v1`` through ``otter_state_v4`` archives.  Benchmark
+baselines may instead use compact,
 benchmark-specific schemas because one archive can contain several model or
 thermodynamic states.  Such plotting archives are validated by their own
 producer/loader and are not inputs to :func:`otter.load_plasma_state`.  Every
@@ -22,6 +24,17 @@ project-generated baseline also embeds scalar ``metadata_json`` with its
 configuration, state identifier, producer, references, units, convergence
 diagnostics, and field inventory; the adjacent manifest records checksums and
 package-level provenance.
+
+In a standard ``otter_state_v5`` archive,
+``metadata_json["configuration"]`` stores the complete configuration after
+Otter resolves every default.  This is the reproducibility record: an archive
+containing only overrides would become ambiguous if a later release changed a
+default.  ``metadata_json["configuration_nondefault"]`` is the compact reader
+view containing required inputs and values that differ from the producing
+version's defaults.  Calculation scripts should normally specify only those
+intentional non-default overrides.  Compact benchmark-specific archives store
+the curated package configuration in their manifest and ``metadata_json``
+instead of pretending to be restartable workflow-state files.
 
 In-memory access
 ----------------
@@ -78,10 +91,90 @@ For a mixture, each average-atom result is in
 ``result["electronic"]["result"]["species"][i]["result"]``.  The order is
 ``result["species_symbols"]``.  Species axes in QOZ arrays use the same order.
 
+Export profiles
+---------------
+
+The default profile is ``complete`` and preserves the previous full-state
+behaviour.  Smaller profiles retain the thermodynamic inputs, species order,
+convergence metadata, :math:`R_{\rm WS}`, chemical potential, background and
+ion densities, and the relevant mean-ionization definitions, while omitting
+large arrays that the selected analysis does not use.
+
+.. list-table:: Built-in export profiles
+   :header-rows: 1
+   :widths: 24 35 41
+
+   * - Profile
+     - Retained scientific quantities
+     - Required calculation stage
+   * - ``electronic_summary``
+     - Basic state information, :math:`\bar Z`, :math:`Z^*`, :math:`\mu`,
+       :math:`R_{\rm WS}`, :math:`n_0`, and :math:`n_i`, together with the
+       compact bound-level table (energies, occupations, and
+       pressure-ionization weights).
+     - Full average atom only; external and ion stages are not required.
+   * - ``electronic_levels``
+     - Compatibility alias for ``electronic_summary``.  It retains the same
+       summary and bound-level quantities.
+     - Full average atom only.  Radial densities and potentials are omitted.
+   * - ``ion_structure``
+     - The electronic summary and bound levels plus :math:`f_a(k)`,
+       :math:`q_a(k)`, :math:`g_{ab}(r)`, and :math:`S_{ab}(k)`.
+     - Completed QOZ/HNC calculation.
+   * - ``complete``
+     - Every public group, including electronic profiles and potentials,
+       orbital densities, response channels, pair potentials, and solver
+       history.
+     - Completed QOZ/HNC calculation; this is the backward-compatible default.
+
+Optional groups can be added without switching to ``complete``.  For example,
+the following stores ion structure and the pair potential used to obtain it,
+but not electronic radial profiles or response intermediates:
+
+.. code-block:: python
+
+   options = StateExportOptions(
+       profile="ion_structure",
+       include_groups=("pair_potential",),
+   )
+
+To retain the electronic response used by QOZ, including ``chi0_k``,
+``chi_ee_k``, and ``G_ee_k``, add ``qoz_response``:
+
+.. code-block:: python
+
+   options = StateExportOptions(
+       profile="ion_structure",
+       include_groups=("qoz_response",),
+   )
+
+For a detailed QOZ/HNC diagnostic archive, also request the effective pair
+potential and HNC direct/total correlations and residual history:
+
+.. code-block:: python
+
+   options = StateExportOptions(
+       profile="ion_structure",
+       include_groups=(
+           "qoz_response",
+           "pair_potential",
+           "solver_history",
+       ),
+   )
+
+The available groups are exported as ``otter.STATE_EXPORT_GROUPS`` and the
+built-in mappings as ``otter.STATE_EXPORT_PROFILES``.  They are
+``electronic_summary``, ``bound_levels``, ``electronic_profiles``,
+``electronic_potentials``, ``orbital_densities``, ``electronic_spectra``,
+``ion_structure``, ``qoz_response``, ``pair_potential``, and
+``solver_history``.  Every archive records its resolved included and omitted
+groups in ``metadata_json``.
+
 Save and load
 -------------
 
-Set ``save_state_npz`` on a workflow that includes the ion-structure stage:
+Set ``save_state_npz`` on a workflow.  The selected profile determines whether
+an ion-structure stage is required:
 
 .. code-block:: python
 
@@ -95,6 +188,7 @@ Set ``save_state_npz`` on a workflow that includes the ion-structure stage:
        rho_g_cc=2.94,
        save_state_npz=True,
        save_state_path="outputs/ch1p36_state.npz",
+       state_export_profile="ion_structure",
    )
    result = solve_plasma_workflow(config)
    state = load_plasma_state(result["saved_paths"]["state_npz"])
@@ -128,11 +222,18 @@ workflow can also be saved explicitly:
    save_plasma_state(
        "outputs/state.npz",
        result,
-       options=StateExportOptions(r_max_bohr=12.0, k_max_bohr_inv=15.0),
+       options=StateExportOptions(
+           profile="ion_structure",
+           r_max_bohr=12.0,
+           k_max_bohr_inv=15.0,
+       ),
    )
 
-Production export requires a converged HNC result.  The file is written
-atomically, so an interrupted write does not replace an existing state.
+Ion-stage profiles require a converged HNC result by default.
+``electronic_summary`` and ``electronic_levels`` can be written directly from
+a successful full-AA workflow with ``run_mode="full"`` and no
+``ion_temperature_ev``.  Files are written atomically, so an interrupted write
+does not replace an existing state.
 
 Species and pair axes
 ---------------------
@@ -235,8 +336,9 @@ Each species retains its native electronic grid under a stable prefix:
    V_H = state[prefix + "v_hartree_r_ha"]
    V_xc = state[prefix + "v_xc_r_ha"]
 
-Available profiles are saved when the selected electronic model produces
-them.  They include ``n_full_r``, ``n_bound_r``, ``n_cont_r``, ``n_ext_r``,
+These fields are present only when their corresponding export group is
+selected and the electronic model produces them.  They include ``n_full_r``,
+``n_bound_r``, ``n_cont_r``, ``n_ext_r``,
 ``n_pa_r``, native ``n_scr_r_native`` and ``n_ion_r_native``, TF positive-
 and negative-energy densities, tail/source profiles, and repaired diagnostic
 profiles.  Potential fields include the full and external effective
@@ -250,7 +352,8 @@ It therefore uses its own paired arrays ``species_i_n_free_r_bohr`` and
 Bound levels and orbital densities
 ----------------------------------
 
-Resolved bound levels are flattened into aligned one-dimensional arrays:
+When ``bound_levels`` is selected, resolved levels are flattened into aligned
+one-dimensional arrays:
 
 ``species_i_bound_l``, ``species_i_bound_n_index``, ``species_i_bound_principal_n``
    Angular momentum, radial index, and spectroscopic principal quantum number
@@ -293,8 +396,10 @@ Metadata and discovery
 ``metadata_json`` records the complete :class:`otter.PlasmaWorkflowConfig`
 snapshot, citation keys, units, thermodynamic state, model choices,
 electronic/common-chemical-potential/HNC convergence diagnostics, export
-windows, definitions, and the actual field list.  Programmatic discovery
-does not require a hard-coded list:
+profile and resolved groups, computed stages, windows, definitions, and the
+actual field list.  It also records that these analysis archives are not
+solver-restart checkpoints.  Programmatic discovery does not require a
+hard-coded list:
 
 .. code-block:: python
 
@@ -305,6 +410,7 @@ does not require a hard-coded list:
    print(metadata["citation_keys"])
    print(metadata["model"])
    print(metadata["convergence"])
+   print(metadata["export"])
    print(metadata["units"])
    print(metadata["fields"])
 

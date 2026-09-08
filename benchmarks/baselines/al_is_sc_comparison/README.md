@@ -16,3 +16,9 @@ still required.
 `manifest.json` records the exact producer commit and script checksum,
 physical state, units, convergence policy, data rights, and NPZ checksum.
 The archive is numeric-only and can be loaded with `allow_pickle=False`.
+
+The September 2026 refresh converged in 8 outer iterations for QM and 9 for
+TF. QM full-AA precision is refined near convergence; TF does not use that
+refinement. Both paths check the current unmixed correlation-potential
+residual. The stored history retains that residual, the historical damped
+step, and the per-iteration refinement flag separately.

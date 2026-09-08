@@ -9,11 +9,11 @@ from pathlib import Path
 
 import numpy as np
 
+from otter.numerics import ATOMIC_MASS_UNIT_TO_G, BOHR_TO_CM
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ID = "starrett_single_species_2013_2014"
-AMU_TO_G = 1.66053906660e-24
-BOHR_TO_CM = 0.529177210903e-8
 PHYSICAL_DEFINITIONS = {
     "fe_10": {
         "panel_id": "fe_10",
@@ -99,7 +99,7 @@ def _ion_sphere_radius_bohr(
     rho_g_cc: float,
     atomic_mass: float,
 ) -> float:
-    ion_density_cm3 = rho_g_cc / (atomic_mass * AMU_TO_G)
+    ion_density_cm3 = rho_g_cc / (atomic_mass * ATOMIC_MASS_UNIT_TO_G)
     radius_cm = (3.0 / (4.0 * np.pi * ion_density_cm3)) ** (1.0 / 3.0)
     return float(radius_cm / BOHR_TO_CM)
 

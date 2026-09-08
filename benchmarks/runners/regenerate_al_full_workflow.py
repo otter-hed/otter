@@ -4,6 +4,7 @@ The accepted documentation reference result is read-only.  Running this program
 writes a candidate archive to
 ``benchmarks/outputs/al_full_workflow_1ev/recomputed`` for review.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -19,13 +20,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_DIR = (
-    ROOT
-    / "benchmarks"
-    / "outputs"
-    / "al_full_workflow_1ev"
-    / "recomputed"
-)
+OUTPUT_DIR = ROOT / "benchmarks" / "outputs" / "al_full_workflow_1ev" / "recomputed"
 OUTPUT_PATH = OUTPUT_DIR / "Al_rho8p1gcc_Te1eV_Ti1eV.npz"
 MANIFEST_PATH = OUTPUT_DIR / "manifest.json"
 STATE = {
@@ -73,12 +68,7 @@ def _git_status_porcelain() -> str:
 
 
 def _load_library_regenerator() -> ModuleType:
-    path = (
-        ROOT
-        / "benchmarks"
-        / "runners"
-        / "regenerate_ion_structure_library.py"
-    )
+    path = ROOT / "benchmarks" / "runners" / "regenerate_ion_structure_library.py"
     spec = importlib.util.spec_from_file_location(
         "otter_ion_structure_regenerator",
         path,
@@ -118,8 +108,7 @@ def _augment_v2_payload(
     n_ion_k = np.asarray(portable["n_ion_k"], dtype=float)
     if n_ion_k.shape != (1, portable_k.size):
         raise ValueError(
-            "The single-species portable n_ion(k) array must have shape "
-            "(1, n_k)."
+            "The single-species portable n_ion(k) array must have shape " "(1, n_k)."
         )
     if portable_k.shape != payload_k.shape or not np.allclose(
         portable_k,
@@ -143,6 +132,105 @@ def _augment_v2_payload(
     return output
 
 
+def _pack_gallery_result(
+    workflow: dict[str, Any],
+    *,
+    elapsed_s: float,
+) -> dict[str, np.ndarray]:
+    """Keep exactly the arrays consumed by the complete-workflow gallery."""
+    from otter.io.state import StateExportOptions, build_state_arrays
+
+    electronic = dict(workflow["electronic"]["result"])
+    ion = dict(workflow["ion"])
+    exported = build_state_arrays(
+        workflow,
+        options=StateExportOptions(
+            profile="ion_structure",
+            include_groups=(
+                "electronic_profiles",
+                "electronic_potentials",
+                "pair_potential",
+            ),
+        ),
+    )
+    charge_fix = dict(ion["charge_fix"])
+    q_scale = float(charge_fix["scale_factor"])
+    q_used = np.asarray(exported["q_k"], dtype=float)[0]
+    prefix = "species_0_"
+
+    def species(field: str) -> np.ndarray:
+        return np.asarray(exported[prefix + field])
+
+    v_full_key = (
+        prefix + "v_full_r_ha"
+        if prefix + "v_full_r_ha" in exported
+        else prefix + "v_scf_r_ha"
+    )
+    payload = {
+        "schema_version": np.asarray("otter_al_full_workflow_v2"),
+        "benchmark_id": np.asarray("al_full_workflow_1ev"),
+        "storage_profile": np.asarray("gallery_analysis"),
+        "state_id": np.asarray(STATE["state_id"]),
+        "element": np.asarray(STATE["element"]),
+        "rho_g_cc": np.asarray(STATE["rho_g_cc"]),
+        "te_ev": np.asarray(STATE["te_ev"]),
+        "ti_ev": np.asarray(STATE["ti_ev"]),
+        "producer_elapsed_s": np.asarray(float(elapsed_s)),
+        "r_e_bohr": species("r_bohr"),
+        "n_full_bohr3": species("n_full_r"),
+        "n_bound_bohr3": species("n_bound_r"),
+        "n_ext_bohr3": species("n_ext_r"),
+        "n_pa_bohr3": species("n_pa_r"),
+        "n_scr_bohr3": species("n_scr_r_native"),
+        "v_full_ha": np.asarray(exported[v_full_key]),
+        "v_ext_ha": species("v_ext_r_ha"),
+        "v_hartree_ha": species("v_hartree_r_ha"),
+        "v_xc_ha": species("v_xc_r_ha"),
+        "n0_bohr3": np.asarray(float(electronic["n0"])),
+        "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
+        "mu_ha": np.asarray(float(electronic["mu"])),
+        "zbar_aa": np.asarray(float(electronic["zbar"])),
+        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
+        "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
+        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
+        "q_scr_grid_raw": np.asarray(float(charge_fix["q_scr_raw"])),
+        "q_scr_used": np.asarray(float(charge_fix["q_scr_used"])),
+        "q_scr_scale_factor": np.asarray(q_scale),
+        "threshold_state_status": np.asarray(
+            str(electronic.get("threshold_state_status", "none"))
+        ),
+        "threshold_state_representation": np.asarray(
+            str(electronic.get("threshold_state_representation", "none"))
+        ),
+        "r_bohr": np.asarray(exported["r_bohr"]),
+        "k_bohr_inv": np.asarray(exported["k_bohr_inv"]),
+        "gii_r": np.asarray(exported["gij_r"])[0, 0],
+        "sii_k": np.asarray(exported["sij_k"])[0, 0],
+        "vii_r_ha": np.asarray(exported["vij_r"])[0, 0],
+        "vii_k_ha_bohr3": np.asarray(exported["vij_k"])[0, 0],
+        "n_scr_k_electrons": q_used,
+        "n_ion_k_electrons": np.asarray(exported["f_k"])[0],
+        "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),
+        "hnc_closure_mismatch": np.asarray(
+            float(ion["closure_transform_max_abs"])
+        ),
+        "hnc_closure_tolerance": np.asarray(float(ion["closure_transform_tol"])),
+        "hnc_iters": np.asarray(int(ion["hnc_iters"])),
+        "bound_l": species("bound_l"),
+        "bound_n_index": species("bound_n_index"),
+        "bound_energy_ha": species("bound_energy_ha"),
+        "bound_fd": species("bound_fd"),
+        "bound_occ_deg_fd": species("bound_occ_deg_fd"),
+    }
+    for key, value in payload.items():
+        array = np.asarray(value)
+        if array.dtype.hasobject:
+            raise TypeError(f"Object dtype is forbidden for {key!r}.")
+        if array.dtype.kind in "fiu" and not np.all(np.isfinite(array)):
+            raise ValueError(f"Non-finite values in {key!r}.")
+    return payload
+
+
 def _candidate_manifest(
     output_path: Path,
     *,
@@ -151,20 +239,12 @@ def _candidate_manifest(
 ) -> dict[str, Any]:
     """Describe a review-only v2 result without claiming it is accepted."""
     script = Path(__file__).resolve()
-    shared = (
-        ROOT
-        / "benchmarks"
-        / "runners"
-        / "regenerate_ion_structure_library.py"
-    )
+    shared = ROOT / "benchmarks" / "runners" / "regenerate_ion_structure_library.py"
     manifest: dict[str, Any] = {
         "schema_version": "otter_benchmark_manifest_v1",
         "benchmark_id": "al_full_workflow_1ev",
         "status": "candidate_not_accepted",
-        "title": (
-            "Complete Al 8.1 g/cc, Te=Ti=1 eV "
-            "electronic-to-ionic workflow"
-        ),
+        "title": ("Complete Al 8.1 g/cc, Te=Ti=1 eV " "electronic-to-ionic workflow"),
         "data_rights": {
             "origin_type": "project_generated_numerical_output",
             "third_party_reference_data_included": False,
@@ -255,24 +335,13 @@ def _candidate_manifest(
 def regenerate(*, output_path: Path = OUTPUT_PATH) -> Path:
     """Compute and write the candidate gallery archive."""
     producer = _load_library_regenerator()
-    from otter.io.state import StateExportOptions, build_state_arrays
-
     worktree_status = _git_status_porcelain()
     start = time.perf_counter()
     result = producer.solve_plasma_workflow(_configuration(producer))
-    payload = producer._pack_result(
+    payload = _pack_gallery_result(
         result,
-        STATE,
         elapsed_s=time.perf_counter() - start,
     )
-    portable = build_state_arrays(
-        result,
-        options=StateExportOptions(
-            r_max_bohr=20.0,
-            k_max_bohr_inv=20.0,
-        ),
-    )
-    payload = _augment_v2_payload(payload, portable, result)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(output_path, **payload)
     manifest_path = output_path.parent / "manifest.json"

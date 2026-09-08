@@ -56,15 +56,12 @@ ELEMENT = "Al"
 RHO_VALUES_G_CC = (2.7, 8.1, 15.0)
 TE_EV = 10.0
 TI_EV = 10.0
-CONTINUUM_WORKERS = 8
-R_MAX_BOHR = 20.0
-K_MAX_BOHR_INV = 20.0
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 # =============================================================================
 
 
-SCHEMA = "otter_al_rayleigh_weight_10ev_v1"
+SCHEMA = "otter_al_rayleigh_weight_10ev_v2"
 
 
 def repository_root() -> Path:
@@ -106,23 +103,28 @@ def workflow_config(rho_g_cc: float) -> PlasmaWorkflowConfig:
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=float(rho_g_cc),
-        aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS,
-            "cont_shards": 2 * CONTINUUM_WORKERS,
-        },
         hnc_tol=HNC_TOL,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
         hnc_max_iter=1000,
     )
 
 
-def pack_workflow(workflow: dict[str, Any], rho_g_cc: float, elapsed_s: float) -> dict[str, np.ndarray]:
+def rayleigh_weight(state: dict[str, np.ndarray]) -> np.ndarray:
+    """Reconstruct the exactly derived elastic weight from q, f, and Sii."""
+    weight = np.abs(state["q_k"] + state["f_k"]) ** 2 * state["sii_k"]
+    if not np.all(np.isfinite(weight)) or np.any(weight < -1.0e-10):
+        raise RuntimeError("Rayleigh weight is not finite and non-negative.")
+    return np.asarray(weight, dtype=float)
+
+
+def pack_workflow(
+    workflow: dict[str, Any], rho_g_cc: float, elapsed_s: float
+) -> dict[str, np.ndarray]:
     """Extract q, f, S and W from one completed Otter workflow."""
     exported = build_state_arrays(
         workflow,
         options=StateExportOptions(
-            r_max_bohr=R_MAX_BOHR,
-            k_max_bohr_inv=K_MAX_BOHR_INV,
+            profile="ion_structure",
         ),
     )
     k = np.asarray(exported["k_bohr_inv"], dtype=float)
@@ -131,13 +133,11 @@ def pack_workflow(workflow: dict[str, Any], rho_g_cc: float, elapsed_s: float) -
     sii = np.asarray(exported["sij_k"], dtype=float)[0, 0]
     if not (k.shape == q.shape == f.shape == sii.shape):
         raise ValueError("q, f, Sii and k do not share a reciprocal grid.")
-    weight = np.abs(q + f) ** 2 * sii
-    if not np.all(np.isfinite(weight)) or np.any(weight < -1.0e-10):
-        raise RuntimeError("Rayleigh weight is not finite and non-negative.")
     electronic = dict(workflow["electronic"]["result"])
     ion = dict(workflow["ion"])
     return {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("gallery_analysis"),
         "element": np.asarray(ELEMENT),
         "rho_g_cc": np.asarray(float(rho_g_cc)),
         "te_ev": np.asarray(TE_EV),
@@ -146,7 +146,6 @@ def pack_workflow(workflow: dict[str, Any], rho_g_cc: float, elapsed_s: float) -
         "q_k": q,
         "f_k": f,
         "sii_k": sii,
-        "rayleigh_weight": weight,
         "mu_ha": np.asarray(float(electronic["mu"])),
         "zbar": np.asarray(float(ion["zbar_qoz"])),
         "elapsed_s": np.asarray(float(elapsed_s)),
@@ -170,6 +169,7 @@ def calculate_states() -> list[dict[str, np.ndarray]]:
         )
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("gallery_analysis"),
         "state_count": np.asarray(len(states)),
         "rho_values_g_cc": np.asarray(RHO_VALUES_G_CC),
         "producer_elapsed_s": np.asarray(time.perf_counter() - started),
@@ -187,9 +187,7 @@ def calculate_states() -> list[dict[str, np.ndarray]]:
 
 def load_states() -> list[dict[str, np.ndarray]]:
     """Verify the checksummed archive and unpack its three states."""
-    manifest = json.loads(
-        (BASELINE_DIR / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((BASELINE_DIR / "manifest.json").read_text(encoding="utf-8"))
     record = manifest["state"]
     archive_path = BASELINE_DIR / str(record["data_file"])
     if sha256_file(archive_path) != str(record["data_sha256"]):
@@ -202,7 +200,7 @@ def load_states() -> list[dict[str, np.ndarray]]:
         for index in range(count):
             prefix = f"state_{index}_"
             state = {
-                key[len(prefix):]: np.asarray(archive[key])
+                key[len(prefix) :]: np.asarray(archive[key])
                 for key in archive.files
                 if key.startswith(prefix)
             }
@@ -223,7 +221,7 @@ for state in states:
     print(
         f"rho={float(state['rho_g_cc']):g} g/cc: "
         f"mu={float(state['mu_ha']):.8f} Ha, "
-        f"max W={float(np.max(state['rayleigh_weight'])):.6e}"
+        f"max W={float(np.max(rayleigh_weight(state))):.6e}"
     )
 
 
@@ -243,7 +241,7 @@ with style_context("thesis", palette="bing"):
         axes[0, 0].plot(k, state["f_k"], color=colour, ls="--", label=label + r", $f$")
         axes[0, 1].plot(k, state["sii_k"], color=colour, label=label)
         axes[1, 0].plot(k, state["q_k"] + state["f_k"], color=colour, label=label)
-        axes[1, 1].plot(k, state["rayleigh_weight"], color=colour, label=label)
+        axes[1, 1].plot(k, rayleigh_weight(state), color=colour, label=label)
 
     axes[0, 0].set(title=r"Form-factor components", ylabel=r"$q(k),\ f(k)$")
     axes[0, 1].set(title=r"Ionic structure", ylabel=r"$S_{ii}(k)$")

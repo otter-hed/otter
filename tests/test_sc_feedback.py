@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pickle
+
 import numpy as np
 import pytest
 
@@ -8,6 +10,7 @@ from otter.workflows import PlasmaWorkflowConfig, solve_plasma_workflow
 import otter.experimental.sc_feedback as sc_feedback_module
 from otter.experimental.sc_feedback import (
     SCFeedbackConfig,
+    SCFeedbackConvergenceError,
     estimate_mixture_correlation_potentials,
     mixture_ionic_background_profiles,
     solve_sc_feedback_workflow,
@@ -197,6 +200,7 @@ def test_mixture_sc_feedback_keeps_is_mu_and_uses_full_gij_background(
             v_corr_tol=1.0e12,
             v_corr_mix=0.35,
             use_continuation=False,
+            inner_full_tol_scale=None,
         ),
     )
 
@@ -252,3 +256,90 @@ def test_single_component_tf_sc_outer_iteration_uses_tf_backend() -> None:
     assert electronic["mu"] == is_result["electronic"]["result"]["mu"]
     assert np.max(np.abs(electronic["v_corr_full"])) > 0.0
     assert sc_result["sc_feedback"]["electronic_model"] == "tf"
+
+
+@pytest.fixture
+def constant_feedback(monkeypatch):
+    """An exact fixed-point map; no expensive AA or HNC evaluation."""
+    r = np.arange(1., 5.)
+    electronic = dict(r=r, r_ws=1., mu=.4, n0=.05, v_full=r*0,
+                      v_ext=r*0, zbar=2., meta={})
+    ion = dict(r=r, k=r, gij_r=np.ones((1, 1, 4)), zbar=np.array([2.]),
+               n_i=np.array([.1]))
+    initial = dict(species_symbols=["Al"], species_counts=[1.],
+                   electronic=dict(kind="single_species", result=electronic), ion=ion)
+    seen = []
+
+    def solve(cfg):
+        seen.append(cfg)
+        return dict(electronic)
+
+    def follow(cfg, *, electronic_kind, electronic_result):
+        return {
+            **initial,
+            "electronic": dict(kind=electronic_kind, result=electronic_result),
+            "ion": dict(ion),
+        }
+
+    # Only the scalar potential map is stubbed; the public outer controller,
+    # mixing, input construction, acceptance and exception path run normally.
+    ion.update(n_scr_k=np.ones((1, 4)), chi_ee_k=-np.ones(4))
+    monkeypatch.setattr(sc_feedback_module, "solve_full_then_external", solve)
+    monkeypatch.setattr(
+        sc_feedback_module, "continue_plasma_workflow_from_electronic_result", follow
+    )
+    monkeypatch.setattr(sc_feedback_module, "estimate_mixture_correlation_potentials",
+                        lambda **kwargs: np.ones((1, 4)))
+    return initial, seen
+
+
+def test_damped_step_cannot_mask_residual_and_failure_survives_transport(
+    constant_feedback,
+):
+    initial, _ = constant_feedback
+    cfg = PlasmaWorkflowConfig(formula="Al", temperature_ev=15.,
+                               ion_temperature_ev=15., rho_g_cc=8.1)
+    with pytest.raises(SCFeedbackConvergenceError) as caught:
+        solve_sc_feedback_workflow(cfg, initial, feedback_cfg=SCFeedbackConfig(
+            max_outer=1, v_corr_mix=1e-6, v_corr_tol=1e-4,
+            inner_full_tol_scale=None))
+    error = pickle.loads(pickle.dumps(caught.value))
+    assert isinstance(error, RuntimeError)
+    feedback = error.result["sc_feedback"]
+    assert feedback["converged"] is False
+    assert feedback["history"][0]["max_v_corr_change_ha"] == pytest.approx(1e-6)
+    assert feedback["history"][0]["max_v_corr_residual_ha"] == pytest.approx(1.-1e-6)
+    assert "sc_feedback" not in initial
+
+
+@pytest.mark.parametrize("model, iterations", [("qm", 2), ("tf", 1)])
+def test_qm_precision_confirmation_is_sc_only_and_preserves_stricter_input(
+    constant_feedback, model, iterations,
+):
+    initial, seen = constant_feedback
+    cfg = PlasmaWorkflowConfig(
+        formula="Al", temperature_ev=15., ion_temperature_ev=15., rho_g_cc=8.1,
+        electronic_model=model, aa_overrides={"scf_dn_tol": 1e-9},
+    )
+    result = solve_sc_feedback_workflow(cfg, initial, feedback_cfg=SCFeedbackConfig(
+        max_outer=2, v_corr_mix=1., v_corr_tol=2.))
+    assert result["sc_feedback"]["iterations"] == iterations
+    assert all(aa.scf_dn_tol == 1e-9 for aa in seen)
+    assert all(aa.ext_scf_dn_tol == 1e-4 for aa in seen)
+    assert seen[0].scf_dv_tol == 1e-5
+    if model == "qm":
+        assert seen[1].scf_dv_tol == pytest.approx(1e-7)
+        assert seen[1].scf_tol == pytest.approx(1e-5)
+        assert result["sc_feedback"]["history"][-1]["inner_full_refined"] is True
+    assert cfg.aa_overrides == {"scf_dn_tol": 1e-9}
+    assert sc_feedback_module.FullExternalConfig.scf_dv_tol == 1e-5
+
+
+def test_inner_precision_trigger_and_scale_validation():
+    trigger = sc_feedback_module._needs_inner_precision
+    assert not trigger([100., 50., 40., 30.])
+    assert trigger([100., 50., 20., 9.])
+    assert trigger([100., 20., 30., 25., 22.])
+    for value in (0., -1., 2., np.nan, np.inf):
+        with pytest.raises(ValueError, match="inner_full_tol_scale"):
+            SCFeedbackConfig(inner_full_tol_scale=value)

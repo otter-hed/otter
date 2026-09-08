@@ -40,7 +40,7 @@ try:
     from scipy.integrate import quad
     from scipy.optimize import brentq
     from scipy.special import kve
-    from scipy.sparse.linalg import eigs
+    from scipy.sparse.linalg import ArpackNoConvergence, eigs
     _HAVE_SCIPY = True
 except Exception:
     _HAVE_SCIPY = False
@@ -49,6 +49,7 @@ except Exception:
     brentq = None
     kve = None
     eigs = None
+    ArpackNoConvergence = None
 
 
 def _zero_tail_outer_reduced_ratio(
@@ -182,13 +183,23 @@ def zero_tail_bound_matching_residual(
     The caller must ensure that ``V_eff`` is negligible near the outer grid;
     :func:`find_zero_tail_bound_energy` supplies an explicit tail check.
     """
+    prepared = _prepare_zero_tail_matching(v_eff, grid_r, grid_dx, l, match_index)
+    return _zero_tail_prepared_residual(float(energy), prepared)
+
+
+def _prepare_zero_tail_matching(v_eff, grid_r, grid_dx, l, match_index):
+    """Validate and prepare ONE frozen potential/channel, never across SCF.
+
+    A root search evaluates many energies on identical geometry and potential.
+    Reuse only their energy-independent transformed potential; every energy
+    still gets a fresh Numerov propagation and analytic exterior condition.
+    """
     if not _HAVE_SCIPY:
         raise ImportError("scipy is required for zero-tail bound-state matching.")
     v = np.asarray(v_eff, dtype=float)
     r = np.asarray(grid_r, dtype=float)
     dx = float(grid_dx)
     l = int(l)
-    energy = float(energy)
     if v.ndim != 1 or r.ndim != 1 or v.shape != r.shape:
         raise ValueError("v_eff and grid_r must be aligned one-dimensional arrays.")
     if r.size < 9 or np.any(np.diff(r) <= 0.0):
@@ -199,8 +210,6 @@ def zero_tail_bound_matching_residual(
         raise ValueError("grid_dx must be finite and positive.")
     if l < 0:
         raise ValueError("l must be non-negative.")
-    if not np.isfinite(energy) or energy >= 0.0:
-        raise ValueError("energy must be finite and negative.")
 
     x = np.sqrt(r)
     measured_dx = np.diff(x)
@@ -219,6 +228,13 @@ def zero_tail_bound_matching_residual(
         + 3.0 / (32.0 * x**4)
         + float(l) * (float(l) + 1.0) / (2.0 * x**4)
     )
+    return x, r, dx, l, match_index, v_corr
+
+
+def _zero_tail_prepared_residual(energy, prepared):
+    x, r, dx, l, match_index, v_corr = prepared
+    if not np.isfinite(energy) or energy >= 0.0:
+        raise ValueError("energy must be finite and negative.")
     numerov_f = dx * dx * 8.0 * x * x * (v_corr - energy)
     denom = 1.0 - numerov_f / 12.0
     if np.any(np.abs(denom) < 1.0e-13):
@@ -301,15 +317,10 @@ def find_zero_tail_bound_energy(
                 f"energy in the outer tail (ratio={tail_ratio:.3e}, tol={tol:.3e})."
             )
 
+    prepared = _prepare_zero_tail_matching(v, r, grid_dx, l, match_index)
+
     def residual(energy: float) -> float:
-        return zero_tail_bound_matching_residual(
-            v,
-            r,
-            grid_dx,
-            l,
-            energy,
-            match_index=match_index,
-        )
+        return _zero_tail_prepared_residual(energy, prepared)
 
     f_lo = residual(e_lo)
     f_hi = residual(e_hi)
@@ -539,19 +550,13 @@ def find_shallowest_zero_tail_bound_state(
     if n_scan < 3:
         raise ValueError("n_scan must be at least three.")
     bindings = np.geomspace(min_binding, max_binding, n_scan)
+    prepared = _prepare_zero_tail_matching(v_eff, grid_r, grid_dx, l, match_index)
     residual_prev: float | None = None
     energy_prev: float | None = None
     for binding in bindings:
         energy = -float(binding)
         try:
-            residual = zero_tail_bound_matching_residual(
-                v_eff,
-                grid_r,
-                grid_dx,
-                int(l),
-                energy,
-                match_index=match_index,
-            )
+            residual = _zero_tail_prepared_residual(energy, prepared)
         except (FloatingPointError, ValueError):
             residual_prev = None
             energy_prev = None
@@ -811,6 +816,28 @@ def _regularize_origin_series(y: np.ndarray,
     return y_reg
 
 
+def _eigs_shift_invert(matrix, overlap, *, k, sigma, v0):
+    """Recover a stalled Arnoldi solve by enlarging its working subspace.
+
+    A deep shift compresses the outer-shell eigenvalues of heavy elements in
+    the inverse spectrum. SciPy's small default subspace can then spend many
+    restarts resolving them. Keep that path for easy channels; after 80
+    updates retry with twice the subspace and the original full iteration
+    budget. The matrix, shift, requested eigenpairs and 1e-10 tolerance do
+    not change. Never use the partial result of ArpackNoConvergence.
+
+    This is an eigensolver policy, not a new Numerov approximation. See the
+    ncv/maxiter and shift-invert definitions in the SciPy eigs documentation:
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.eigs.html
+    """
+    options = dict(k=k, M=overlap, sigma=sigma, which="LM", tol=1e-10)
+    try:
+        return eigs(matrix, **options, v0=v0.copy(), maxiter=80)
+    except ArpackNoConvergence:
+        ncv = min(matrix.shape[0], max(40, 4*k + 2))
+        return eigs(matrix, **options, v0=v0.copy(), ncv=ncv)
+
+
 def _solve_single_l_sparse(v_eff: np.ndarray,
                            grid_r: np.ndarray,
                            grid_dx: float,
@@ -866,14 +893,8 @@ def _solve_single_l_sparse(v_eff: np.ndarray,
     v0 /= np.linalg.norm(v0)
 
     try:
-        vals, vecs = eigs(
-            H_use,
-            k=k_solve,
-            M=S_use,
-            sigma=sigma_used,
-            which="LM",
-            tol=1e-10,
-            v0=v0.copy(),
+        vals, vecs = _eigs_shift_invert(
+            H_use, S_use, k=k_solve, sigma=sigma_used, v0=v0,
         )
     except Exception as exc:
         if sigma_guess is None:
@@ -881,14 +902,8 @@ def _solve_single_l_sparse(v_eff: np.ndarray,
             if not np.isfinite(sigma_fallback):
                 sigma_fallback = -0.5
             try:
-                vals, vecs = eigs(
-                    H_use,
-                    k=k_solve,
-                    M=S_use,
-                    sigma=sigma_fallback,
-                    which="LM",
-                    tol=1e-10,
-                    v0=v0.copy(),
+                vals, vecs = _eigs_shift_invert(
+                    H_use, S_use, k=k_solve, sigma=sigma_fallback, v0=v0,
                 )
             except Exception as exc_retry:
                 warnings.warn(

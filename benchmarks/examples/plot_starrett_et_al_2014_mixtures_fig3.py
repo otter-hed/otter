@@ -39,8 +39,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-# Each average-atom continuum calculation already uses processes.  Avoid
-# hidden BLAS/OpenMP oversubscription when the outer state pool is enabled.
+# Avoid hidden BLAS/OpenMP oversubscription in the outer state pool.
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -50,6 +49,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter.numerics.constants import KELVIN_TO_EV
 from otter.plotting import PAIR_COLORS, grid_figsize, save_figure, style_context
 
 
@@ -64,9 +64,8 @@ DENSITIES_G_CC = (2.94, 5.0, 15.0)
 TEMPERATURES_KK = (20, 50, 100)
 STOICHIOMETRIC_COUNTS = (1.0, 1.36)
 
-# Three thermodynamic-state workers, each with six continuum workers.
+# Three thermodynamic-state workers; each AA inherits the single-worker default.
 MAX_STATE_WORKERS = 3
-CONTINUUM_WORKERS_PER_STATE = 6
 SPECIES_PARALLEL_JOBS = 1
 
 MU_E_TOL_HA = 1.0e-4
@@ -79,7 +78,6 @@ R_RETAIN_MAX_BOHR = 20.0
 # =============================================================================
 
 
-EV_PER_K = 8.617333262145e-5
 PAIR_ORDER = ("CC", "CH", "HH")
 PAIR_COLUMNS = {"CC": (0, 1), "CH": (4, 5), "HH": (2, 3)}
 
@@ -189,8 +187,6 @@ def load_precomputed_results(
 def aa_overrides() -> dict[str, Any]:
     """Return the documented IS-QM Appendix-B electronic controls."""
     return {
-        "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-        "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
         "b3_tail_target": "full",
         "b3_r_cut_mult": 3.0,
         "b3_r_fit_max_mult": 4.0,
@@ -204,7 +200,7 @@ def workflow_config(
     temperature_kk: int,
 ) -> PlasmaWorkflowConfig:
     """Build one strict public Otter C--H mixture calculation."""
-    temperature_ev = 1000.0 * float(temperature_kk) * EV_PER_K
+    temperature_ev = 1000.0 * float(temperature_kk) * KELVIN_TO_EV
     return PlasmaWorkflowConfig(
         elements=["C", "H"],
         counts=list(STOICHIOMETRIC_COUNTS),
@@ -280,10 +276,11 @@ def solve_state(
     species = [dict(entry) for entry in electronic["species"]]
     payload = {
         "schema_version": np.asarray("otter_gallery_starrett_fig3_v1"),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "rho_g_cc": np.asarray(float(rho_g_cc)),
         "temperature_kk": np.asarray(int(temperature_kk)),
         "temperature_ev": np.asarray(
-            1000.0 * float(temperature_kk) * EV_PER_K
+            1000.0 * float(temperature_kk) * KELVIN_TO_EV
         ),
         "species_symbols": np.asarray(("C", "H")),
         "species_counts": np.asarray(STOICHIOMETRIC_COUNTS),

@@ -71,3 +71,24 @@ def test_public_galleries_use_thesis_bing_without_grids() -> None:
             continue
         assert '"thesis", palette="bing"' in source, path
         assert ".grid(" not in source, path
+
+
+def test_gallery_workflows_do_not_repeat_public_defaults() -> None:
+    """Keep maintained calculation scripts focused on intentional overrides."""
+    paths = sorted((ROOT / "docs" / "examples").glob("*.py"))
+    paths += sorted((ROOT / "benchmarks" / "examples").glob("*.py"))
+    paths += sorted((ROOT / "benchmarks" / "runners").glob("*.py"))
+    redundant = (
+        'electronic_model="qm"',
+        'run_mode="full+ext"',
+        "qoz_linear_n_points=4096",
+        "hnc_tol=1.0e-4",
+        "hnc_tol=1e-4",
+        "show_progress=True",
+        "r_max_bohr=20.0",
+        "k_max_bohr_inv=20.0",
+    )
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        for setting in redundant:
+            assert setting not in source, (path, setting)

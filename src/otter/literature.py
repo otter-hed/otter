@@ -85,7 +85,7 @@ def _field_value(entry: str, field: str) -> str:
 
 
 def _plain_tex(value: str) -> str:
-    value = value.replace("--", "–").replace("~", " ")
+    value = value.replace("---", "—").replace("--", "–").replace("~", " ")
     accent_map = {
         '"': {"a": "ä", "e": "ë", "i": "ï", "o": "ö", "u": "ü", "A": "Ä", "O": "Ö", "U": "Ü"},
         "'": {"a": "á", "e": "é", "i": "í", "o": "ó", "u": "ú", "c": "ć", "A": "Á", "E": "É"},
@@ -104,6 +104,10 @@ def _plain_tex(value: str) -> str:
 
 
 def _format_authors(value: str) -> str:
+    # BibTeX braces protect a corporate author from name/"and" splitting.
+    value = value.strip()
+    if value.startswith("{") and _balanced_end(value, 0) == len(value) - 1:
+        return _plain_tex(value)
     authors: list[str] = []
     for author in re.split(r"\s+and\s+", value):
         author = _plain_tex(author)
@@ -124,6 +128,7 @@ def _reference_string(key: str, comment: str | None = None) -> str:
     pages = _plain_tex(_field_value(raw, "pages"))
     year = _plain_tex(_field_value(raw, "year"))
     doi = _plain_tex(_field_value(raw, "doi"))
+    url = _field_value(raw, "url").strip()
     if not authors and not title:
         result = raw
     else:
@@ -138,9 +143,11 @@ def _reference_string(key: str, comment: str | None = None) -> str:
             result += f", {pages}"
         if year:
             result += f" ({year})"
-        result += "."
+        result = result.rstrip(".") + "."
         if doi:
             result += f" DOI: https://doi.org/{doi}."
+        elif url:
+            result += f" URL: {url}."
     if comment:
         result += f" {comment.rstrip('.')}."
     return result

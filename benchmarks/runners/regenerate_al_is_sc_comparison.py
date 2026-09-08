@@ -32,6 +32,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow  # noqa: E402
 from otter.experimental import (  # noqa: E402
     SCFeedbackConfig,
@@ -39,8 +40,7 @@ from otter.experimental import (  # noqa: E402
 )
 
 
-# User-editable numerical controls.  The two electronic models are independent
-# and can use two processes; the KS continuum integration uses eight workers.
+# The two electronic models run independently; each AA uses the default worker.
 ELEMENT = "Al"
 RHO_G_CC = 8.1
 TE_EV = 15.0
@@ -49,8 +49,6 @@ MODELS = ("qm", "tf")
 MODEL_DISPLAY_LABELS = ("KS-DFT", "Thomas--Fermi")
 STRUCTURES = ("is", "sc")
 MAX_MODEL_WORKERS = 2
-CONTINUUM_WORKERS = 8
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -120,16 +118,13 @@ def configuration(model: str) -> PlasmaWorkflowConfig:
     model_key = str(model).strip().lower()
     if model_key not in MODELS:
         raise ValueError(f"model must be one of {MODELS}, got {model!r}.")
+    model_override = {} if model_key == "qm" else {"electronic_model": model_key}
     return PlasmaWorkflowConfig(
         elements=[ELEMENT],
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
-        electronic_model=model_key,
-        aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS,
-            "cont_shards": 2 * CONTINUUM_WORKERS,
-        },
+        **model_override,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
         hnc_max_iter=500,
     )
@@ -241,6 +236,12 @@ def _solve_model(model: str) -> dict[str, Any]:
             [float(item["max_v_corr_change_ha"]) for item in history],
             dtype=float,
         ),
+        "history_max_v_corr_residual_ha": np.asarray(
+            [float(item["max_v_corr_residual_ha"]) for item in history],
+        ),
+        "history_inner_full_refined": np.asarray(
+            [bool(item["inner_full_refined"]) for item in history],
+        ),
     }
 
 
@@ -291,7 +292,8 @@ def _payload(by_model: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
             "bound_rmax_mult": None,
             "bound_zero_tail_refine": False,
             "b3_tail_model": "full",
-            "continuum_workers": CONTINUUM_WORKERS,
+            "b3_tail_target": FullExternalConfig.b3_tail_target,
+            "continuum_workers": FullExternalConfig.cont_n_jobs,
         },
         "qoz": {
             "n_points": 4096,
@@ -306,12 +308,15 @@ def _payload(by_model: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
             "g_tol": SC_CONTROLS.g_tol,
             "v_corr_tol_ha": SC_CONTROLS.v_corr_tol,
             "v_corr_mix": SC_CONTROLS.v_corr_mix,
+            "inner_full_tol_scale": SC_CONTROLS.inner_full_tol_scale,
+            "potential_convergence_metric": "unmixed_current_output_minus_used_input",
         },
     }
     producer_status = _git_status_porcelain()
     producer_script = Path(__file__).resolve()
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "example_id": np.asarray("al_is_sc_comparison"),
         "element_symbol": np.asarray(ELEMENT),
         "rho_g_cc": np.asarray(RHO_G_CC),
@@ -376,6 +381,8 @@ def _payload(by_model: dict[str, dict[str, Any]]) -> dict[str, np.ndarray]:
         payload[f"{model}_sc_history_max_v_corr_change_ha"] = np.asarray(
             by_model[model]["history_max_v_corr_change_ha"]
         )
+        for field in ("history_max_v_corr_residual_ha", "history_inner_full_refined"):
+            payload[f"{model}_sc_{field}"] = np.asarray(by_model[model][field])
 
     for key, value in payload.items():
         array = np.asarray(value)

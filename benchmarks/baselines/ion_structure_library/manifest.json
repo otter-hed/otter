@@ -2,7 +2,7 @@
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "ion_structure_library",
   "title": "Otter ion-structure literature comparisons",
-  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ ion-structure states paired with the provenance-audited subset of the local form-factor library; Wünsch Be includes HNC, VMHNC, and same-potential MD.",
+  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ ion-structure states paired with the provenance-audited subset of the local form-factor library; W\u00fcnsch Be includes HNC, VMHNC, and same-potential MD.",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
     "reference_data_in_separate_package": true,
@@ -41,12 +41,12 @@
     "project": "Otter",
     "git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9",
     "script_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
-    "script_sha256": "ceb73f96d9e144b85ee41cb8cb28f3320cb5d22ca33d83d814a820a54775210b",
+    "script_sha256": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
     "script_sha256_at_generation": "8145a2c22c3fb9ca5b365f9a2341a3c7caa9d89cbed271ff49df0de7ad1fd8b1",
-    "script_sha256_current": "ceb73f96d9e144b85ee41cb8cb28f3320cb5d22ca33d83d814a820a54775210b",
+    "script_sha256_current": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
     "lammps_tool_relative_path": "tools/otter_lammps_md.py",
     "lammps_tool_sha256_current": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
-    "note": "The original HNC states retain their recorded producer revision. The Wünsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
+    "note": "The original HNC states retain their recorded producer revision. The W\u00fcnsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
     "worktree_clean": false
   },
   "configuration": {
@@ -108,13 +108,14 @@
       "te_ev": 5.0,
       "ti_ev": 5.0,
       "baseline_file": "al_gill_rho2p7_te5_ti5.npz",
-      "baseline_sha256": "c972172c013cdace81033222a6aad7a1a7820e0d3ad35b9b1f732ffa0e30aaac",
+      "baseline_sha256": "c3c8c5869036628ae02aac35ebfcb20e8e0604da0a60f8ca15cfddf5e48ff1b4",
       "reference_family": "GillEtAl2015",
       "zbar_partition": 3.000510517183633,
       "hnc_closure_mismatch": 6.562636010654099e-05,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 1826
+      "n_model_points": 1826,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     },
     {
       "state_id": "al_clerouin_rho8p1_te10_ti10",
@@ -123,14 +124,15 @@
       "te_ev": 10.0,
       "ti_ev": 10.0,
       "baseline_file": "al_clerouin_rho8p1_te10_ti10.npz",
-      "baseline_sha256": "2f8a4991b1b8c62fc1f450ffd33fa830dbbb3c2d6884190bdd03485c725b14bc",
+      "baseline_sha256": "0c407ef25b48802f6e006245e40de7deb00816a35e450cd6078f367c0bab0201",
       "reference_family": "ClerouinEtAl2015",
       "electronic_model": "qm",
       "zbar_partition": 3.036920594001046,
       "hnc_closure_mismatch": 1.4566153101802648e-05,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 2634
+      "n_model_points": 2634,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     },
     {
       "state_id": "al_clerouin_rho8p1_te10_ti2",
@@ -139,14 +141,15 @@
       "te_ev": 10.0,
       "ti_ev": 2.0,
       "baseline_file": "al_clerouin_rho8p1_te10_ti2.npz",
-      "baseline_sha256": "4acc0af77c0d14a666e929777a40543b87b45704e9636c9dc518d200e611b9df",
+      "baseline_sha256": "f16a5e630e0734398b3f7f55d820c712d98058cb4a5fbd025be933173762a462",
       "reference_family": "ClerouinEtAl2015",
       "electronic_model": "qm",
       "zbar_partition": 3.036920594001046,
       "hnc_closure_mismatch": 0.0002858818950086661,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 2634
+      "n_model_points": 2634,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     },
     {
       "state_id": "al_clerouin_rho8p1_te10_ti10_tf",
@@ -156,13 +159,14 @@
       "ti_ev": 10.0,
       "electronic_model": "tf",
       "baseline_file": "al_clerouin_rho8p1_te10_ti10_tf.npz",
-      "baseline_sha256": "fe37b67721eb02800279399f3a4f6efe7c42ce96231ed000c47f1210498d1ba7",
+      "baseline_sha256": "eb445e815e1c9c085898723b3a82ff0ed0688925c3529812fe98cd73733c4d59",
       "reference_family": "ClerouinEtAl2015",
       "zbar_partition": 4.878856625734317,
       "hnc_closure_mismatch": 0.0005149469690082231,
       "threshold_state_status": "not_applicable_tf",
       "threshold_state_representation": "none",
-      "n_model_points": 2634
+      "n_model_points": 2634,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     },
     {
       "state_id": "al_clerouin_rho8p1_te10_ti2_tf",
@@ -172,13 +176,14 @@
       "ti_ev": 2.0,
       "electronic_model": "tf",
       "baseline_file": "al_clerouin_rho8p1_te10_ti2_tf.npz",
-      "baseline_sha256": "87daf65462231cd0cb387ff0a27b170225c00e879a8e62affab0b1fa4b2f357d",
+      "baseline_sha256": "4ecad00e1d4496c17e99525043f58ec807d6d8990c800d446fb8ea5d020556e6",
       "reference_family": "ClerouinEtAl2015",
       "zbar_partition": 4.878856625734317,
       "hnc_closure_mismatch": 0.0003092933660728825,
       "threshold_state_status": "not_applicable_tf",
       "threshold_state_representation": "none",
-      "n_model_points": 2634
+      "n_model_points": 2634,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     },
     {
       "state_id": "be_wunsch_rho5p544_te13_ti13",
@@ -187,7 +192,7 @@
       "te_ev": 13.0,
       "ti_ev": 13.0,
       "baseline_file": "be_wunsch_rho5p544_te13_ti13.npz",
-      "baseline_sha256": "8338ed7970d2f5a7e5eab94087fe124c9bad41a589fbc584b2c287c93228570a",
+      "baseline_sha256": "4d0dca70bd15e066b0fb1742edee6c7a5468fa838e013bc16127f1e3b02f4067",
       "reference_family": "WunschEtAl2009",
       "producer_git_commit": "d734f28cb5d58977b911866b53faf557dd81edb9",
       "zbar_partition": 2.007455281556659,
@@ -201,7 +206,8 @@
       "md_mean_temperature_k": 152549.62554455447,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 3346
+      "n_model_points": 3346,
+      "same_potential_md": true
     },
     {
       "state_id": "c_starrett_rho20_te50_ti50",
@@ -210,17 +216,20 @@
       "te_ev": 50.0,
       "ti_ev": 50.0,
       "baseline_file": "c_starrett_rho20_te50_ti50.npz",
-      "baseline_sha256": "cfa55182320952976c7263501df831257e0aefe57e9fe54761361fa80a727693",
+      "baseline_sha256": "3eb1efaf19eaa72709e29b025660f46af97693e7f4fb3025375a6ec2c5f3ccf6",
       "reference_family": "StarrettPrivateCommunication",
       "zbar_partition": 4.0165710408543305,
       "hnc_closure_mismatch": 2.609629333971686e-05,
       "threshold_state_status": "resolved",
       "threshold_state_representation": "finite_dirichlet_box",
-      "n_model_points": 4664
+      "n_model_points": 4664,
+      "producer_git_commit": "d6bd45708e1c0c034e72bfc548db064b7f6a54e9"
     }
   ],
   "excluded_extension": {
     "state_id": "c_starrett_rho3p7_te8p62_ti8p62",
     "reason": "This state is not part of the current plotted literature-library baseline."
-  }
+  },
+  "validation_scope": "archived_matched_potential_comparison",
+  "validation_inventory": "../validation_20260908.json"
 }

@@ -14,16 +14,17 @@ from otter.plotting import grid_figsize, save_figure, set_style
 # ===========================================
 #            user input parameters
 # -------------------------------------------
-ELEMENTS = ["C", "H"]
-COUNTS = [1.0, 1.36]
-RHO_G_CC = 5.0
+ELEMENTS = ["C", "H", "O"]
+COUNTS = [10, 8, 4]
+RHO_G_CC = 1.3
 TE_EV = 8.617333262  # 100 kK
 TI_EV = TE_EV
-
+electronic_model= "tf" # Thomas-Fermi semiclassical mode, fast
+#electronic_model= "qm" # Kohn-Sham DFT, slow
 # ===========================================
-SAVE_NPZ = True
+SAVE_NPZ = False
 OUTPUT_PATH = ROOT / "outputs" / "ch136_state.npz"
-SAVE_FIGURES = True
+SAVE_FIGURES = False
 FIGURE_STEM = ROOT / "outputs" / "ch136_gij_sij"
 
 
@@ -80,6 +81,7 @@ def main() -> None:
         ion_temperature_ev=TI_EV,
         save_state_npz=SAVE_NPZ,
         save_state_path=OUTPUT_PATH,
+        electronic_model= electronic_model,
     )
     result = solve_plasma_workflow(cfg)
     ion = result["ion"]

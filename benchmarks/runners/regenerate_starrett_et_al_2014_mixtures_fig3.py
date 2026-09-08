@@ -16,6 +16,7 @@ follow C. E. Starrett and D. Saumon, High Energy Density Physics 10, 35--42
 jellium local-field correction is G. Chabrier, J. Phys. France 51,
 1607--1632 (1990), https://doi.org/10.1051/jphys:0199000510150160700.
 """
+
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -30,8 +31,7 @@ import sys
 import time
 from typing import Any
 
-# Each average-atom continuum calculation already uses worker processes.
-# Prevent BLAS/OpenMP from multiplying that explicit parallelism.
+# Prevent BLAS/OpenMP from multiplying the outer state parallelism.
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -44,51 +44,34 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow  # noqa: E402
-from otter.io.state import (  # noqa: E402
-    StateExportOptions,
-    build_state_arrays,
-)
+from otter.numerics.constants import KELVIN_TO_EV  # noqa: E402
 
 
-# User-editable calculation controls.  Three independent thermodynamic states
-# times six continuum workers use at most about 18 explicit worker processes
-# on a 24-core workstation.  Species are evaluated sequentially within each
-# common-mu root, avoiding a third nested process/thread layer.
+# Independent thermodynamic states run concurrently. Keep species serial
+# within each state; individual AA energy integrals inherit one worker.
 DENSITIES_G_CC = (2.94, 5.0, 15.0)
 TEMPERATURES_KK = (20, 50, 100)
 MAX_STATE_WORKERS = 3
-CONTINUUM_WORKERS_PER_STATE = 6
-CONTINUUM_SHARDS = 32
 SPECIES_PARALLEL_JOBS = 1
 
-QOZ_N_POINTS = 4096
 MU_E_TOL_HA = 1.0e-4
-ROOT_TOL = 1.0e-4
 ROOT_MAXFEV = 32
 ROOT_BRENT_MAXITER = 24
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TRANSFORM_TOL = 1.0e-4
 HNC_MAX_ITER = 1000
 R_RETAIN_MAX_BOHR = 20.0
-K_RETAIN_MAX_BOHR_INV = 20.0
 
 COUNTS = (1.0, 1.36)
-EV_PER_K = 8.617333262145e-5
 SCHEMA = "otter_starrett_mixtures_fig3_candidate_v1"
 BENCHMARK_ID = "starrett_et_al_2014_mixtures_fig3_ch1p36"
 OUTPUT_DIR = (
-    ROOT
-    / "benchmarks"
-    / "outputs"
-    / "starrett_et_al_2014_mixtures_fig3"
-    / "recomputed"
+    ROOT / "benchmarks" / "outputs" / "starrett_et_al_2014_mixtures_fig3" / "recomputed"
 )
 REFERENCE_DIR = (
-    ROOT
-    / "benchmarks"
-    / "reference_data"
-    / "starrett_et_al_2014_mixtures_fig3"
+    ROOT / "benchmarks" / "reference_data" / "starrett_et_al_2014_mixtures_fig3"
 )
 
 
@@ -101,7 +84,7 @@ class State:
 
     @property
     def temperature_ev(self) -> float:
-        return 1000.0 * float(self.temperature_kk) * EV_PER_K
+        return 1000.0 * float(self.temperature_kk) * KELVIN_TO_EV
 
     @property
     def token(self) -> str:
@@ -159,8 +142,6 @@ def _producer_metadata() -> dict[str, Any]:
 def aa_overrides() -> dict[str, Any]:
     """Return the documented IS-QM Appendix-B electronic controls."""
     return {
-        "cont_n_jobs": CONTINUUM_WORKERS_PER_STATE,
-        "cont_shards": CONTINUUM_SHARDS,
         "b3_tail_target": "full",
         "b3_r_cut_mult": 3.0,
         "b3_r_fit_max_mult": 4.0,
@@ -189,6 +170,7 @@ def configuration(state: State) -> PlasmaWorkflowConfig:
 
 def signature(state: State) -> dict[str, Any]:
     """Return every result-affecting benchmark choice in JSON-safe form."""
+    resolved = configuration(state)
     return {
         "schema": 1,
         "state": {
@@ -201,21 +183,23 @@ def signature(state: State) -> dict[str, Any]:
         "electronic_model": "qm",
         "aa_overrides": aa_overrides(),
         "root": {
-            "mu_e_tol_ha": MU_E_TOL_HA,
-            "root_tol": ROOT_TOL,
+            "mu_e_tol_ha": float(resolved.mu_e_tol),
+            "root_tol": float(resolved.root_tol),
             "root_maxfev": ROOT_MAXFEV,
             "root_brent_maxiter": ROOT_BRENT_MAXITER,
             "allow_unconverged_root": False,
             "allow_unconverged_aa": False,
         },
         "qoz": {
-            "n_points": QOZ_N_POINTS,
-            "pad_factor": 2.0,
-            "zbar_mode": "pseudoatom_partition",
-            "renormalize_nscr": True,
-            "chi0_model": "lindhard_fd",
-            "lfc_model": "chabrier1990",
-            "high_k_taper_start_frac": 0.9,
+            "n_points": int(resolved.qoz_linear_n_points),
+            "pad_factor": float(resolved.qoz_pad_factor),
+            "zbar_mode": str(resolved.qoz_zbar_mode),
+            "renormalize_nscr": bool(
+                resolved.qoz_renormalize_nscr_to_zbar
+            ),
+            "chi0_model": str(resolved.qoz_response_chi0_model),
+            "lfc_model": str(resolved.qoz_response_lfc_model),
+            "high_k_taper_start_frac": resolved.qoz_high_k_taper_start_frac,
         },
         "hnc": {
             "tol": HNC_TOL,
@@ -269,10 +253,7 @@ def _strict_diagnostics(
         raise RuntimeError("Multicomponent HNC did not reach its full-scale root.")
     if float(ion.get("hnc_output_residual", np.inf)) > HNC_TOL:
         raise RuntimeError("HNC residual exceeds the configured tolerance.")
-    if (
-        float(ion.get("closure_transform_max_abs", np.inf))
-        > HNC_CLOSURE_TRANSFORM_TOL
-    ):
+    if float(ion.get("closure_transform_max_abs", np.inf)) > HNC_CLOSURE_TRANSFORM_TOL:
         raise RuntimeError("The finite-grid g/S closure mismatch is too large.")
     if float(ion.get("hnc_s_min", -np.inf)) <= 0.0:
         raise RuntimeError("The converged S matrix is not positive definite.")
@@ -288,32 +269,36 @@ def pack_workflow(
 ) -> dict[str, np.ndarray]:
     """Convert one strict workflow to a portable, pickle-free candidate."""
     electronic, ion, species = _strict_diagnostics(workflow)
-    export = build_state_arrays(
-        workflow,
-        options=StateExportOptions(
-            # build_state_arrays uses an exclusive cutoff.  Advancing by one
-            # representable float implements the documented <= 20 window.
-            r_max_bohr=np.nextafter(R_RETAIN_MAX_BOHR, np.inf),
-            k_max_bohr_inv=np.nextafter(K_RETAIN_MAX_BOHR_INV, np.inf),
-            require_converged_hnc=True,
-        ),
-    )
+    r = np.asarray(ion["r"], dtype=float)
+    gij = np.asarray(ion["gij_r"], dtype=float)
+    if gij.ndim != 3 or gij.shape[:2] != (2, 2):
+        raise ValueError(f"Unexpected gij array shape: {gij.shape}.")
+    # This benchmark compares only g_ab(r).  Retain the three independent
+    # pair curves and the small set of inputs/convergence diagnostics needed
+    # to audit them; electronic profiles, k-space response, and potentials are
+    # deliberately excluded from this analysis archive.
+    mask = r <= np.nextafter(R_RETAIN_MAX_BOHR, np.inf)
     species_results = [dict(entry["result"]) for entry in species]
     meta = dict(electronic["meta"])
-    charge = dict(ion["charge_fix"])
     payload = {
-        **export,
-        "benchmark_schema_version": np.asarray(SCHEMA),
+        "schema_version": np.asarray("otter_gallery_starrett_fig3_v1"),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "benchmark_id": np.asarray(BENCHMARK_ID),
+        "candidate_schema_version": np.asarray(SCHEMA),
+        "species_symbols": np.asarray(("C", "H")),
+        "species_counts": np.asarray(COUNTS, dtype=float),
         "pair_labels": np.asarray(("CC", "CH", "HH")),
         "rho_g_cc": np.asarray(state.rho_g_cc),
         "temperature_kk": np.asarray(state.temperature_kk),
         "temperature_ev": np.asarray(state.temperature_ev),
+        "r_bohr": r[mask],
+        "g_ab": np.asarray(
+            (gij[0, 0, mask], gij[0, 1, mask], gij[1, 1, mask]),
+            dtype=float,
+        ),
         "producer_elapsed_s": np.asarray(float(elapsed_s)),
         "otter_git_commit": np.asarray(str(producer["git_commit"])),
-        "producer_script_sha256": np.asarray(
-            str(producer["script_sha256"])
-        ),
+        "producer_script_sha256": np.asarray(str(producer["script_sha256"])),
         "producer_worktree_clean": np.asarray(
             bool(producer["worktree_clean_at_generation"])
         ),
@@ -323,38 +308,18 @@ def pack_workflow(
         "producer_signature_json": np.asarray(
             json.dumps(signature(state), sort_keys=True, separators=(",", ":"))
         ),
-        "r_ws_bohr": np.asarray(
-            [float(entry["r_ws_bohr"]) for entry in species]
-        ),
-        "mu_ha": np.asarray(
-            [float(result["mu"]) for result in species_results]
-        ),
-        "n0_bohr3": np.asarray(
-            [float(result["n0"]) for result in species_results]
-        ),
-        "zbar_aa_ws": np.asarray(
-            [float(result["zbar"]) for result in species_results]
-        ),
+        "r_ws_bohr": np.asarray([float(entry["r_ws_bohr"]) for entry in species]),
+        "mu_ha": np.asarray([float(result["mu"]) for result in species_results]),
+        "zbar_aa_ws": np.asarray([float(result["zbar"]) for result in species_results]),
         "zbar_partition": np.asarray(ion["zbar_partition"], dtype=float),
         "zbar_qoz": np.asarray(ion["zbar_qoz"], dtype=float),
-        "q_scr_raw": np.asarray(charge["q_scr_raw"], dtype=float),
-        "q_scr_used": np.asarray(charge["q_scr_used"], dtype=float),
-        "q_scr_scale": np.asarray(charge["scale_factor"], dtype=float),
         "root_success": np.asarray(True),
-        "root_residual_ha": np.asarray(
-            float(meta["mu_residual_max_ha"])
-        ),
-        "final_root_residual_ha": np.asarray(
-            float(meta["final_mu_residual_max_ha"])
-        ),
+        "root_residual_ha": np.asarray(float(meta["mu_residual_max_ha"])),
+        "final_root_residual_ha": np.asarray(float(meta["final_mu_residual_max_ha"])),
         "root_nfev": np.asarray(int(meta.get("root_nfev", 0))),
         "root_method": np.asarray(str(meta.get("root_method", "unknown"))),
-        "hnc_output_residual": np.asarray(
-            float(ion["hnc_output_residual"])
-        ),
-        "hnc_closure_mismatch": np.asarray(
-            float(ion["closure_transform_max_abs"])
-        ),
+        "hnc_output_residual": np.asarray(float(ion["hnc_output_residual"])),
+        "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
         "hnc_s_min": np.asarray(float(ion["hnc_s_min"])),
     }
     for key, value in payload.items():
@@ -383,9 +348,7 @@ def _solve_one(
 
 def _reference_path(state: State) -> Path:
     rho = f"{state.rho_g_cc:.2f}".replace(".", "p")
-    return REFERENCE_DIR / (
-        f"fig3_gab_rho{rho}gcc_T{state.temperature_kk}kK.csv"
-    )
+    return REFERENCE_DIR / (f"fig3_gab_rho{rho}gcc_T{state.temperature_kk}kK.csv")
 
 
 def _write_manifest(
@@ -418,7 +381,6 @@ def _write_manifest(
         },
         "retained_window": {
             "r_max_bohr_inclusive": R_RETAIN_MAX_BOHR,
-            "k_max_bohr_inv_inclusive": K_RETAIN_MAX_BOHR_INV,
         },
         "method_references": [
             {
@@ -443,10 +405,7 @@ def _write_manifest(
 def _plot_candidate(manifest_path: Path) -> None:
     """Use the read-only benchmark renderer for the newly staged candidate."""
     runner_path = (
-        ROOT
-        / "benchmarks"
-        / "runners"
-        / "plot_starrett_et_al_2014_mixtures_fig3.py"
+        ROOT / "benchmarks" / "runners" / "plot_starrett_et_al_2014_mixtures_fig3.py"
     )
     spec = importlib.util.spec_from_file_location(
         "otter_starrett_fig3_read_only_runner",
@@ -492,8 +451,7 @@ def regenerate(
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(_solve_one, state, producer): state
-                for state in states
+                pool.submit(_solve_one, state, producer): state for state in states
             }
             for future in as_completed(futures):
                 solved_state, payload = future.result()
@@ -518,15 +476,9 @@ def regenerate(
                 "reference_file": os.path.relpath(reference, output_dir),
                 "reference_sha256": _sha256(reference),
                 "root_residual_ha": float(payload["root_residual_ha"]),
-                "final_root_residual_ha": float(
-                    payload["final_root_residual_ha"]
-                ),
-                "hnc_output_residual": float(
-                    payload["hnc_output_residual"]
-                ),
-                "hnc_closure_mismatch": float(
-                    payload["hnc_closure_mismatch"]
-                ),
+                "final_root_residual_ha": float(payload["final_root_residual_ha"]),
+                "hnc_output_residual": float(payload["hnc_output_residual"]),
+                "hnc_closure_mismatch": float(payload["hnc_closure_mismatch"]),
             }
         )
         print(f"[saved] {path.relative_to(ROOT)}", flush=True)
@@ -546,7 +498,7 @@ def main() -> None:
     print(
         "Otter Figure 3 recomputation: "
         f"{MAX_STATE_WORKERS} state workers x "
-        f"{CONTINUUM_WORKERS_PER_STATE} continuum workers; "
+        f"{FullExternalConfig.cont_n_jobs} continuum workers; "
         "accepted data will not be modified."
     )
     regenerate()

@@ -9,6 +9,9 @@ quantitative diagnostics, and downloadable Python source.  Expensive quantum
 or molecular-dynamics calculations are represented by compact, checksummed
 accepted data; a documentation build never silently recomputes them.
 
+For the current data refresh and the scope of archived MD comparisons, see
+:doc:`validation_20260908`.
+
 The categories below are only a reading aid.  Every benchmark appears exactly
 once, and the left navigation links directly to the individual reports rather
 than passing through separate ``detailed`` and ``gallery`` index levels.

@@ -37,6 +37,7 @@ from otter.electronic.ks_dft import (
     _source_electron_charge_target,
     _split_continuum_params_for_full_ext,
     _ion_level_weight,
+    _validate_scf_convergence_steps,
     solve_ks_dft_is,
 )
 from otter.electronic.continuum import scattering as qmod
@@ -55,7 +56,7 @@ from otter.io import save_full_external_data
 from otter.ionic.correlation import IonSphereStepModel, ion_sphere_radius_from_density
 from otter.electronic.potential import spherical_hartree_potential
 from otter.electronic.potential import (
-    _ion_sphere_background_hartree,
+    _ion_sphere_cavity_hartree,
     effective_potential_external,
     effective_potential_full,
 )
@@ -100,9 +101,9 @@ def _resolve_outer_geometry(cfg: "FullExternalConfig", *, r_ws: float) -> dict[s
 
     Notes
     -----
-    The validated public defaults are still expressed in units of ``R_ws```.
-    For dense / small-``R_ws`` states we keep the *physical* WS radius intact,
-    but define one numerical geometry scale
+    Outer-domain multipliers use ``R_geometry`` (``r_geom`` in this function),
+    not necessarily the physical ``R_ws``. Keep the physical WS radius intact
+    for density/neutrality and define the numerical geometry scale
 
       r_geom = max(r_ws, geometry_r_ws_floor_bohr)
       if geometry_r_ws_cap_bohr is not None:
@@ -160,29 +161,19 @@ def _resolve_outer_geometry(cfg: "FullExternalConfig", *, r_ws: float) -> dict[s
     return out
 
 
-def _uses_decoupled_ion_sphere_grid(
-    cfg: "FullExternalConfig",
-    *,
-    r_ws: float,
-    rmax: float,
-) -> bool:
-    """Return whether a floor/cap decouples the AA box from physical R_ws."""
-    physical_rmax = float(cfg.rmax_mult) * float(r_ws)
-    return not np.isclose(float(rmax), physical_rmax, rtol=1.0e-12, atol=1.0e-12)
-
-
 def _uses_analytic_ion_sphere_background(
     cfg: "FullExternalConfig",
     *,
     r_ws: float,
     rmax: float,
 ) -> bool:
-    """Return whether the default sharp background needs analytic integration."""
-    return cfg.g_ii_override is None and _uses_decoupled_ion_sphere_grid(
-        cfg,
-        r_ws=float(r_ws),
-        rmax=float(rmax),
-    )
+    """Pair the sharp cavity and neutrality integral at the same physical R_WS.
+
+    The boundary in :cite:`StarrettSaumon2014`, Eqs. (1), (3), (4), does not depend on whether
+    R_geometry was floored/capped. Correlated SC backgrounds remain sampled;
+    replacing them by an analytic sharp sphere would change the model.
+    """
+    return cfg.g_ii_override is None and bool(cfg.exact_ws_boundary_quadrature)
 
 
 def _compute_veff_asymptotic_diagnostics(
@@ -399,7 +390,13 @@ def _ion_density_from_r_ws(r_ws: float) -> float:
 
 def _target_radial_grid(*, rmax: float, n_points: int) -> np.ndarray:
     """Return the radial grid used by the low-level full/external solver."""
-    return np.asarray(create_sqrt_grid(rmax=float(rmax), N=int(n_points)).r, dtype=float)
+    # _build_ks_config inherits KSDTFConfig.rmin. Omitting it here selects the
+    # legacy origin-anchored grid: resampled values would then be consumed on
+    # different radii, perturbing even a same-geometry converged restart.
+    return np.asarray(
+        create_sqrt_grid(rmax=float(rmax), N=int(n_points), rmin=KSDTFConfig.rmin).r,
+        dtype=float,
+    )
 
 
 def _resample_initial_potential(
@@ -759,6 +756,9 @@ class FullExternalConfig(CitationMixin):
     # physical plasma volume.  The production default therefore uses the same
     # domain for bound, continuum, and SCF calculations.
     bound_zero_tail_refine: bool = False
+    bound_spectrum_check: bool = True
+    # Independently scout missing shallow poles once after full SCF; failed
+    # candidates enter bounded recovery, never post-hoc density insertion.
     # Optional low-l threshold check.  With no bound_rmax_mult it replaces a
     # shallow Dirichlet-box orbital by an analytic exterior-matched pole
     # normalized over all space, but only when the common physical SCF
@@ -772,6 +772,15 @@ class FullExternalConfig(CitationMixin):
     bound_zero_tail_scan_points: int = 24
     bound_zero_tail_l_max: int = 0
     bound_zero_tail_edge_rel_tol: float = 0.25
+    threshold_state_refine_retry: bool = True
+    # Retry an unresolved shallow state, or a failed full-B3 SCF with truncated
+    # A3, once on the common AA domain. Keep the B3 target and acceptance bounds;
+    # neither a failed SCF nor an unresolved retry is eligible for QOZ/HNC.
+    # An initial inner-neutral pass with sustained stagnation may hand off
+    # early to this recovery. Recovery attempts themselves retain their budgets.
+    scf_stagnation_recovery: bool = True
+    # False retains the full initial SCF budget without disabling threshold or
+    # energy/domain recovery after that budget. No acceptance tolerance changes.
     geometry_r_ws_floor_bohr: float = 0.8
     # Numerical geometry scale floor (Bohr). When R_ws is smaller than this
     # value, all outer-geometry multipliers are applied to this floor instead
@@ -785,6 +794,14 @@ class FullExternalConfig(CitationMixin):
     # user-side starting point to test.
     n_points: int = 2**12
     # Number of radial grid points (sqrt grid used internally).
+    exact_ws_boundary_quadrature: bool = True
+    # Integrate neutrality/reporting through the actual R_WS and use the
+    # analytic sharp IS cavity in full/external Poisson assembly. A sampled
+    # step and an integral stopping at the inner grid node describe different
+    # radii, leaving a mesh-dependent monopole near shallow states.
+    # False retains sampled quadrature as an explicit numerical comparison.
+    # Starrett & Saumon (2014), Eqs. (1), (3), (4), Appendix B,
+    # doi:10.1016/j.hedp.2013.12.001. R_geometry is unchanged.
     mu_bounds: tuple[float, float] = (-200.0, 200.0)
     # Brent bracket for inner mu-neutral solver (Ha).
     full_fixed_mu_ha: float | None = None
@@ -890,7 +907,7 @@ class FullExternalConfig(CitationMixin):
     #   "prev_mu_fd" -> resolve e_max from the previous SCF mu using the FD
     #                   tail criterion, then apply cont_stage2_e_max_floor
     cont_stage2_e_max_occ_tol: float = 1.0e-5
-    # Target FD occupation used by the stage-2 auto e_max estimate.
+    # Upper bound on endpoint FD occupation AND omitted ideal density/n0.
     cont_stage2_e_max_floor: float = 7.0
     # Safety floor (Ha) applied after the stage-2 FD inversion.
     cont_n_e_linear: int = 300
@@ -900,19 +917,26 @@ class FullExternalConfig(CitationMixin):
     # so higher-level parameter scans and mixture solvers can control parallel
     # work explicitly at the outer level without accidental nested oversubscription.
     cont_parallel_mode: str = "shard"
-    # Adaptive parallelization strategy ("shard" validated path).
+    # Both modes share one global adaptive mesh. "shard" dispatches chunks of
+    # selected energy nodes; "batch" dispatches individual node evaluations.
     cont_shards: int | None = 32
-    # Explicit number of continuum energy shards. Using more shards than n_jobs
-    # improves load balance because workers can pick up multiple smaller energy
-    # intervals instead of being pinned to one large static interval.
+    # Maximum task chunks per energy-evaluation batch; changes scheduling only.
     cont_shard_policy: str = "egrid"
     # Shard partition policy when cont_parallel_mode="shard":
-    #   "egrid" -> shard boundaries follow the base-energy grid policy
-    #   "cost"  -> shard boundaries approximately equalize continuum workload
-    #              using the current l_cap(E) estimate.
+    #   "egrid" -> balance counts of already selected nodes
+    #   "cost"  -> balance estimated l_cap(E) workload on those same nodes
     cont_adaptive_reuse_basis: bool = True
     # Reuse adaptive basis caches when available.
     cont_l_cap_strategy: str = "match"
+    # For automatic angular selection, first try at most this l (inclusive).
+    # Failed remainder checks increase it automatically; None disables this
+    # soft limit. Explicit non-"match" angular strategies are left unchanged.
+    cont_l_max_soft: int | None = 250
+    # B3 replaces the outer density, not the wave-function matching problem.
+    # Limit adaptive A3 work to the density fitting domain, with an explicit
+    # partial-wave remainder check; False retains the propagation-box control.
+    cont_b3_density_domain: bool = True
+    cont_partial_wave_tol: float = 1.0e-7
     # l-cap policy for continuum partial-wave summation. "match" is the
     # validated default: the actual per-energy l_cap(E) is set by the A3
     # matching window rather than by the full simulation box.
@@ -945,15 +969,15 @@ class FullExternalConfig(CitationMixin):
     #   "in_scf" -> apply B3 during each SCF iteration
     b3_tail_stage2_mode: str = "in_scf"
     # Same choices as b3_tail_stage1_mode, but for stage-2.
-    b3_tail_target: str = "cont"
+    b3_tail_target: str = "full"
     # Tail replacement target:
-    #   "cont" -> replace n_cont and then rebuild n_full (historical default)
+    #   "cont" -> replace n_cont and then rebuild n_full (legacy/diagnostic)
     #   "full" -> fit n_full itself, as stated in Starrett & Saumon (2014),
     #             Appendix B; important when a diffuse threshold orbital
     #             extends beyond the handoff radius
     #   "both" -> apply both operations for diagnostics
-    # The literal full-density path remains opt-in until its pressure-
-    # ionization common-mu regression is converged across the validation grid.
+    # Appendix B fits the total full and external densities separately. The
+    # external system has no bound states, so its total density is n_cont.
     b3_tail_fit_points: int = 20
     # Number of fit samples used by the B3 least-squares handoff.
     b3_tail_local_fit_width_mult: float | None = 0.064
@@ -1128,6 +1152,9 @@ class FullExternalConfig(CitationMixin):
     # Density change tolerance for full SCF convergence.
     scf_dv_tol: float = 1e-5
     # Potential change tolerance for full SCF convergence.
+    scf_convergence_steps: int = 1
+    # QM full/external: consecutive passes of the branch's existing gates.
+    # Three rejects isolated passes; one retains historical stopping behavior.
     scf_mixing_scheme: str = "eyert"
     # "eyert" (recommended) or "linear".
     scf_mixing_m: int = 5
@@ -1259,6 +1286,9 @@ class FullExternalConfig(CitationMixin):
         if electronic_model not in {"qm", "tf"}:
             raise ValueError("electronic_model must be 'qm' or 'tf'.")
         self.electronic_model = electronic_model
+        _validate_scf_convergence_steps(self.scf_convergence_steps)
+        if electronic_model == "tf" and self.scf_convergence_steps != 1:
+            raise ValueError("scf_convergence_steps is currently supported only for QM SCF.")
         self.gga_core_mode = str(self.gga_core_mode).strip().lower()
         if self.gga_core_mode not in {"finite", "strict"}:
             raise ValueError("gga_core_mode must be 'finite' or 'strict'.")
@@ -1425,6 +1455,9 @@ class FullExternalConfig(CitationMixin):
         ):
             raise ValueError("Require geometry_r_ws_cap_bohr >= geometry_r_ws_floor_bohr.")
 
+        if not 0 < float(self.cont_partial_wave_tol) < 1:
+            raise ValueError("cont_partial_wave_tol must be between zero and one.")
+        self.cont_l_max_soft = qmod._validate_l_max_soft(self.cont_l_max_soft)
         use_b3_full = str(self.b3_tail_stage1_mode).strip().lower() in ("post", "in_scf") or str(
             self.b3_tail_stage2_mode
         ).strip().lower() in ("post", "in_scf")
@@ -1931,12 +1964,96 @@ def _needs_diffuse_threshold_full_b3(result: dict[str, Any]) -> bool:
     )
 
 
+def _needs_threshold_state_refine_retry(
+    result: dict[str, Any],
+    cfg: FullExternalConfig,
+) -> bool:
+    """Request bounded spectral recovery, never relax acceptance gates.
+
+    A resolved bound state says nothing about convergence of the continuum
+    density/potential map. Failed total-density B3 iterations also warrant an
+    A3-domain check (Starrett--Saumon 2014, Appendix B). This is Otter's bounded
+    recovery policy, not a claim that every SCF failure is a threshold failure.
+    A near-stationary, resolved state first gets a same-domain energy check.
+    """
+    short_continuum = float(cfg.cont_rmax_mult or cfg.rmax_mult) < float(cfg.rmax_mult)
+    unresolved = str(result.get("threshold_state_status", "none")).lower() == "unresolved"
+    failed_full_b3 = (
+        result.get("stage2_converged") is False
+        and cfg.b3_tail_target == "full"
+        and cfg.b3_tail_stage2_mode == "in_scf"
+        and short_continuum
+    )
+    return bool(
+        cfg.threshold_state_refine_retry
+        and ((unresolved and (not cfg.bound_zero_tail_refine or short_continuum))
+             or failed_full_b3)
+    )
+
+
+def _threshold_refine_cont_rmax_mult(cfg: FullExternalConfig) -> float:
+    """Match shallow bound and continuum states on the same potential domain.
+
+    A3 normally truncates the scattering problem before the AA box edge. Near
+    pressure ionization that omits the outer potential seen by the matched
+    bound orbital, so its continuum compensation can be inconsistent. Extend
+    A3 to the existing AA boundary; keep the grid and B3 handoff unchanged.
+    This is a domain refinement, not a change of charge or acceptance criteria.
+    See Starrett & Saumon (2014), Appendix B, doi:10.1016/j.hedp.2013.12.001.
+    """
+    return float(cfg.rmax_mult)
+
+
+def _threshold_energy_refinement(cfg: FullExternalConfig) -> FullExternalConfig:
+    """Resolve both sides of E=0 in the existing threshold recovery only.
+
+    An s pole transfers weight to the low-energy continuum. Searching for
+    weaker bound states while still omitting E < 1e-6 Ha breaks that
+    compensation; a fixed 1e-8-Ha bound floor can also switch SCF density
+    abruptly. Keep the spectrum, logarithmic anchors and adaptive interval
+    floor consistent. These are numerical recovery settings, not new M(E),
+    occupation or acceptance criteria. Ordinary unrefined AA is unchanged.
+    """
+    return replace(
+        cfg,
+        bound_zero_tail_min_binding_ha=min(cfg.bound_zero_tail_min_binding_ha, 1e-12),
+        bound_zero_tail_scan_points=max(cfg.bound_zero_tail_scan_points, 64),
+        cont_e_min=min(cfg.cont_e_min, 1e-10),
+        cont_e_tol=min(cfg.cont_e_tol, 2e-4),
+        cont_dE_min=min(cfg.cont_dE_min, 1e-10),
+        cont_near_zero_log_grid=True,
+        cont_near_zero_log_points_per_decade=max(cfg.cont_near_zero_log_points_per_decade, 8),
+        cont_near_zero_log_max_nodes=max(cfg.cont_near_zero_log_max_nodes, 80),
+    )
+
+
+def _needs_scf_energy_refinement(result: dict[str, Any], cfg: FullExternalConfig) -> bool:
+    """Distinguish a near-stationary SCF from an unresolved threshold orbital.
+
+    An adaptive quadrature floor can keep B3's density/slope oscillating even
+    when the bound representation is resolved. Check energy accuracy on the
+    SAME spatial domain before paying for a cold extended-domain solve.
+    This is a bounded numerical recovery, not a relaxed acceptance threshold.
+    """
+    if (result.get("stage2_converged") is not False
+            or result.get("threshold_state_status") == "unresolved"
+            or cfg.cont_energy_mode != "adaptive"):
+        return False
+    errors = [max(float(h.get("dn_rel", np.inf)), float(h.get("dv_rel", np.inf)))
+              for h in result.get("history", [])[-12:]]
+    potential = np.asarray(result.get("v_full", []), dtype=float)
+    return bool(len(errors) >= 4 and any(np.isfinite(e) and e < 0.05 for e in errors)
+                and potential.size and np.all(np.isfinite(potential))
+                and np.isfinite(result.get("mu", np.nan)))
+
+
 def _apply_paired_pseudoatom_b3_charge_closure(
     result: dict[str, Any],
     cfg: FullExternalConfig,
     *,
     r_ws: float,
     rmax: float,
+    allow_diffuse_threshold_full_b3: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Close an unsafe pseudoatom tail through a paired B3 reconstruction.
 
@@ -2000,6 +2117,7 @@ def _apply_paired_pseudoatom_b3_charge_closure(
     )
     diffuse_threshold_full_b3 = bool(
         str(full_controls["target"]) == "cont"
+        and bool(allow_diffuse_threshold_full_b3)
         and _needs_diffuse_threshold_full_b3(out)
     )
     meta["diffuse_threshold_full_b3"] = diffuse_threshold_full_b3
@@ -2224,6 +2342,11 @@ def _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(
     existing = dict(existing) if isinstance(existing, dict) else {}
     result_meta = out.get("meta", {})
     result_meta = dict(result_meta) if isinstance(result_meta, dict) else {}
+    if "b3_diffuse_threshold_policy" in result_meta:
+        return out, {
+            "applied": False,
+            "reason": "current result preserves the requested self-consistent B3 policy",
+        }
     tail_target = str(result_meta.get("b3_tail_target", "cont")).lower()
     if not _needs_diffuse_threshold_full_b3(out):
         return out, {"applied": False, "reason": "no diffuse threshold state"}
@@ -2298,6 +2421,7 @@ def _reclose_legacy_diffuse_threshold_pseudoatom_for_qoz(
         cfg,
         r_ws=r_ws,
         rmax=float(r[-1]),
+        allow_diffuse_threshold_full_b3=True,
     )
     if not bool(closure.get("applied", False)) or str(
         closure.get("density_target", "")
@@ -2443,7 +2567,10 @@ def _build_continuum_params(
     solve_rmax = float(b3["solve_rmax"]) if b3["solve_rmax"] is not None else float(rmax)
     e_max_value = max(float(cfg.cont_e_max), float(cfg.cont_e_min))
     l_pad = 2
-    l_max_value = min(int(np.ceil(np.sqrt(2.0 * e_max_value) * solve_rmax + float(l_pad))), 150)
+    # Appendix B requires l_max > sqrt(2 E_max) R on the numerical A3 box.
+    # A fixed ceiling of 150 silently depleted the outer density in dilute,
+    # hot cases; B3 then fitted that truncation error as a physical tail.
+    l_max_value = int(np.ceil(np.sqrt(2.0 * e_max_value) * solve_rmax + float(l_pad)))
 
     tail_model = str(b3["model"])
     if for_external and cfg.ext_b3_tail_model is not None:
@@ -2455,7 +2582,9 @@ def _build_continuum_params(
     )
     params: dict[str, Any] = {
         "l_max": int(max(l_max_value, 0)),
-        "l_max_ceiling": 150,
+        "l_max_ceiling": None,
+        "l_max_soft": cfg.cont_l_max_soft,
+        "partial_wave_tol": float(cfg.cont_partial_wave_tol),
         "l_pad": int(l_pad),
         "e_min": float(cfg.cont_e_min),
         "near_zero_log_grid": bool(cfg.cont_near_zero_log_grid),
@@ -2556,6 +2685,17 @@ def _build_continuum_params(
     if b3["solve_rmax"] is not None:
         params["solve_rmax"] = float(b3["solve_rmax"])
     if str(cfg.cont_energy_mode).lower() == "adaptive":
+        if (cfg.cont_b3_density_domain and b3["mode"] == "in_scf"
+                and b3["r_fit_max"] is not None and b3["r_cut"] is not None):
+            # Conservatively cover the entire permitted fit window, including
+            # physical/auto fits, a wider user-selected local stencil, and the
+            # index-based fit/bridge on coarse grids. Keep A3 propagation intact.
+            grid = _target_radial_grid(rmax=rmax, n_points=cfg.n_points)
+            cut = min(int(np.searchsorted(grid, b3["r_cut"])), grid.size-1)
+            end = min(cut + max(b3["fit_points"], b3["blend_points"], 3) + 1, grid.size-1)
+            required = max(float(b3["r_fit_max"]), float(grid[end]),
+                           float(grid[cut]) + float(b3["local_fit_width"] or 0.0))
+            params["density_rmax"] = min(required, solve_rmax)
         params["adaptive_mode"] = str(adaptive_mode)
         params["n_e_base"] = int(cfg.cont_n_e_base)
         params["e_base_grid"] = str(cfg.cont_e_base_grid)
@@ -2808,9 +2948,8 @@ def _build_ks_config(
                 cfg, r_ws=float(r_ws), rmax=float(rmax)
             )
         ),
-        exact_ws_boundary_quadrature=bool(
-            _uses_decoupled_ion_sphere_grid(cfg, r_ws=float(r_ws), rmax=float(rmax))
-        ),
+        exact_ws_boundary_quadrature=bool(cfg.exact_ws_boundary_quadrature),
+        bound_spectrum_check=bool(cfg.bound_spectrum_check),
         verbose=bool(cfg.show_scf_progress or cfg.debug or cfg.verbose),
         debug=bool(cfg.debug or cfg.verbose),
         print_every=int(cfg.print_every),
@@ -2821,6 +2960,7 @@ def _build_ks_config(
         store_final_bound_debug=bool(cfg.store_final_bound_debug),
         dn_tol=float(cfg.scf_dn_tol),
         dv_tol=float(cfg.scf_dv_tol),
+        convergence_steps=cfg.scf_convergence_steps,
         v_full_init=v_full_init,
         v_ext_init=v_ext_init,
         v_corr_full=v_corr_full,
@@ -3287,6 +3427,7 @@ def _external_fixed_mu_scf(
     gga_core_zr: float = 0.05,
     g_ii: np.ndarray | None = None,
     v_corr_ext: np.ndarray | None = None,
+    convergence_steps: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """
     External-only SCF loop with fixed (mu, n0).
@@ -3294,8 +3435,10 @@ def _external_fixed_mu_scf(
     The map follows Eq.(7)-style external source build:
       n_ext -> V_ext -> mixed V_ext -> new n_ext
     """
-    from otter.electronic.ks_dft import _select_continuum_model
+    from otter.electronic.ks_dft import _select_continuum_model, _require_density_domain_tail
 
+    _validate_scf_convergence_steps(convergence_steps)
+    convergence_streak = 0
     ext_params = dict(ext_params_base)
     scheme = str(mixing_scheme).strip().lower()
     if scheme not in ("linear", "eyert"):
@@ -3455,6 +3598,7 @@ def _external_fixed_mu_scf(
                         "source_charge_target": 0.0,
                     }
                     b3_charge_constraint_applied = True
+                _require_density_domain_tail(params_iter, {}, tail_meta_ext)
             except Exception as exc:
                 tail_meta_ext = {
                     **dict(tail_meta_ext),
@@ -3474,7 +3618,11 @@ def _external_fixed_mu_scf(
                 # of the external SCF.
                 b3_tail_active_this_iter = False
         if not b3_tail_active_this_iter:
-            n_ext_raw = continuum.density(r, float(mu), float(temperature_ha), params=params_iter)
+            # The fallback consumes raw A3 outside the B3 fit window; do not
+            # reuse a partial-wave sum converged only on that smaller domain.
+            params_raw = dict(params_iter)
+            params_raw.pop("density_rmax", None)
+            n_ext_raw = continuum.density(r, float(mu), float(temperature_ha), params=params_raw)
             n_ext_pre_tail = np.asarray(n_ext_raw, dtype=float)
 
             # 2) Trusted-region closure and (optional) source-charge closure.
@@ -3746,16 +3894,20 @@ def _external_fixed_mu_scf(
         b3_constraint_ok = bool(
             (not b3_constraint_required) or b3_charge_constraint_applied
         )
-        if (
+        passed = (
             (not in_ph_stage)
             and b3_constraint_ok
             and dn_rel < float(dn_tol)
             and dv_rel < float(dv_tol)
-        ):
+        )
+        convergence_streak = convergence_streak + 1 if passed else 0
+        history[-1]["convergence_streak"] = convergence_streak
+        if convergence_streak >= convergence_steps:
             status = {
                 "iters": it + 1,
                 "err": err,
                 "converged": True,
+                "scf_convergence_steps": int(convergence_steps),
                 "history": history,
                 "ph_kappa": float(ph_kappa_use),
                 "ph_kappa_iters": int(ph_iters_use),
@@ -3778,6 +3930,7 @@ def _external_fixed_mu_scf(
         "err": float(prev_err),
         "converged": False,
         "history": history,
+        "scf_convergence_steps": int(convergence_steps),
         "ph_kappa": float(ph_kappa_use),
         "ph_kappa_iters": int(ph_iters_use),
         "final_ph_kappa": (
@@ -3789,6 +3942,7 @@ def _external_fixed_mu_scf(
     return n_ext, v_ext, status
 
 
+@qmod._free_basis_cache_scope()
 def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     """
     Run validated two-stage full SCF, then optional fixed-mu external SCF.
@@ -3899,9 +4053,9 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     mu_guess = mu_guess_from_density(n_i, zbar=float(cfg.mu_guess_zbar))
 
     k_max = np.sqrt(2.0 * float(cfg.cont_e_max))
-    l_max = min(int(np.ceil(k_max * rmax + 2.0)), 150)
+    l_max = int(np.ceil(k_max * rmax + 2.0))
     cont_solve_rmax = float(geometry["solve_rmax"]) if geometry["solve_rmax"] is not None else float(rmax)
-    cont_l_max_ceiling = min(int(np.ceil(k_max * cont_solve_rmax + 2.0)), 150)
+    cont_l_max_ceiling = None
     if report:
         _print_state_summary(
             symbol=symbol,
@@ -3914,7 +4068,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
             rmax=float(rmax),
             n_points=int(cfg.n_points),
             l_max=int(l_max),
-            cont_l_max_ceiling=int(cont_l_max_ceiling),
+            cont_l_max_ceiling=cont_l_max_ceiling,
             run_mode=str(cfg.run_mode),
             cont_rmax_mult=cfg.cont_rmax_mult,
             cont_rmax_eff_mult=(
@@ -3963,6 +4117,18 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
             candidate.get("stage2_converged", candidate.get("converged", False))
         ):
             raise ValueError("full_result_init must be a converged full-AA result.")
+        if int(candidate.get("scf_convergence_steps", 1)) < cfg.scf_convergence_steps:
+            raise ValueError("full_result_init does not meet the requested SCF confirmation count; recompute full.")
+        expected_ws_quadrature = (
+            "exact_boundary_linear" if cfg.exact_ws_boundary_quadrature else "sampled_step_grid"
+        )
+        candidate_meta = candidate.get("meta", {})
+        if (not isinstance(candidate_meta, dict)
+                or candidate_meta.get("ws_charge_quadrature") != expected_ws_quadrature):
+            raise ValueError(
+                "full_result_init has incompatible or unrecorded WS charge quadrature; "
+                "recompute full with the requested exact_ws_boundary_quadrature."
+            )
         candidate_r = np.asarray(candidate["r"], dtype=float)
         if (
             candidate_r.ndim != 1
@@ -4040,13 +4206,34 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         )
 
     use_stage2_continuation_init = bool(cfg.continuation_stage2_from_init) and v_full_init is not None
-    skip_stage1 = bool(use_stage2_continuation_init and int(cfg.stage1_max_iter) <= 0)
+    cold_fixed_mu_skip = bool(
+        cfg.full_fixed_mu_ha is not None
+        and not use_stage2_continuation_init
+        and int(cfg.stage1_max_iter) <= 0
+    )
+    skip_stage1 = bool(
+        cold_fixed_mu_skip
+        or (use_stage2_continuation_init and int(cfg.stage1_max_iter) <= 0)
+    )
     if reusable_full is not None:
         stage1 = {
             "history": list(reusable_full.get("stage1_history", [])),
             "mu": float(reusable_full.get("stage1_mu", reusable_full["mu"])),
             "converged": bool(reusable_full.get("stage1_converged", True)),
             "v_full": np.asarray(reusable_full["v_full"], dtype=float),
+        }
+    elif cold_fixed_mu_skip:
+        # SC recovery is cold and keeps the IS mu. A zero-step fixed-mu SCF
+        # has no orbitals/energy cache to return: skip it, rather than calling
+        # the low-level solver with zero iterations or inventing a solution.
+        stage1 = {
+            "history": [],
+            "mu": float(cfg.full_fixed_mu_ha),
+            "converged": False,
+            "v_full": (
+                -float(z_nuc) / r_target
+                if v_full_init is None else np.asarray(v_full_init).copy()
+            ),
         }
     elif skip_stage1:
         if scf_report:
@@ -4146,6 +4333,14 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
             scf_mixing_scheme_override=stage2_mixer_scheme,
             scf_mixing_m_override=stage2_mixer_m,
         )
+        # Only the initial inner-neutral pass may hand off early, and only
+        # when this workflow owns the bounded energy/domain recovery below.
+        # Raw KS solves, fixed-mu runs and recovery attempts keep their budgets.
+        cfg2_local = replace(cfg2_local, stop_on_stagnation=bool(
+            cfg.scf_stagnation_recovery and cfg2_local.mu_mode == "neutral"
+            and cfg2_local.mu_strategy == "inner"
+            and _needs_threshold_state_refine_retry({"stage2_converged": False}, cfg)
+        ))
         full_local = solve_ks_dft_is(cfg2_local)
         full_local = _apply_b3_post_to_full_result(
             full_local,
@@ -4200,6 +4395,182 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     )
     result["perf_summary_full"] = dict(result["perf_summary_stage2"])
     result["workflow"] = "full_then_ext"
+
+    threshold_refine_retry = _needs_threshold_state_refine_retry(result, cfg)
+    energy_refine_record = None
+    if threshold_refine_retry and _needs_scf_energy_refinement(result, cfg):
+        if report:
+            print("[AA] near-stationary full SCF; checking finer energy quadrature on the same A3 domain")
+        first_pass_s = float(time.perf_counter() - started)
+        refined_cfg = replace(
+            cfg, cont_n_e_base=2*int(cfg.cont_n_e_base),
+            cont_e_tol=0.1*float(cfg.cont_e_tol), cont_dE_min=0.1*float(cfg.cont_dE_min),
+            v_full_init=np.asarray(result["v_full"]).copy(),
+            v_full_init_r=np.asarray(result["r"]).copy(),
+            continuation_mu_init=float(result["mu"]), continuation_stage2_from_init=True,
+            # Keep the same mixer; the only numerical change is quadrature.
+            continuation_scf_mixing_scheme=None, continuation_scf_mixing_m=None,
+            continuation_scf_mix=None, stage1_max_iter=0,
+            stage2_max_iter=min(int(cfg.stage2_max_iter), 60),
+            full_result_init=None, threshold_state_refine_retry=False, save_data=False,
+        )
+        try:
+            refined = solve_full_then_external(refined_cfg)
+        except RuntimeError as exc:
+            # Keep the original cold domain recovery available when the
+            # cheaper energy-only check itself encounters a numerical failure.
+            refined = {"stage2_converged": False, "refinement_error": str(exc)}
+        accepted = bool(refined.get("stage2_converged")
+                        and refined.get("threshold_state_status") != "unresolved")
+        total_s = float(time.perf_counter() - started)
+        energy_refine_record = {
+            "applied": True, "accepted": accepted, "same_spatial_domain": True,
+            "seed": "same_state_first_pass_potential", "first_pass_runtime_s": first_pass_s,
+            "refinement_runtime_s": total_s-first_pass_s,
+            "first_pass_iters": result.get("stage2_iters"),
+            "first_pass_stop_reason": result.get("scf_stop_reason"),
+            "refinement_iters": refined.get("stage2_iters"),
+            "e_tol": refined_cfg.cont_e_tol, "min_energy_width_ha": refined_cfg.cont_dE_min,
+            "n_e_base": refined_cfg.cont_n_e_base,
+            "error": refined.get("refinement_error"),
+        }
+        if accepted:
+            refined["scf_energy_refine_retry"] = energy_refine_record
+            refined["runtime_s"] = total_s
+            refined["meta"] = {**refined.get("meta", {}), "runtime_s": total_s,
+                               "scf_energy_refine_retry": energy_refine_record}
+            if cfg.save_data:
+                refined["saved_paths"] = save_full_external_data(
+                    output_dir=cfg.save_output_dir, element_symbol=symbol, z=int(z_nuc),
+                    temperature_ev=float(cfg.temperature_ev), rho_g_cc=float(cfg.rho_g_cc),
+                    suffix=str(cfg.save_suffix), result=refined, metadata=refined["meta"],
+                )
+            return refined
+    if threshold_refine_retry:
+        unresolved = str(result.get("threshold_state_status", "none")).lower() == "unresolved"
+        retry_reason = "unresolved threshold state" if unresolved else "unconverged full-B3 SCF"
+        diagnostics = result.get("bound_state_diagnostics", {})
+        diagnostics = dict(diagnostics) if isinstance(diagnostics, dict) else {}
+        shallow = diagnostics.get("shallowest", {})
+        shallow = dict(shallow) if isinstance(shallow, dict) else {}
+        missing_poles = diagnostics.get("spectrum_check", {}).get("candidates", [])
+        if missing_poles:
+            # The deepest recorded shell is not the missing pole. Recover the
+            # detected angular channel/window instead of silently defaulting to s.
+            candidate = max(missing_poles, key=lambda item: int(item["l"]))
+            shallow = {"l": candidate["l"],
+                       "binding_below_continuum_edge_ha": max(
+                           abs(item["energy_ha"]) for item in missing_poles)}
+        try:
+            shallow_l = max(0, int(shallow.get("l", 0)))
+        except (TypeError, ValueError):
+            shallow_l = 0
+        try:
+            shallow_binding_ha = float(
+                shallow.get("binding_below_continuum_edge_ha", np.nan)
+            )
+        except (TypeError, ValueError):
+            shallow_binding_ha = np.nan
+        if not unresolved:
+            # Do not reinterpret a deeply bound, resolved shell as a shallow
+            # pole merely because the density/potential fixed point failed.
+            shallow_l = int(cfg.bound_zero_tail_l_max)
+            shallow_binding_ha = np.nan
+        retry_max_binding_ha = max(
+            float(cfg.bound_zero_tail_max_binding_ha),
+            1.0e-2,
+            (
+                1.25 * shallow_binding_ha
+                if np.isfinite(shallow_binding_ha) and shallow_binding_ha > 0.0
+                else 0.0
+            ),
+        )
+        retry_cont_rmax_mult = _threshold_refine_cont_rmax_mult(cfg)
+        if report:
+            print(
+                f"[AA] {retry_reason}; retrying with zero-tail "
+                f"matching through l={shallow_l}"
+                f"; A3 extends to {retry_cont_rmax_mult:g} R_geometry"
+            )
+        first_pass_runtime_s = float(time.perf_counter() - started)
+        retry_cfg = _threshold_energy_refinement(replace(
+            cfg,
+            bound_zero_tail_refine=True,
+            bound_zero_tail_l_max=max(int(cfg.bound_zero_tail_l_max), shallow_l),
+            bound_zero_tail_max_binding_ha=retry_max_binding_ha,
+            bound_zero_tail_scan_points=max(int(cfg.bound_zero_tail_scan_points), 64),
+            cont_rmax_mult=retry_cont_rmax_mult,
+            cont_parallel_mode="batch",
+            v_full_init=None,
+            continuation_stage2_from_init=False,
+            stage1_max_iter=0,
+            stage2_max_iter=max(int(cfg.stage2_max_iter), 300),
+            scf_dn_tol=min(float(cfg.scf_dn_tol), 1.0e-6),
+            scf_dv_tol=min(float(cfg.scf_dv_tol), 1.0e-6),
+            # A requested bound-pole search range is not evidence of a
+            # high-l continuum resonance. Only an actually unresolved high-l
+            # threshold warrants overriding the user's integration strategy.
+            cont_adaptive_mode_stage2=(
+                "phase-root"
+                if unresolved and shallow_l >= 1
+                else str(cfg.cont_adaptive_mode_stage2)
+            ),
+            full_result_init=None,
+            threshold_state_refine_retry=False,
+            save_data=False,
+        ))
+        retried = solve_full_then_external(retry_cfg)
+        retry_runtime_s = float(retried.get("runtime_s", np.nan))
+        total_runtime_s = float(time.perf_counter() - started)
+        retry_record = {
+            "enabled": True,
+            "applied": True,
+            "reason": retry_reason,
+            "shallow_l": int(shallow_l),
+            "shallow_binding_ha": shallow_binding_ha,
+            "max_binding_ha": retry_max_binding_ha,
+            "initial_cont_rmax_mult": cfg.cont_rmax_mult,
+            "retry_cont_rmax_mult": retry_cont_rmax_mult,
+            "initial_cont_parallel_mode": str(cfg.cont_parallel_mode),
+            "retry_cont_parallel_mode": "batch",
+            "first_pass_runtime_s": first_pass_runtime_s,
+            "first_pass_iters": result.get("stage2_iters"),
+            "first_pass_stop_reason": result.get("scf_stop_reason"),
+            "retry_runtime_s": retry_runtime_s,
+            "total_runtime_s": total_runtime_s,
+        }
+        retried["threshold_state_refine_retry"] = retry_record
+        if energy_refine_record is not None:
+            retried["scf_energy_refine_retry"] = energy_refine_record
+        retried_meta = dict(retried.get("meta", {}))
+        if energy_refine_record is not None:
+            retried_meta["scf_energy_refine_retry"] = energy_refine_record
+        retried_meta.update(
+            {
+                "threshold_state_refine_retry_enabled": True,
+                "threshold_state_refine_retry_applied": True,
+                "threshold_state_refine_retry_shallow_l": int(shallow_l),
+                "threshold_state_refine_retry_first_pass_runtime_s": (
+                    first_pass_runtime_s
+                ),
+                "threshold_state_refine_retry_runtime_s": retry_runtime_s,
+                "runtime_s": total_runtime_s,
+            }
+        )
+        retried["meta"] = retried_meta
+        retried["runtime_s"] = total_runtime_s
+        if cfg.save_data:
+            retried["saved_paths"] = save_full_external_data(
+                output_dir=cfg.save_output_dir,
+                element_symbol=symbol,
+                z=int(z_nuc),
+                temperature_ev=float(cfg.temperature_ev),
+                rho_g_cc=float(cfg.rho_g_cc),
+                suffix=str(cfg.save_suffix),
+                result=retried,
+                metadata=retried_meta,
+            )
+        return retried
 
     if cfg.perf_diag and debug:
         for stage_label, summary in (
@@ -4267,6 +4638,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
             mix=float(cfg.ext_scf_mix),
             dn_tol=float(cfg.ext_scf_dn_tol),
             dv_tol=float(cfg.ext_scf_dv_tol),
+            convergence_steps=cfg.scf_convergence_steps,
             max_iter=int(cfg.ext_scf_max_iter),
             adaptive_mix=bool(cfg.ext_scf_adaptive_mix),
             mixing_scheme=str(cfg.ext_mixing_scheme),
@@ -4346,8 +4718,8 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     )
     if use_analytic_background:
         v_h = spherical_hartree_potential(
-            r, n_potential_source
-        ) + _ion_sphere_background_hartree(
+            r, n_potential_source - n0
+        ) + _ion_sphere_cavity_hartree(
             r,
             n0=n0,
             r_ws=float(result["r_ws"]),
@@ -4535,11 +4907,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     # for direct inspection and for lightweight post-processing of saved
     # NPZ files, so we compute them once here and store them explicitly.
     n_ion = np.asarray(result["n_ion"], dtype=float)
-    exact_ws_boundary = _uses_decoupled_ion_sphere_grid(
-        cfg,
-        r_ws=float(result["r_ws"]),
-        rmax=float(r[-1]),
-    )
+    exact_ws_boundary = bool(cfg.exact_ws_boundary_quadrature)
     q_full_ws = _ws_charge(
         r, np.asarray(result["n_full"], dtype=float), float(result["r_ws"]),
         interpolate_boundary=exact_ws_boundary,
@@ -4906,7 +5274,20 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         ),
         "full_match_kr_min": float(cont_stage2.get("match_kr_min", np.nan)),
         "full_cont_l_max": float(cont_stage2.get("l_max", np.nan)),
-        "full_cont_l_max_ceiling": float(cont_stage2.get("l_max_ceiling", np.nan)),
+        "cont_b3_density_domain": bool(cfg.cont_b3_density_domain),
+        "cont_l_max_soft": cfg.cont_l_max_soft,
+        "full_cont_density_rmax": cont_stage2.get("density_rmax"),
+        "cont_partial_wave_tol": float(cfg.cont_partial_wave_tol),
+        "adaptive_basis_quadrature": (
+            "panel_quadratic_with_integrated_fd"
+            if cfg.cont_energy_mode == "adaptive" and cfg.cont_adaptive_reuse_basis
+            and cfg.electronic_model == "qm" and cfg.full_fixed_mu_ha is None
+            else None
+        ),
+        "full_cont_l_max_ceiling": (
+            np.nan if cont_stage2.get("l_max_ceiling") is None
+            else float(cont_stage2["l_max_ceiling"])
+        ),
         "full_r_fit_max_bohr": (
             float(full_controls["r_fit_max"])
             if full_controls["r_fit_max"] is not None
@@ -5106,6 +5487,9 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "stage1_skipped": bool(result.get("stage1_skipped", False)),
         "stage1_converged": bool(result.get("stage1_converged", False)),
         "stage2_converged": bool(result.get("stage2_converged", False)),
+        "scf_convergence_steps": int(result.get("scf_convergence_steps", 1)),
+        "final_state_map_error": result.get("final_state_map_error"),
+        "bound_spectrum_check": dict(result.get("bound_state_diagnostics", {}).get("spectrum_check", {})),
         "full_result_reused": bool(result.get("full_result_reused", False)),
         "threshold_state_status": str(result.get("threshold_state_status", "none")),
         "threshold_state_localization": str(
@@ -5120,6 +5504,11 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "threshold_tail_domain_status": str(
             result.get("threshold_tail_domain_status", "none")
         ),
+        "b3_diffuse_threshold_policy": "self_consistent_explicit_target",
+        "threshold_state_refine_retry_enabled": bool(
+            cfg.threshold_state_refine_retry
+        ),
+        "threshold_state_refine_retry_applied": False,
         "shallowest_bound_energy_ha": float(
             result.get("shallowest_bound_energy_ha", np.nan)
         ),

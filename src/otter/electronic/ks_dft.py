@@ -57,6 +57,8 @@ from otter.electronic.continuum.scattering import (
     continuum_density_scattering_basis,
     continuum_density_scattering_adaptive,
     gamma_from_phase_shift_cache,
+    _prepare_phase_shift_transport_spectrum,
+    _gamma_from_transport_spectrum,
 )
 from otter.electronic.continuum.ideal import IdealContinuum, ideal_unbound_density
 from otter.electronic.continuum.hybrid import QuantumContinuumHybrid
@@ -107,6 +109,9 @@ def _adaptive_reuse_spectral_controls(params: dict) -> dict:
     silently ignored on the production reuse path.
     """
     return {
+        "density_rmax": params.get("density_rmax"),
+        "l_max_soft": params.get("l_max_soft"),
+        "partial_wave_tol": float(params.get("partial_wave_tol", 1e-7)),
         "near_zero_log_grid": bool(params.get("near_zero_log_grid", True)),
         "near_zero_log_points_per_decade": int(
             params.get("near_zero_log_points_per_decade", 4)
@@ -134,6 +139,74 @@ def _adaptive_reuse_spectral_controls(params: dict) -> dict:
         ),
         "adaptive_shard_policy": str(params.get("adaptive_shard_policy", "egrid")),
     }
+
+
+def _consume_adaptive_scf_basis(
+    energy_cache: dict[float, tuple[np.ndarray, np.ndarray]],
+    energies: np.ndarray,
+) -> np.ndarray:
+    """Move a completed, privately owned SCF cache into one dense basis.
+
+    Adaptive discovery and integration must have finished before this call:
+    scout-only densities are no longer needed, but their phase shifts still
+    contribute to scattering gamma and the final phase-shift output. Accepted
+    cache rows become views so they do not retain a second density allocation.
+    This must never consume a caller-owned reusable scattering cache.
+    """
+    energy_keys = [float(energy) for energy in energies]
+    accepted = set(energy_keys)
+    empty_density = np.empty(0, dtype=float)
+    for energy, (_, phases) in energy_cache.items():
+        if energy not in accepted:
+            energy_cache[energy] = (empty_density, phases)
+
+    n_r = np.asarray(energy_cache[energy_keys[0]][0]).size
+    basis = np.empty((len(energy_keys), n_r), dtype=float)
+    for index, energy in enumerate(energy_keys):
+        density, phases = energy_cache[energy]
+        basis[index] = np.asarray(density, dtype=float)
+        energy_cache[energy] = (basis[index], phases)
+    return basis
+
+
+def _release_scf_cache_densities(
+    energy_cache: dict[float, tuple[np.ndarray, np.ndarray]] | None,
+) -> None:
+    """Retain only phases once an SCF attempt has finished density assembly."""
+    if energy_cache is not None:
+        empty_density = np.empty(0, dtype=float)
+        for energy, (_, phases) in energy_cache.items():
+            energy_cache[energy] = (empty_density, phases)
+
+
+_FD_GAUSS_X, _FD_GAUSS_W = np.polynomial.legendre.leggauss(16)
+
+
+def _occupied_simpson_weights(energies, panels, mu, temperature):
+    """Integrate FD occupation against each panel's quadratic A3 interpolant.
+
+    Simpson controls the smooth *unoccupied* wave-function basis. Simply
+    multiplying its three weights by FD values can miss a narrow Fermi edge
+    at low T, especially as inner-mu changes. Integrate the cheap occupation
+    separately, without solving extra wave functions. Splitting at thermal
+    offsets keeps the fixed Gauss rule resolved even when T << panel width.
+    This is product quadrature for Eq. A3, not a new electronic model.
+    """
+    panels = np.asarray(panels, dtype=float)
+    a, b = panels[:, 0], panels[:, 1]
+    width = b - a
+    thermal = mu + max(float(temperature), 1e-12) * np.array([-32., -8., 0., 8., 32.])
+    cuts = np.column_stack((a, np.clip(thermal[None, :], a[:, None], b[:, None]), b))
+    half = np.diff(cuts, axis=1)/2
+    mid = (cuts[:, 1:] + cuts[:, :-1])/2
+    e = mid[:, :, None] + half[:, :, None]*_FD_GAUSS_X
+    t = (e-a[:, None, None])/width[:, None, None]
+    w = half[:, :, None]*_FD_GAUSS_W*fermi_dirac(e, mu, temperature)
+    lagrange = (2*t*t-3*t+1, 4*t*(1-t), 2*t*t-t)
+    result = np.zeros_like(energies, dtype=float)
+    for node, basis in zip((a, (a+b)/2, b), lagrange):
+        np.add.at(result, np.searchsorted(energies, node), np.sum(w*basis, axis=(1, 2)))
+    return result
 
 
 @njit(cache=True, fastmath=True)
@@ -164,7 +237,7 @@ def _resolve_iteration_continuum_e_max(params: Dict[str, Any],
         controlled by:
 
         - ``e_max_mode``: ``"fixed"`` or ``"prev_mu_fd"``
-        - ``e_max_occ_tol``: target FD occupation threshold
+        - ``e_max_occ_tol``: endpoint occupation and omitted density/n0 bound
         - ``e_max_floor``: safety floor applied after the FD inversion
 
     mu_ref : float
@@ -180,9 +253,10 @@ def _resolve_iteration_continuum_e_max(params: Dict[str, Any],
 
     Notes
     -----
-    For the dynamic ``prev_mu_fd`` mode we choose `e_max` so that the
-    Fermi-Dirac occupation at the previous-SCF chemical potential is below a
-    target threshold:
+    For ``prev_mu_fd``, bound both the endpoint occupation and the omitted
+    ideal continuum density relative to n0. An absolute occupation threshold
+    alone loses significant density when mu/T is negative. B3 tends to the
+    infinite-energy n0, so this loss would masquerade as a density tail.
 
       f_FD(E_max; mu_ref, T) = eps
 
@@ -190,8 +264,12 @@ def _resolve_iteration_continuum_e_max(params: Dict[str, Any],
 
       E_max = mu_ref + T ln((1-eps)/eps).
 
-    The returned value is floored by both ``e_min`` and the optional
-    ``e_max_floor`` safety bound.
+    The density bound uses f(t-eta) <= exp(eta-t) above the cutoff. Concavity
+    of sqrt(t) gives integral_x^inf sqrt(t) exp(-t) dt <=
+    exp(-x) * (sqrt(x) + 1/(2 sqrt(x))). Lower bounds on the full Fermi
+    integral make this conservative without another numerical energy integral.
+    This is an Otter quadrature guard for Starrett2014 Eq. (A3)/Appendix B,
+    not a change to the bound/free edge or a density correction.
     """
     e_min = max(float(params.get("e_min", 1.0e-6)), 1.0e-12)
     mode = str(params.get("e_max_mode", "fixed")).lower().strip()
@@ -207,7 +285,30 @@ def _resolve_iteration_continuum_e_max(params: Dict[str, Any],
     fd_span = temp * math.log((1.0 - occ_tol) / occ_tol)
     e_target = float(mu_ref) + fd_span
     e_floor = max(e_min, float(params.get("e_max_floor", e_min)))
-    return float(max(e_floor, e_target))
+    from scipy.optimize import brentq
+
+    eta = float(mu_ref) / temp
+    if eta <= 0.0:
+        # f(t-eta) >= exp(eta-t)/(1+exp(eta)), t >= 0.
+        log_lower = eta - math.log1p(math.exp(eta)) + math.lgamma(1.5)
+    else:
+        # f >= 1/2 on [0,eta], and F_1/2(eta) >= F_1/2(0) >= Gamma(3/2)/2.
+        log_lower = max(
+            math.lgamma(1.5) - math.log(2.0),
+            1.5 * math.log(eta) - math.log(3.0),
+        )
+
+    def log_tail_excess(x: float) -> float:
+        return (eta - x + 0.5 * math.log(x) + math.log1p(0.5 / x)
+                - log_lower - math.log(occ_tol))
+
+    lower = max(e_floor / temp, e_target / temp, 1.0)
+    if log_tail_excess(lower) <= 0.0:
+        return float(lower * temp)
+    upper = lower + 10.0
+    while log_tail_excess(upper) > 0.0:
+        upper *= 2.0
+    return float(temp * brentq(log_tail_excess, lower, upper))
 
 
 def _resolve_iteration_continuum_l_max(
@@ -336,6 +437,9 @@ class KSDTFConfig(CitationMixin):
     # following the shared-domain Appendix-A construction of Starrett--Saumon
     # (HEDP 10, 35--42, 2014).
     bound_zero_tail_refine: bool = False
+    bound_spectrum_check: bool = True
+    # Final, bounded pole scout independent of the finite-wall level list.
+    # It diagnoses missing candidates; it never adds density after convergence.
     # Optional shallow l=0 exterior-matching check.  Direct matching to an
     # analytic exterior solution is physically meaningful only after the
     # common SCF boundary is asymptotic.  A separately enlarged zero-potential
@@ -431,6 +535,11 @@ class KSDTFConfig(CitationMixin):
     store_scf_snapshots_last: int | None = None
     dn_tol: float | None = None
     dv_tol: float | None = None
+    # Consecutive passes of ALL existing SCF gates; one preserves legacy stops.
+    convergence_steps: int = 1
+    # Inner-neutral SCF only: return an UNCONVERGED state to a recovery-owning
+    # caller if neither best nor typical residual improves over two windows.
+    stop_on_stagnation: bool = False
     # Per-iteration SCF performance diagnostics.
     perf_diag: bool = False
     perf_print_every: int = 1
@@ -641,6 +750,18 @@ def _tail_fit_r_max_for_match(params: Dict[str, Any]) -> float | None:
         return None
     value = params.get("tail_r_fit_max", None)
     return None if value is None else float(value)
+
+
+def _require_density_domain_tail(params, full_tail_meta, cont_tail_meta):
+    """Never accept raw outer A3 density after an optimized B3 fit failed."""
+    if params.get("density_rmax") is not None and not (
+        full_tail_meta.get("applied", False) or cont_tail_meta.get("applied", False)
+    ):
+        raise RuntimeError(
+            "B3 density-domain quadrature requires successful tail replacement; "
+            "raw A3 outside density_rmax is not converged in partial waves. "
+            "Retry with cont_b3_density_domain=False to diagnose the B3 failure."
+        )
 
 
 def _rebuild_continuum_on_full_grid(
@@ -1208,11 +1329,13 @@ def _source_background_charge(
     ion_sphere_radius: float | None = None,
 ) -> float:
     """
-    Return the integrated background contribution ``-n0*g_II``.
+    Return the discrete background contribution to the source charge.
 
     The analytic ion-sphere branch mirrors ``effective_potential_full`` and
-    ``effective_potential_external`` exactly: outside ``R_ws`` the background
-    is the constant ``-n0``, while the inner sphere contributes zero.
+    ``effective_potential_external``: subtract the same quadrature of the
+    uniform density as in the electron count, then add the analytic cavity.
+    Mixing an analytic whole-box background with a discrete electron count
+    would introduce an artificial charge proportional to the box volume.
     """
     r_arr = np.asarray(r, dtype=float)
     g_arr = np.asarray(g_ii, dtype=float)
@@ -1223,13 +1346,9 @@ def _source_background_charge(
             -4.0 * np.pi * float(n0) * _trapz((r_arr**2) * g_arr, r_arr)
         )
     radius = float(np.clip(float(ion_sphere_radius), 0.0, float(r_arr[-1])))
-    return float(
-        -4.0
-        * np.pi
-        * float(n0)
-        * (float(r_arr[-1]) ** 3 - radius**3)
-        / 3.0
-    )
+    return float(4.0 * np.pi * float(n0) * (
+        radius**3 / 3.0 - _trapz(r_arr**2, r_arr)
+    ))
 
 
 def _source_electron_charge_target(
@@ -1314,6 +1433,38 @@ def _enforce_source_charge_closure(
         "q_after": q1,
         "delta_n": delta_n,
     }
+
+
+def _validate_scf_convergence_steps(value: int) -> int:
+    """Reject fractional/boolean iteration counts instead of silently rounding."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < 1:
+        raise ValueError("convergence_steps must be a positive integer.")
+    return int(value)
+
+
+def _scf_stagnated(history: list[dict[str, Any]], *, dn_tol: float | None,
+                   dv_tol: float | None, tol: float) -> bool:
+    """Detect lack of progress, not convergence or its physical cause.
+
+    After at least 80 updates, compare two 20-step windows every ten steps.
+    Require both the best and median tolerance-normalized residual to improve
+    by less than 20%. Include the unmixed map error: small mixed updates alone
+    are not convergence. This bounded-work heuristic only hands control back
+    to a caller with a separate recovery path; it never accepts a failed SCF.
+    """
+    if len(history) < 80 or len(history) % 10:
+        return False
+    tolerances = np.asarray([dn_tol, dv_tol, tol], dtype=float)
+    if not np.all(np.isfinite(tolerances)) or np.any(tolerances <= 0):
+        return False
+    errors = np.asarray([[h.get(k, np.inf) for k in ("dn_rel", "dv_rel", "err")]
+                         for h in history[-40:]], dtype=float) / tolerances
+    if not np.all(np.isfinite(errors)):
+        return False
+    previous, recent = np.max(errors, axis=1).reshape(2, 20)
+    return bool(np.min(recent) > 1.0
+                and np.min(recent) >= .8*np.min(previous)
+                and np.median(recent) >= .8*np.median(previous))
 
 
 def _gauge_aligned_map_error(r: np.ndarray,
@@ -1542,6 +1693,7 @@ def _refine_shallow_bound_states_zero_tail(
     scan_points: int,
     l_max: int,
     edge_rel_tol: float,
+    provisional: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """Replace unresolved shallow box states by matched all-space poles.
 
@@ -1561,17 +1713,20 @@ def _refine_shallow_bound_states_zero_tail(
       considered;
     * either the physical SCF boundary is already asymptotic, or an explicitly
       requested diagnostic bound extension contains a literal zero potential;
-    * for direct physical-boundary matching the *absolute* outer potential
-      must be small relative to the matched binding energy; an extended
+    * for accepting direct physical-boundary matching the *absolute* outer
+      potential must be small relative to the matched binding energy; an extended
       diagnostic additionally rejects an attractive SCF remainder; and
     * failure to bracket a pole never deletes a finite-box state.
 
     This is the orbital counterpart of Wilson et al., JQSRT 99, 658 (2006),
     Appendix A.4, and Starrett et al., CPC 235, 50--62 (2019), Eqs. 21--22.
-    A repulsive positive handoff is retained as an explicit absolute-edge
-    diagnostic but is not allowed to switch the pole on and off: it cannot
-    create the artificial remote bound state that this guard is designed to
-    exclude.  It leaves ``bound_occ_mode='fd'`` unchanged.
+    During SCF, ``provisional=True`` retains a direct-boundary pole even when
+    that truncation is not yet certified. Deleting it at a quality threshold
+    makes the density map discontinuous without changing the Hamiltonian.
+    Its failed guard remains explicit and makes the final state unresolved;
+    this is not permission to accept a non-asymptotic boundary. Diagnostic
+    bound-only extensions retain the original rejection policy. Occupations
+    remain ordinary Fermi--Dirac occupations, not the post-SCF M(E) partition.
     """
     values = np.asarray(eigvals, dtype=float).copy()
     vectors = np.asarray(eigvecs, dtype=float).copy()
@@ -1646,6 +1801,10 @@ def _refine_shallow_bound_states_zero_tail(
                 min_binding=float(min_binding),
                 max_binding=float(max_binding),
                 n_scan=int(scan_points),
+                # A refined search can reach below the scout's default
+                # absolute root tolerance. Resolve those poles relatively;
+                # otherwise the lower search edge becomes a density switch.
+                xtol=min(1e-12, 1e-3*float(min_binding)),
                 tail_fraction=0.1,
                 # The inward Numerov solution includes the complete sampled
                 # potential, including a repulsive Friedel hump in the outer
@@ -1685,7 +1844,8 @@ def _refine_shallow_bound_states_zero_tail(
             if matching_mode == "direct_physical_boundary"
             else edge_ratio
         )
-        if edge_guard_ratio > float(edge_rel_tol):
+        guard_passed = edge_guard_ratio <= float(edge_rel_tol)
+        if not guard_passed:
             meta.setdefault("rejected_states", []).append({
                 "l": int(l_value),
                 "energy_ha": float(energy),
@@ -1702,7 +1862,8 @@ def _refine_shallow_bound_states_zero_tail(
                 if matching_mode == "direct_physical_boundary"
                 else "scf_potential_has_attractive_outer_tail"
             )
-            continue
+            if not (provisional and matching_mode == "direct_physical_boundary"):
+                continue
 
         if shallow_finite.size:
             state_index = int(shallow_finite[np.argmax(values[l_idx, shallow_finite])])
@@ -1731,12 +1892,68 @@ def _refine_shallow_bound_states_zero_tail(
             "edge_relative_to_binding": edge_ratio,
             "edge_absolute_relative_to_binding": edge_abs_ratio,
             "matching_mode": matching_mode,
+            "boundary_guard_passed": bool(guard_passed),
             **dict(state_meta),
         }
         meta["states"].append(state_record)
         meta["applied"] = True
         meta["reason"] = "matched"
     return values, vectors, meta
+
+
+def _audit_bound_spectrum(
+    config: KSDTFConfig, diagnostics: Dict[str, Any], r_bound: np.ndarray,
+    eigvals: np.ndarray, eigvecs: np.ndarray, potential_r: np.ndarray,
+    potential: np.ndarray,
+) -> Dict[str, Any]:
+    """Check for unrepresented shallow poles on the returned Hamiltonian.
+
+    Finite-wall reliability only tests levels already found. A state with
+    kappa*R < 5 can be absent from that list; scout that binding window in
+    every configured l channel using the existing all-space matching method
+    (:cite:`WilsonEtAl2006`, App. A.4; :cite:`StarrettEtAl2019`, Eqs. 21--22).
+    The kappa*R window is an Otter diagnostic heuristic, not a literature
+    completeness criterion.
+    A nonasymptotic-edge candidate requests domain recovery, NOT acceptance.
+    No pole found means only no sign-changing root in this finite scout.
+    """
+    out = dict(diagnostics)
+    if not config.bound_spectrum_check or config.bound_energy_cut_mode != "zero":
+        out["spectrum_check"] = {"status": "not_checked"}
+        return out
+    rb, rp = np.asarray(r_bound), np.asarray(potential_r)
+    max_binding = max(float(config.bound_zero_tail_max_binding), 12.5 / rp[-1]**2)
+    values = np.asarray(eigvals)
+    _, _, probe = _refine_shallow_bound_states_zero_tail(
+        rb, float(np.sqrt(rb[1])-np.sqrt(rb[0])), values, eigvecs,
+        np.asarray(config.l_list), np.interp(rb, rp, potential, right=0.),
+        potential_r=rp, potential=potential, enabled=True,
+        min_binding=float(config.bound_zero_tail_min_binding), max_binding=max_binding,
+        scan_points=max(64, int(config.bound_zero_tail_scan_points)),
+        l_max=max(config.l_list), edge_rel_tol=min(.1, float(config.bound_zero_tail_edge_rel_tol)))
+    missing = [dict(s, energy_ha=s["matched_energy_ha"])
+               for s in probe["states"] if s["action"] == "added_pole_missed_by_finite_wall"]
+    # Rejected candidates have not passed the exterior-domain test. They must
+    # not be inserted as physical states, but neither can we call this spectrum
+    # resolved merely because the finite-wall search did not find them.
+    angular = [int(l) for l in config.l_list]
+    for candidate in probe.get("rejected_states", []):
+        row = values[angular.index(candidate["l"])]
+        if not np.any(np.isfinite(row) & (row < 0.) & (row >= -max_binding)):
+            missing.append(dict(candidate))
+    # An unsupported domain is not evidence that the scout found no pole.
+    checked = "matching_mode" in probe
+    status = ("candidate_missing" if missing else "no_additional_pole_in_window") if checked else "not_checked"
+    check = dict(status=status,
+                 min_binding_ha=float(config.bound_zero_tail_min_binding),
+                 max_binding_ha=max_binding, l_list=angular,
+                 scan_points=max(64, int(config.bound_zero_tail_scan_points)),
+                 candidates=missing, probe_reason=probe["reason"])
+    out["spectrum_check"] = check
+    if missing:
+        out["threshold_status_override"] = "unresolved"
+        out["threshold_representation_override"] = "unrepresented_zero_tail_candidate"
+    return out
 
 
 def _integral_to_radius(
@@ -2329,6 +2546,12 @@ def _annotate_zero_tail_bound_diagnostics(
             state["tail_domain_status"] = "resolved"
             state["numerical_status"] = "resolved"
             state["reasons"] = ["analytic_zero_tail_exterior_matching"]
+        if record.get("boundary_guard_passed") is False:
+            # The pole may stabilize an intermediate SCF map, but neither
+            # its sign nor convergence certifies the omitted physical tail.
+            state["tail_domain_status"] = "unresolved"
+            state["numerical_status"] = "unresolved"
+            state["reasons"] = ["physical_boundary_guard_failed"]
     states.sort(key=lambda item: float(item["energy_ha"]))
     shallowest = max(states, key=lambda item: float(item["energy_ha"])) if states else None
     out["states"] = states
@@ -2337,6 +2560,10 @@ def _annotate_zero_tail_bound_diagnostics(
         str(shallowest["numerical_status"]) if shallowest is not None else "none"
     )
     out["zero_tail_refinement"] = dict(zero_tail_meta)
+    if any(item.get("boundary_guard_passed") is False
+           for item in matched_records.values()):
+        out["threshold_status_override"] = "unresolved"
+        out["threshold_representation_override"] = "provisional_zero_tail_candidate"
     if zero_tail_meta.get("rejected_states") and not zero_tail_meta.get("applied", False):
         out["threshold_status_override"] = "unresolved"
         out["threshold_representation_override"] = "zero_tail_candidate_rejected"
@@ -2860,6 +3087,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
 
     history = []
     scf_converged = False
+    convergence_streak = 0
     n_bound = np.zeros_like(r_cont)
     n_cont = np.zeros_like(r_cont)
     n_cont_pre_tail = np.zeros_like(r_cont)
@@ -3101,6 +3329,8 @@ def _scf_fixed_mu(config: KSDTFConfig,
                     prop_rescale_limit=cont_params.get("prop_rescale_limit", 1e6),
                     energy_cache=energy_cache_full,
                     n_jobs=cont_params.get("n_jobs", None),
+                    l_max_soft=cont_params.get("l_max_soft"),
+                    partial_wave_tol=float(cont_params.get("partial_wave_tol", 1e-7)),
                 )
         if perf_on:
             # fixed-mu path: basis build + continuum integration are the heavy parts.
@@ -3122,6 +3352,8 @@ def _scf_fixed_mu(config: KSDTFConfig,
         # Preserve the literal positive-energy state sum before any optional
         # asymptotic density model is applied.
         n_cont_dft_raw = np.asarray(n_cont_a3, dtype=float).copy()
+        if cont_params.get("density_rmax") is not None:
+            n_cont_dft_raw[r_cont > cont_params["density_rmax"]] = np.nan
         n_cont, n_cont_pre_tail, n_cont_tail_meta = _rebuild_continuum_on_full_grid(
             r_cont,
             n_cont_a3,
@@ -3177,6 +3409,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
             scan_points=int(config.bound_zero_tail_scan_points),
             l_max=int(config.bound_zero_tail_l_max),
             edge_rel_tol=float(config.bound_zero_tail_edge_rel_tol),
+            provisional=True,
         )
         n_bound_bound_raw = _bound_density(
             r_bound,
@@ -3487,6 +3720,9 @@ def _scf_fixed_mu(config: KSDTFConfig,
         # policy as full-source closure: keep n_ext unchanged for r < r_trust and
         # smoothly blend to n0 outside. This modifies n_ext itself so downstream
         # diagnostics (n_pa, n_scr, Q_pa) use the stabilized external density.
+        _require_density_domain_tail(cont_params, n_full_tail_meta, n_cont_tail_meta)
+        if compute_external:
+            _require_density_domain_tail(cont_params_ext, {}, ext_charge_tail_meta)
         use_ext_source_closure = bool(cont_params_ext.get("source_closure", False))
         if str(cont_params_ext.get("tail_mode", "off")).strip().lower() == "in_scf":
             use_ext_source_closure = use_ext_source_closure and bool(
@@ -3904,13 +4140,16 @@ def _scf_fixed_mu(config: KSDTFConfig,
                 )
             )
         )
-        if (
+        passed = (
             (not in_ph_stage)
             and b3_constraint_ok
             and dn_ok
             and dv_ok
             and err_ok
-        ):
+        )
+        convergence_streak = convergence_streak + 1 if passed else 0
+        history[-1]["convergence_streak"] = convergence_streak
+        if convergence_streak >= config.convergence_steps:
             scf_converged = True
             break
 
@@ -3954,6 +4193,10 @@ def _scf_fixed_mu(config: KSDTFConfig,
         bound_diagnostics,
         zero_tail_bound_meta,
     )
+    if scf_converged:
+        bound_diagnostics = _audit_bound_spectrum(
+            config, bound_diagnostics, r_bound, vals, vecs, r_cont,
+            np.interp(r_cont, r_bound, v_full_bound))
     bound_q_ion_ws = _bound_ion_charge_table(
         r_bound,
         vals,
@@ -4008,6 +4251,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
         "v_ext": v_ext,
         "history": history,
         "converged": bool(scf_converged),
+        "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),
         "ph_kappa": float(config.ph_kappa),
         "ph_kappa_iters": config.ph_kappa_iters,
@@ -4067,6 +4311,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
     7) Apply source-closure regularization (optional, potential-source only).
     8) Mix potentials (linear/Eyert), record diagnostics, test convergence.
     """
+    stagnation_stop = False
     r_cont, step_cont, kind_cont, r_bound, step_bound, kind_bound = _build_grid_pair(config)
     r_ws = _resolve_r_ws(config.n_i, config.r_ws)
     if config.n_i is None:
@@ -4145,6 +4390,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
 
     history = []
     scf_converged = False
+    convergence_streak = 0
     n_bound = np.zeros_like(r_cont)
     n_cont = np.zeros_like(r_cont)
     n_cont_pre_tail = np.zeros_like(r_cont)
@@ -4415,6 +4661,8 @@ def _scf_neutral_inner(config: KSDTFConfig,
                     prop_rescale_limit=cont_params.get("prop_rescale_limit", 1e6),
                     energy_cache=energy_cache_basis,
                     n_jobs=n_jobs_basis,
+                    l_max_soft=cont_params.get("l_max_soft"),
+                    partial_wave_tol=float(cont_params.get("partial_wave_tol", 1e-7)),
                     return_meta=bool(perf_on),
                 )
                 if perf_on:
@@ -4456,6 +4704,8 @@ def _scf_neutral_inner(config: KSDTFConfig,
                         prop_rescale_limit=cont_params_ext.get("prop_rescale_limit", 1e6),
                         energy_cache=energy_cache_basis_ext,
                         n_jobs=n_jobs_basis_ext,
+                        l_max_soft=cont_params_ext.get("l_max_soft"),
+                        partial_wave_tol=float(cont_params_ext.get("partial_wave_tol", 1e-7)),
                         return_meta=bool(perf_on),
                     )
                     if perf_on:
@@ -4553,9 +4803,9 @@ def _scf_neutral_inner(config: KSDTFConfig,
                     **_adaptive_reuse_spectral_controls(cont_params),
                 )
                 if len(energy_cache_basis) >= 2:
-                    e_grid = np.array(sorted(float(e) for e in energy_cache_basis.keys()), dtype=float)
-                    cont_basis = np.vstack([np.asarray(energy_cache_basis[float(e)][0], dtype=float) for e in e_grid])
-                    e_weights = _trapz_weights(e_grid)
+                    e_grid = np.asarray(basis_meta["quadrature_energies"], dtype=float)
+                    cont_basis = _consume_adaptive_scf_basis(energy_cache_basis, e_grid)
+                    e_weights = np.asarray(basis_meta["quadrature_weights"], dtype=float)
                     if basis_meta is None:
                         basis_meta = {}
                     basis_meta["n_e_basis"] = int(e_grid.size)
@@ -4625,14 +4875,26 @@ def _scf_neutral_inner(config: KSDTFConfig,
                         **_adaptive_reuse_spectral_controls(cont_params_ext),
                     )
                     if len(energy_cache_basis_ext) >= 2:
-                        e_grid_ext = np.array(sorted(float(e) for e in energy_cache_basis_ext.keys()), dtype=float)
-                        cont_basis_ext = np.vstack(
-                            [np.asarray(energy_cache_basis_ext[float(e)][0], dtype=float) for e in e_grid_ext]
-                        )
-                        e_weights_ext = _trapz_weights(e_grid_ext)
+                        e_grid_ext = np.asarray(basis_meta_ext["quadrature_energies"], dtype=float)
+                        cont_basis_ext = _consume_adaptive_scf_basis(energy_cache_basis_ext, e_grid_ext)
+                        e_weights_ext = np.asarray(basis_meta_ext["quadrature_weights"], dtype=float)
                         if basis_meta_ext is None:
                             basis_meta_ext = {}
                         basis_meta_ext["n_e_basis"] = int(e_grid_ext.size)
+        # This attempt owns a complete, frozen phase cache only when the full
+        # continuum basis is available. A density fallback can discover more
+        # phases at each mu and must keep using the public, uncached gamma path.
+        # Scope the snapshot to this attempt so potential updates, e_max retries,
+        # and the final refresh all prepare their own transport spectrum.
+        reuse_transport_spectrum = (
+            ion_gamma_mode == "scattering"
+            and cont_basis is not None
+            and e_grid is not None
+        )
+        transport_spectrum = (
+            _prepare_phase_shift_transport_spectrum(energy_cache_full, n_i_val)
+            if reuse_transport_spectrum else None
+        )
         if perf_on:
             perf_local["basis_build"] = time.perf_counter() - t_stage_local
             t_stage_local = time.perf_counter()
@@ -4672,6 +4934,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
             scan_points=int(config.bound_zero_tail_scan_points),
             l_max=int(config.bound_zero_tail_l_max),
             edge_rel_tol=float(config.bound_zero_tail_edge_rel_tol),
+            provisional=True,
         )
         if perf_on:
             perf_local["bound_solve"] = time.perf_counter() - t_stage_local
@@ -4712,6 +4975,10 @@ def _scf_neutral_inner(config: KSDTFConfig,
             if cont_basis is not None and e_grid is not None:
                 occ = fermi_dirac(e_grid, mu_val, config.temperature)
                 weights_cont = occ * e_weights if e_weights is not None else occ * _trapz_weights(e_grid)
+                if basis_meta is not None and "quadrature_panels" in basis_meta:
+                    weights_cont = _occupied_simpson_weights(
+                        e_grid, basis_meta["quadrature_panels"], mu_val, config.temperature,
+                    )
                 n_cont_eval = _weighted_energy_sum_numba(
                     np.asarray(cont_basis, dtype=float),
                     np.asarray(weights_cont, dtype=float),
@@ -4755,16 +5022,27 @@ def _scf_neutral_inner(config: KSDTFConfig,
             raw_len = min(int(np.asarray(n_cont_eval, dtype=float).size), int(r_cont.size))
             if raw_len > 0:
                 n_cont_dft_raw_val[:raw_len] = np.asarray(n_cont_eval, dtype=float)[:raw_len]
+            if cont_params.get("density_rmax") is not None:
+                n_cont_dft_raw_val[r_cont > cont_params["density_rmax"]] = np.nan
 
             if ion_gamma_mode == "scattering":
-                ion_gamma_val = ion_gamma_scale * gamma_from_phase_shift_cache(
-                    energy_cache_full,
-                    mu_val,
-                    config.temperature,
-                    n_i_val,
-                    n0_eval,
-                    n0_floor=config.mu_n0_floor,
-                )
+                if reuse_transport_spectrum:
+                    ion_gamma_val = ion_gamma_scale * _gamma_from_transport_spectrum(
+                        transport_spectrum,
+                        mu_val,
+                        config.temperature,
+                        n0_eval,
+                        n0_floor=config.mu_n0_floor,
+                    )
+                else:
+                    ion_gamma_val = ion_gamma_scale * gamma_from_phase_shift_cache(
+                        energy_cache_full,
+                        mu_val,
+                        config.temperature,
+                        n_i_val,
+                        n0_eval,
+                        n0_floor=config.mu_n0_floor,
+                    )
             else:
                 ion_gamma_val = float(config.ion_bound_gamma)
             n_bound_bound_raw = _bound_density(
@@ -5179,6 +5457,10 @@ def _scf_neutral_inner(config: KSDTFConfig,
                     if e_weights_ext is not None
                     else occ_ext * _trapz_weights(e_grid_ext)
                 )
+                if basis_meta_ext is not None and "quadrature_panels" in basis_meta_ext:
+                    weights_ext = _occupied_simpson_weights(
+                        e_grid_ext, basis_meta_ext["quadrature_panels"], mu_val, config.temperature,
+                    )
                 n_ext_eval = _weighted_energy_sum_numba(
                     np.asarray(cont_basis_ext, dtype=float),
                     np.asarray(weights_ext, dtype=float),
@@ -5351,6 +5633,9 @@ def _scf_neutral_inner(config: KSDTFConfig,
                 if not tail_fallback_on_error:
                     raise exc
 
+        _require_density_domain_tail(cont_params, n_full_tail_meta, n_cont_tail_meta)
+        if compute_external:
+            _require_density_domain_tail(cont_params_ext, {}, ext_charge_tail_meta)
         use_ext_source_closure = bool(cont_params_ext.get("source_closure", False))
         if str(cont_params_ext.get("tail_mode", "off")).strip().lower() == "in_scf":
             use_ext_source_closure = use_ext_source_closure and bool(
@@ -5435,6 +5720,13 @@ def _scf_neutral_inner(config: KSDTFConfig,
             bound_diagnostics_local,
             zero_tail_bound_meta,
         )
+
+        # These caches were created inside this attempt. No subsequent consumer
+        # needs their densities: gamma and final spectral output use only phases.
+        # In particular, do not let returned attempts pin the dense basis into
+        # the next iteration or final density refresh through cached row views.
+        _release_scf_cache_densities(energy_cache_full)
+        _release_scf_cache_densities(energy_cache_ext)
 
         return {
             "perf": perf_local,
@@ -6028,14 +6320,26 @@ def _scf_neutral_inner(config: KSDTFConfig,
                 )
             )
         )
-        if (
+        passed = (
             (not in_ph_stage)
             and b3_constraint_ok
             and dn_ok
             and dv_ok
             and err_ok
-        ):
+        )
+        convergence_streak = convergence_streak + 1 if passed else 0
+        history[-1]["convergence_streak"] = convergence_streak
+        if convergence_streak >= config.convergence_steps:
             scf_converged = True
+            break
+
+        if (config.stop_on_stagnation and not in_ph_stage
+                and scf_iters - len(history) >= 20
+                and _scf_stagnated(history, dn_tol=config.dn_tol,
+                                   dv_tol=config.dv_tol, tol=config.tol)):
+            stagnation_stop = True
+            if config.verbose:
+                print("[SCF] stalled; returning an unconverged state for recovery")
             break
 
         n_full_prev = n_full.copy()
@@ -6173,6 +6477,31 @@ def _scf_neutral_inner(config: KSDTFConfig,
             "mode": "disabled",
         }
 
+    # Refreshing n[V_returned] can change the map near a threshold. The old
+    # iterate's residual is not a certificate for this returned density.
+    # Reuse the physical map and the *same* configured tolerance; never replace
+    # V here, which would again leave the spectrum on a different Hamiltonian.
+    final_state_map_error = None
+    if scf_converged:
+        final_map = effective_potential_full(
+            r_cont, n_full_source, n0, g_ii, config.Z,
+            xc_model=config.xc_model, kappa=0.0,
+            ion_sphere_radius=(r_ws if config.analytic_ion_sphere_background else None),
+            gga_core_mode=config.gga_core_mode, gga_core_zr=config.gga_core_zr,
+        ) + v_corr_full
+        if shift_tail:
+            final_map = final_map - _tail_shift_value(
+                r_cont, final_map, config.v_tail_fraction, config.v_tail_mode)
+        if outer_decay:
+            final_map = _apply_outer_v_eff_decay(
+                r_cont, final_map, r_ws=r_ws, enabled=True,
+                start_rws=float(config.full_v_eff_outer_decay_start_rws),
+                decay_length_rws=float(config.full_v_eff_outer_decay_length_rws))
+        final_state_map_error = _gauge_aligned_map_error(
+            r_cont, final_map, v_full, config.v_tail_fraction, config.v_tail_mode)
+        scf_converged = bool(
+            np.isfinite(final_state_map_error) and final_state_map_error < config.tol)
+
     n_scr = n_pa - n_ion
     cont_phase_energy = None
     cont_phase_shift = None
@@ -6183,6 +6512,10 @@ def _scf_neutral_inner(config: KSDTFConfig,
             cont_phase_energy = e_sorted
             cont_phase_shift = np.vstack(delta_rows)
     bound_diagnostics = dict(final_state["bound_state_diagnostics"])
+    if scf_converged:
+        bound_diagnostics = _audit_bound_spectrum(
+            config, bound_diagnostics, r_bound, final_state["_bound_eigvals"],
+            final_state["_bound_eigvecs"], r_cont, v_full)
     result = {
         "Z": float(config.Z),
         "r": r_cont,
@@ -6190,6 +6523,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
         "r_cont": r_cont,
         "g_ii": g_ii,
         "n0": float(n0),
+        "final_state_map_error": final_state_map_error,
         "n_bound": n_bound,
         "n_ion": n_ion,
         "bound_q_ion_ws": np.asarray(
@@ -6213,6 +6547,9 @@ def _scf_neutral_inner(config: KSDTFConfig,
         "n_full_pre_tail": n_full_pre_tail,
         "n_full_source": n_full_source,
         "n_full_source_provenance": "final_refreshed_fixed_point_candidate",
+        "scf_stop_reason": ("converged" if scf_converged else
+                            "final_refresh_map_residual" if final_state_map_error is not None else
+                            "stagnation" if stagnation_stop else "not_converged"),
         "source_closure_meta": source_closure_meta,
         "n_ext": n_ext,
         "n_ext_pre_tail": n_ext_pre_tail,
@@ -6222,6 +6559,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
         "v_ext": v_ext,
         "history": history,
         "converged": bool(scf_converged),
+        "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),
         "ph_kappa": float(config.ph_kappa),
         "ph_kappa_iters": config.ph_kappa_iters,
@@ -6272,6 +6610,7 @@ def solve_ks_dft_is(config: KSDTFConfig) -> Dict[str, Any]:
     dict
         Dictionary containing grids, densities, potentials, and diagnostics.
     """
+    _validate_scf_convergence_steps(config.convergence_steps)
     gga_core_mode = str(config.gga_core_mode).strip().lower()
     if gga_core_mode not in {"finite", "strict"}:
         raise ValueError("gga_core_mode must be 'finite' or 'strict'.")
@@ -6579,7 +6918,11 @@ def solve_ks_dft_is(config: KSDTFConfig) -> Dict[str, Any]:
             rtol=1e-6,
             maxiter=int(config.mu_max_iter),
         )
-        result_root, charge_root = cache.get(float(mu_root), _eval_mu(mu_root, v_full, v_ext))
+        mu_root_key = float(mu_root)
+        if mu_root_key in cache:
+            result_root, charge_root = cache[mu_root_key]
+        else:
+            result_root, charge_root = _eval_mu(mu_root_key, v_full, v_ext)
         if abs(charge_root) > config.mu_tol and config.debug:
             print(f"  [mu] Brent root charge_err={charge_root:.3e} exceeds mu_tol={config.mu_tol:.3e}")
         result_root["mu_history"] = mu_history

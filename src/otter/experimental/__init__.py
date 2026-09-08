@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from otter.experimental.sc_feedback import (
     SCFeedbackConfig,
+    SCFeedbackConvergenceError,
     estimate_mixture_correlation_potentials,
     mixture_ionic_background_profiles,
     solve_sc_feedback_workflow,
@@ -11,6 +12,7 @@ from otter.experimental.sc_feedback import (
 
 __all__ = [
     "SCFeedbackConfig",
+    "SCFeedbackConvergenceError",
     "estimate_mixture_correlation_potentials",
     "mixture_ionic_background_profiles",
     "solve_sc_feedback_workflow",

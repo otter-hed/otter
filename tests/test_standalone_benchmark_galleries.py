@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import runpy
 
 import pytest
 
@@ -36,6 +37,33 @@ GALLERIES = (
     / "examples"
     / "plot_starrett_saumon_2013_electronic.py",
 )
+
+
+def test_recomputation_queue_does_not_require_private_ch2_caches() -> None:
+    tasks = runpy.run_path(str(ROOT / "tools/recompute_all_data.py"))["TASKS"]
+    settings = tasks["ch2_hnc_md"].environment
+    assert settings["OTTER_CH2_RECOMPUTE_ELECTRONIC"] == "1"
+    assert settings["OTTER_CH2_RUN_MD"] == "0"
+    assert settings["OTTER_REQUIRE_ALL_CH2_HNC_MD"] == "1"
+
+
+def test_examples_and_benchmarks_inherit_the_single_aa_worker_default() -> None:
+    """Parallelize states, without silently changing per-AA worker counts."""
+    from otter.electronic.full_external import FullExternalConfig
+
+    assert FullExternalConfig.cont_n_jobs == 1
+    for directory in ("examples", "docs/examples", "benchmarks/examples", "benchmarks/runners"):
+        for path in (ROOT / directory).glob("*.py"):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.keyword):
+                    assert node.arg not in {"cont_n_jobs", "cont_shards"}, path
+                elif isinstance(node, ast.Dict):
+                    assert not any(
+                        isinstance(key, ast.Constant)
+                        and key.value in {"cont_n_jobs", "cont_shards"}
+                        for key in node.keys
+                    ), path
 
 
 @pytest.mark.parametrize("path", GALLERIES, ids=lambda path: path.stem)
@@ -108,6 +136,28 @@ def test_ion_structure_library_adds_wunsch_vmhnc_and_reproducible_md() -> None:
     assert "RUN_WUNSCH_SAME_POTENTIAL_MD = True" in source
     assert "MD_MIN_HALF_SPACE_MODES_PER_BIN = 4" in source
     assert 'states[result_id]["md_sii_vectors_per_bin"]' in source
+
+
+def test_argha_roy_archive_retains_only_the_displayed_structure_factor() -> None:
+    path = ROOT / "benchmarks" / "examples" / "plot_argha_roy_carbon_sii.py"
+    source = path.read_text(encoding="utf-8")
+    assert '"sii_k"' in source
+    assert '"n_scr_k_electrons"' not in source
+    assert '"vii_k_ha_bohr3"' not in source
+    assert '"f_k"' not in source
+    assert '"q_k"' not in source
+    assert "QOZ_N_POINTS = 4096" not in source
+    assert "HNC_TOL = 1.0e-4" not in source
+
+
+def test_rayleigh_gallery_reconstructs_derived_weight() -> None:
+    path = ROOT / "docs" / "examples" / "plot_al_rayleigh_weight.py"
+    source = path.read_text(encoding="utf-8")
+    assert "def rayleigh_weight(" in source
+    assert '"q_k": q' in source
+    assert '"f_k": f' in source
+    assert '"sii_k": sii' in source
+    assert '"rayleigh_weight": weight' not in source
 
 
 def test_johnson_gallery_compares_hnc_and_vmhnc_on_the_same_is_state() -> None:

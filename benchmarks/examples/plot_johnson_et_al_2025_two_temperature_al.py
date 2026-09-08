@@ -2,6 +2,13 @@ r"""
 Two-temperature aluminium: Johnson et al. (2025)
 =================================================
 
+.. note::
+
+   The displayed HNC, VMHNC and MD curves are the archived, matched-potential
+   comparison, not a rerun with the September 2026 AA changes. All three
+   are retained together to preserve the closure comparison. See
+   :doc:`/benchmarks/validation_20260908` for the current validation scope.
+
 This benchmark compares Otter IS-QOZ :math:`g_{ii}(r)` obtained with ordinary
 HNC and Rosenfeld--Ashcroft VMHNC closures with the three reference curve
 families in Fig. 2(a)--2(d) of :cite:t:`JohnsonEtAl2025`.
@@ -77,11 +84,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.constants import physical_constants
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import (
     PlasmaWorkflowConfig,
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
 )
+from otter.numerics.constants import BOHR_TO_ANGSTROM, EV_TO_KELVIN, HA_TO_EV
 from otter.plotting import grid_figsize, save_figure, set_style
 
 
@@ -98,6 +107,8 @@ if os.environ.get("OTTER_USE_JOHNSON_CANDIDATES", "0") == "1":
 # A fresh benchmark recomputation also performs classical MD with the same
 # Otter IS-QOZ pair potential.  Set this to False only when LAMMPS is absent.
 RUN_SAME_POTENTIAL_MD = True
+if os.environ.get("OTTER_RUN_JOHNSON_SAME_POTENTIAL_MD", "1") == "0":
+    RUN_SAME_POTENTIAL_MD = False
 LAMMPS_EXECUTABLE = "lmp"
 MPI_LAUNCHER = "mpirun"
 MPI_PROCESSES_PER_MD_STATE = 10
@@ -108,13 +119,9 @@ MD_EQUILIBRATION_OMEGA_P_INV = 50.0
 MD_PRODUCTION_OMEGA_P_INV = 500.0
 MD_RDF_BINS = 500
 
-# Two states run concurrently; each AA solve parallelizes its continuum channels.
+# Two states run concurrently; each AA uses the single-worker default.
 MAX_STATE_WORKERS = 2
-CONTINUUM_WORKERS_PER_STATE = 6
-QOZ_N_POINTS = 4096
 
-LFC_MODEL = "chabrier1990"
-HNC_TOL = 1.0e-4
 HNC_CLOSURE_TOL = 2.5e-3
 VMHNC_ETA_TOL = 1.0e-6
 R_RETAIN_MAX_BOHR = 20.0
@@ -292,23 +299,16 @@ def workflow_config(
     bridge_model: str = "none",
 ) -> PlasmaWorkflowConfig:
     """Build one IS workflow; only ``bridge_model`` changes between curves."""
-    aa_overrides: dict[str, Any] = {
-        "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-        "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-    }
     return PlasmaWorkflowConfig(
         elements=["Al"],
         temperature_ev=float(state["te_ev"]),
         ion_temperature_ev=1.0,
         rho_g_cc=2.7,
-        aa_overrides=aa_overrides,
-        hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
         hnc_max_iter=500,
         hnc_bridge_model=str(bridge_model),
         vmhnc_eta_tol=float(VMHNC_ETA_TOL),
         show_progress=False,
-        verbose=False,
     )
 
 
@@ -326,7 +326,9 @@ def _pack_structure_result(
         raise RuntimeError("The threshold-state representation is unresolved.")
     if ion.get("hnc_converged") is not True:
         raise RuntimeError("HNC did not reach a physical fixed point.")
-    if float(ion["hnc_output_residual"]) > HNC_TOL:
+    if float(ion["hnc_output_residual"]) > float(
+        workflow["configuration"]["hnc_tol"]
+    ):
         raise RuntimeError("HNC residual exceeds the configured tolerance.")
     if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
         raise RuntimeError("The g/S transform-closure audit failed.")
@@ -394,6 +396,7 @@ def pack_result(
 
     payload = {
         "schema_version": np.asarray("otter_johnson_2025_al_v3"),
+        "storage_profile": np.asarray("benchmark_analysis"),
         "state_id": np.asarray(str(state["state_id"])),
         "rho_g_cc": np.asarray(2.7),
         "te_ev": np.asarray(float(state["te_ev"])),
@@ -411,10 +414,7 @@ def pack_result(
             for key, value in vmhnc.items()
             if key
             in {
-                "r_bohr",
                 "gii_r",
-                "k_bohr_inv",
-                "sii_k",
                 "hnc_solver_path",
                 "hnc_fallback_used",
                 "hnc_primary_best_residual",
@@ -435,6 +435,7 @@ def pack_result(
     metadata = {
         "archive_role": "project_generated_example_or_benchmark_baseline",
         "archive_schema_version": "otter_johnson_2025_al_v3",
+        "configuration": dict(hnc_workflow["configuration"]),
         "citation_keys": list(
             workflow_config(state, bridge_model="vmhnc").citation_keys
         )
@@ -464,10 +465,9 @@ def _write_lammps_pair_table(
     potential_ha: np.ndarray,
 ) -> tuple[int, float]:
     """Write a shifted-force Al pair table in LAMMPS metal units."""
-    bohr_to_angstrom = 0.529177210903
     selected = (r_bohr >= 0.1) & (r_bohr <= R_RETAIN_MAX_BOHR)
-    radius = np.asarray(r_bohr[selected], dtype=float) * bohr_to_angstrom
-    energy = np.asarray(potential_ha[selected], dtype=float) * 27.211386245988
+    radius = np.asarray(r_bohr[selected], dtype=float) * BOHR_TO_ANGSTROM
+    energy = np.asarray(potential_ha[selected], dtype=float) * HA_TO_EV
     force = -np.gradient(energy, radius, edge_order=2)
 
     # Make both V and F continuous where the tabulated pair list ends.
@@ -507,7 +507,7 @@ def _read_lammps_rdf(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     values = np.stack(blocks)
     g_blocks = values[:, :, 2]
     return (
-        values[0, :, 1] / 0.529177210903,
+        values[0, :, 1] / BOHR_TO_ANGSTROM,
         np.mean(g_blocks, axis=0),
         np.std(g_blocks, axis=0, ddof=1) / np.sqrt(g_blocks.shape[0]),
     )
@@ -584,10 +584,10 @@ def run_same_potential_md(payload: dict[str, np.ndarray]) -> dict[str, np.ndarra
     rdf_every = 100
     rdf_repeat = 50
     rdf_block_steps = rdf_every * rdf_repeat
-    lattice_angstrom = (4.0 / (n_i / 0.529177210903**3)) ** (1.0 / 3.0)
+    lattice_angstrom = (4.0 / (n_i / BOHR_TO_ANGSTROM**3)) ** (1.0 / 3.0)
     seed = 20260825 + int(round(float(payload["te_ev"]) * 10.0))
     cells = MD_CELLS_PER_AXIS
-    temperature_k = 11604.51812155008
+    temperature_k = EV_TO_KELVIN
     rdf_fix = (
         f"fix             rdf all ave/time {rdf_every} {rdf_repeat} "
         f"{rdf_block_steps} c_gr[*] mode vector ave one file rdf_blocks.dat"
@@ -744,12 +744,13 @@ def refresh_archive_metadata(payload: dict[str, np.ndarray]) -> None:
     """Bring a completed closure/MD payload onto the compact archive schema."""
     metadata = json.loads(str(payload["metadata_json"].item()))
     metadata["schema_version"] = "otter_compact_archive_metadata_v1"
-    metadata["configuration"] = {
+    resolved = workflow_config({"te_ev": float(payload["te_ev"])})
+    metadata["analysis_configuration"] = {
         "structure_model": "IS",
-        "lfc_model": LFC_MODEL,
+        "lfc_model": str(resolved.qoz_response_lfc_model),
         "ionic_closures": ["HNC", "Rosenfeld--Ashcroft VMHNC"],
         "same_potential_md": bool("md_gii_r" in payload),
-        "hnc_tolerance": HNC_TOL,
+        "hnc_tolerance": float(resolved.hnc_tol),
         "vmhnc_eta_tolerance": VMHNC_ETA_TOL,
     }
     metadata["state"] = {
@@ -804,10 +805,24 @@ def save_candidates(
                 }
             )
             continue
+        payload = states[state_id]
+        for key in (
+            "k_bohr_inv",
+            "sii_k",
+            "vmhnc_k_bohr_inv",
+            "vmhnc_sii_k",
+            "vii_r_ha",
+            "ion_density_bohr3",
+            "md_k_bohr_inv",
+            "md_sii_k",
+            "md_sii_block_sem",
+            "md_sii_vectors_per_bin",
+        ):
+            payload.pop(key, None)
         filename = f"{state_id}.npz"
         path = CANDIDATE_DIR / filename
-        refresh_archive_metadata(states[state_id])
-        np.savez_compressed(path, **states[state_id])
+        refresh_archive_metadata(payload)
+        np.savez_compressed(path, **payload)
         record = {
             "state_id": state_id,
             "status": "candidate_unreviewed",
@@ -815,12 +830,12 @@ def save_candidates(
             "baseline_sha256": sha256_file(path),
             "structure_model": "IS",
             "ionic_closures": ["HNC", "Rosenfeld--Ashcroft VMHNC"],
-            "zbar_partition": float(states[state_id]["zbar_partition"]),
-            "vmhnc_eta": float(states[state_id]["vmhnc_eta"]),
+            "zbar_partition": float(payload["zbar_partition"]),
+            "vmhnc_eta": float(payload["vmhnc_eta"]),
             "vmhnc_variational_residual": float(
-                states[state_id]["vmhnc_variational_residual"]
+                payload["vmhnc_variational_residual"]
             ),
-            "same_potential_md": "md_gii_r" in states[state_id],
+            "same_potential_md": "md_gii_r" in payload,
         }
         records.append(record)
         print(f"[candidate] {path}")
@@ -840,10 +855,14 @@ def save_candidates(
         },
         "configuration": {
             "aa_n_points": 4096,
-            "qoz_n_points_before_padding": QOZ_N_POINTS,
-            "continuum_workers_per_state": CONTINUUM_WORKERS_PER_STATE,
-            "lfc_model": LFC_MODEL,
-            "hnc_tolerance": HNC_TOL,
+            "qoz_n_points_before_padding": int(
+                workflow_config(STATES[0]).qoz_linear_n_points
+            ),
+            "continuum_workers_per_state": FullExternalConfig.cont_n_jobs,
+            "lfc_model": str(
+                workflow_config(STATES[0]).qoz_response_lfc_model
+            ),
+            "hnc_tolerance": float(workflow_config(STATES[0]).hnc_tol),
             "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
             "hnc_primary_solver": "anderson",
             "hnc_fallback_solver": "newton_krylov",
@@ -993,7 +1012,7 @@ def print_metrics() -> None:
         payload = states[state_id]
         closures = (
             ("HNC", "r_bohr", "gii_r"),
-            ("VMHNC", "vmhnc_r_bohr", "vmhnc_gii_r"),
+            ("VMHNC", "r_bohr", "vmhnc_gii_r"),
             ("same-potential MD", "md_r_bohr", "md_gii_r"),
         )
         for closure, r_key, g_key in closures:
@@ -1056,7 +1075,7 @@ for panel_index, (axis, definition) in enumerate(zip(axes, STATES)):
             zorder=2,
         )
         axis.plot(
-            np.asarray(payload["vmhnc_r_bohr"]),
+            np.asarray(payload["r_bohr"]),
             np.asarray(payload["vmhnc_gii_r"]),
             color=colors[3 % len(colors)],
             lw=2.1,

@@ -26,6 +26,7 @@ In addition to the two overview figures, the script writes slide-sized,
 single-purpose electronic-density, :math:`g_{ii}(r)`, and :math:`S_{ii}(k)`
 figures as matching PNG/PDF pairs under the workflow output directory.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -38,8 +39,10 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
+from otter.electronic.full_external import FullExternalConfig
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow
 from otter.io.state import StateExportOptions, build_state_arrays
+from otter.numerics.constants import HA_TO_EV
 from otter.plotting import grid_figsize, save_figure, style_context
 
 
@@ -55,14 +58,12 @@ RHO_G_CC = 8.1
 TE_EV = 1.0
 TI_EV = 1.0
 
-CONTINUUM_WORKERS = 4
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 # =============================================================================
 
 
 SCHEMA = "otter_al_full_workflow_v2"
-HARTREE_TO_EV = 27.211386245988
 
 
 def repository_root() -> Path:
@@ -102,9 +103,7 @@ def sha256_file(path: Path) -> str:
 
 def load_reviewed_state() -> dict[str, np.ndarray]:
     """Verify and load the reviewed current-Otter result."""
-    manifest = json.loads(
-        (BASELINE_DIR / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((BASELINE_DIR / "manifest.json").read_text(encoding="utf-8"))
     record = manifest["state"]
     path = BASELINE_DIR / str(record["data_file"])
     if sha256_file(path) != str(record["data_sha256"]):
@@ -125,14 +124,9 @@ def workflow_config() -> PlasmaWorkflowConfig:
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
-        aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS,
-            "cont_shards": 2 * CONTINUUM_WORKERS,
-        },
         hnc_tol=HNC_TOL,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
         hnc_max_iter=1000,
-        show_progress=True,
     )
 
 
@@ -176,7 +170,9 @@ def pack_workflow(
     ion = dict(workflow["ion"])
     portable = build_state_arrays(
         workflow,
-        options=StateExportOptions(r_max_bohr=20.0, k_max_bohr_inv=20.0),
+        options=StateExportOptions(
+            profile="ion_structure",
+        ),
     )
     r_e = np.asarray(electronic["r"], dtype=float)
     r = np.asarray(ion["r"], dtype=float)
@@ -184,19 +180,16 @@ def pack_workflow(
     e_mask = r_e <= 20.0
     r_mask = r <= 20.0
     k_mask = k <= 20.0
-    threshold_status = str(
-        electronic.get("threshold_state_status", "none")
-    ).strip().lower()
+    threshold_status = (
+        str(electronic.get("threshold_state_status", "none")).strip().lower()
+    )
     charge_fix = dict(ion["charge_fix"])
     q_scale = float(charge_fix["scale_factor"])
     if not np.isfinite(q_scale) or q_scale <= 0.0:
         raise RuntimeError("The QOZ screening-charge scale is not physical.")
     q_used = np.asarray(ion["n_scr_k"], dtype=float)
-    q_raw = q_used / q_scale
     if threshold_status == "unresolved":
-        raise RuntimeError(
-            "The final average atom has an unresolved threshold state."
-        )
+        raise RuntimeError("The final average atom has an unresolved threshold state.")
     if float(ion["hnc_best_residual"]) > HNC_TOL:
         raise RuntimeError("The final HNC residual exceeds the stated tolerance.")
     if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
@@ -213,6 +206,7 @@ def pack_workflow(
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
         "benchmark_id": np.asarray("al_full_workflow_1ev"),
+        "storage_profile": np.asarray("gallery_analysis"),
         "state_id": np.asarray("al_full_workflow_rho8p1_te1_ti1"),
         "element": np.asarray(ELEMENT),
         "rho_g_cc": np.asarray(RHO_G_CC),
@@ -224,7 +218,7 @@ def pack_workflow(
                     "electronic_model": "qm",
                     "structure_model": "IS",
                     "aa_n_points": 4096,
-                    "continuum_workers": CONTINUUM_WORKERS,
+                    "continuum_workers": FullExternalConfig.cont_n_jobs,
                     "bound_occ_mode": "fd",
                     "bound_rmax_mult": None,
                     "bound_zero_tail_refine": False,
@@ -242,11 +236,8 @@ def pack_workflow(
         "producer_elapsed_s": np.asarray(elapsed_s),
         "r_e_bohr": r_e[e_mask],
         "n_full_bohr3": profile("n_full"),
-        "n_free_bohr3": profile("n_cont"),
-        "n_cont_bohr3": profile("n_cont"),
         "n_bound_bohr3": profile("n_bound"),
         "n_ext_bohr3": profile("n_ext"),
-        "n_ion_bohr3": profile("n_ion"),
         "n_pa_bohr3": profile("n_pa"),
         "n_scr_bohr3": profile("n_scr"),
         "v_full_ha": profile("v_full", fallback="v_scf"),
@@ -259,9 +250,7 @@ def pack_workflow(
         "zbar_aa": np.asarray(float(electronic["zbar"])),
         "zbar_partition": np.asarray(float(ion["zbar_partition"])),
         "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
-        "q_scr_raw": np.asarray(
-            float(ion["zbar_screening_integral_raw"])
-        ),
+        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
         "q_scr_grid_raw": np.asarray(float(charge_fix["q_scr_raw"])),
         "q_scr_used": np.asarray(float(charge_fix["q_scr_used"])),
         "q_scr_scale_factor": np.asarray(q_scale),
@@ -278,21 +267,10 @@ def pack_workflow(
         "vii_r_ha": np.asarray(ion["vii_r"], dtype=float)[r_mask],
         "vii_k_ha_bohr3": np.asarray(ion["vii_k"], dtype=float)[k_mask],
         "n_scr_k_electrons": q_used[k_mask],
-        "n_scr_k_raw_electrons": q_raw[k_mask],
-        "chi0_k_bohr3_per_ha": np.asarray(
-            ion["chi0_k"], dtype=float
-        )[k_mask],
-        "gee_k": np.asarray(ion["gee_k"], dtype=float)[k_mask],
-        "n_ion_k_electrons": np.asarray(
-            portable["n_ion_k"], dtype=float
-        )[0],
+        "n_ion_k_electrons": np.asarray(portable["n_ion_k"], dtype=float)[0],
         "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),
-        "hnc_closure_mismatch": np.asarray(
-            float(ion["closure_transform_max_abs"])
-        ),
-        "hnc_closure_tolerance": np.asarray(
-            float(ion["closure_transform_tol"])
-        ),
+        "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
+        "hnc_closure_tolerance": np.asarray(float(ion["closure_transform_tol"])),
         "hnc_iters": np.asarray(int(ion["hnc_iters"])),
     }
     payload.update(finite_bound_levels(electronic))
@@ -344,7 +322,7 @@ def level_rows() -> list[tuple[str, float, float, float, float]]:
             (
                 label,
                 float(energy),
-                HARTREE_TO_EV * float(energy),
+                HA_TO_EV * float(energy),
                 float(fd),
                 float(occupation),
             )
@@ -353,8 +331,7 @@ def level_rows() -> list[tuple[str, float, float, float, float]]:
 
 
 print(
-    f"Al: rho={float(state['rho_g_cc']):g} g/cc, "
-    f"Te=Ti={float(state['te_ev']):g} eV"
+    f"Al: rho={float(state['rho_g_cc']):g} g/cc, " f"Te=Ti={float(state['te_ev']):g} eV"
 )
 print(
     f"mu={float(state['mu_ha']):.8f} Ha, "
@@ -374,13 +351,11 @@ print(
     f"scale={float(state['q_scr_scale_factor']):.8f}"
 )
 print(
-    f"{'level':>7s} {'E [Ha]':>13s} {'E [eV]':>13s} "
-    f"{'FD':>10s} {'occupation':>12s}"
+    f"{'level':>7s} {'E [Ha]':>13s} {'E [eV]':>13s} " f"{'FD':>10s} {'occupation':>12s}"
 )
 for row in level_rows():
     print(
-        f"{row[0]:>7s} {row[1]:13.6f} {row[2]:13.6f} "
-        f"{row[3]:10.6f} {row[4]:12.6f}"
+        f"{row[0]:>7s} {row[1]:13.6f} {row[2]:13.6f} " f"{row[3]:10.6f} {row[4]:12.6f}"
     )
 
 
@@ -412,7 +387,6 @@ with style_context("thesis", palette="bing"):
     )
     density_curves = (
         ("n_full_bohr3", r"$n^{\rm full}$"),
-        ("n_free_bohr3", r"$n^{\rm free}$"),
         ("n_bound_bohr3", r"$n^{\rm ion}$"),
         ("n_ext_bohr3", r"$n^{\rm ext}$"),
         ("n_pa_bohr3", r"$n^{\rm PA}$"),
@@ -425,9 +399,7 @@ with style_context("thesis", palette="bing"):
             (shell * np.asarray(state[key], dtype=float))[mask_e],
             label=label,
         )
-    ax_density.axvline(
-        r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$"
-    )
+    ax_density.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
     ax_density.set(
         xlabel=r"$r$ [Bohr]",
         ylabel=r"$4\pi r^2n(r)$ [Bohr$^{-1}$]",
@@ -451,9 +423,7 @@ with style_context("thesis", palette="bing"):
             label=label,
         )
     ax_potential.axhline(0.0, color="0.5", ls=":", lw=0.9)
-    ax_potential.axvline(
-        r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$"
-    )
+    ax_potential.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
     ax_potential.set(
         xlabel=r"$r$ [Bohr]",
         ylabel=r"$V(r)$ [Ha]",
@@ -492,9 +462,7 @@ with style_context("thesis", palette="bing"):
         label=r"$V_{\rm nuc}$",
     )
     ax_decomposition.axhline(0.0, color="0.5", ls=":", lw=0.9)
-    ax_decomposition.axvline(
-        r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$"
-    )
+    ax_decomposition.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
     ax_decomposition.set(
         xlabel=r"$r$ [Bohr]",
         ylabel=r"$V(r)$ [Ha]",
@@ -624,16 +592,13 @@ with style_context("thesis", palette="bing"):
             (shell * np.asarray(state[key], dtype=float))[mask_e],
             label=label,
         )
-    ax_density_slide.axvline(
-        r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$"
-    )
+    ax_density_slide.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
     ax_density_slide.set(
         xlabel=r"$r$ [Bohr]",
         ylabel=r"$4\pi r^2 n(r)$ [Bohr$^{-1}$]",
         xlim=(-0.5, 8.0),
         ylim=(-1.0, 15.0),
-        title=slide_title + r", $\mu=" +
-        f"{float(state['mu_ha']):.5f}" + r"$ Ha",
+        title=slide_title + r", $\mu=" + f"{float(state['mu_ha']):.5f}" + r"$ Ha",
     )
     ax_density_slide.legend(ncol=2)
     fig_density.tight_layout()

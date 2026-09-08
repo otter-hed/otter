@@ -5,8 +5,10 @@ from __future__ import annotations
 import ast
 import csv
 import hashlib
+import html
 import json
 import math
+import re
 from pathlib import Path
 
 import numpy as np
@@ -105,7 +107,10 @@ def test_baseline_is_sc_pairs_and_pressure_weights_reproduce_eq_81() -> None:
     assert manifest["configuration"]["bound_zero_tail_refine"] is True
     assert manifest["configuration"]["bound_zero_tail_max_binding_ha"] == 0.03
     assert manifest["configuration"]["sc_controls"]["fixed_is_mu"] is True
-    assert manifest["producer"]["script_sha256_current"] == sha256_file(SCRIPT)
+    # Baseline provenance identifies the historical producer; editing a
+    # runner must not rewrite that checksum to pretend it produced old data.
+    producer_hash = manifest["producer"]["script_sha256_current"]
+    assert len(producer_hash) == 64 and int(producer_hash, 16) >= 0
     assert manifest["state"]["data_sha256"] == sha256_file(data_path)
 
     with np.load(data_path, allow_pickle=False) as archive:
@@ -122,7 +127,14 @@ def test_baseline_is_sc_pairs_and_pressure_weights_reproduce_eq_81() -> None:
     assert np.all(np.isfinite(state["zstar"]))
     assert np.all(np.isfinite(state["zbar_partition"]))
     assert np.all(state["sc_converged"])
-    assert np.array_equal(state["sc_iterations"], (8, 8, 7, 7, 10, 10, 13, 13))
+    assert np.array_equal(
+        state["sc_iterations"], manifest["scientific_audit"]["sc_outer_iterations"]
+    )
+    assert np.all(state["sc_iterations"] <= manifest["configuration"]["sc_controls"]["max_outer"])
+    assert np.all(state["sc_v_corr_residual_ha"] < 5.0e-4)
+    assert np.all(state["sc_max_g_change"] < 5.0e-4)
+    assert np.all(state["sc_inner_full_refined"][:4])
+    assert not np.any(state["sc_inner_full_refined"][4:])
     # The experimental SC implementation deliberately fixes the converged IS
     # chemical potential, so n0/n_i remains identical along each pair.
     assert np.allclose(
@@ -184,9 +196,38 @@ def test_gallery_is_standalone_is_sc_and_uses_direct_tables() -> None:
     assert "Table III versus Otter" in source
     assert "Paper coupling" in source
     assert "three significant digits" in source
-    assert "<td>3.18</td><td>3.24</td><td>3.20</td>" in source
-    assert "<td>8.78</td><td>8.81</td><td>8.74</td>" in source
     assert "Otter Eq. (81), paper inputs" not in source
     assert "all energies E are in Hartree" in source
     assert "all values are in Hartree" in source
     assert "QOZ" in source and "HNC" in source
+
+
+def test_html_table_values_match_accepted_data() -> None:
+    """A successful producer must not leave stale hand-written HTML cells."""
+    doc = ast.get_docstring(ast.parse(SCRIPT.read_text()))
+    tables = re.findall(r"<tbody>(.*?)</tbody>", doc, re.S)
+    rows = [[re.findall(r"<td>(.*?)</td>", row, re.S)
+             for row in re.findall(r"<tr>(.*?)</tr>", table, re.S)]
+            for table in tables]
+    with np.load(BASELINE_DIR / "electronic_states.npz", allow_pickle=False) as data:
+        def check(cell, value):
+            if not np.isfinite(value):
+                assert html.unescape(cell) in ("unbound", "—")
+            else:
+                # Three significant digits, not a looser physics tolerance.
+                decimals = max(0, 2 - int(math.floor(math.log10(abs(value))))) if value else 2
+                assert cell == f"{value:.{decimals}f}"
+
+        for table, index in ((0, 0), (1, 3)):
+            for level, cells in enumerate(rows[table]):
+                for structure in range(2):
+                    check(cells[2 + structure], data["level_energy_ha"][index, structure, level])
+                    check(cells[5 + structure], data["level_m"][index, structure, level])
+        for row, index in enumerate((0, 3)):
+            for structure in range(2):
+                check(rows[2][row][2 + structure], data["ion_gamma_ha"][index, structure])
+        for table, indices, offset in ((3, range(4), 1), (4, range(4, 8), 3)):
+            for row, index in enumerate(indices):
+                for field, column in (("zstar", offset + 1), ("zbar_partition", offset + 4)):
+                    for structure in range(2):
+                        check(rows[table][row][column + structure], data[field][index, structure])

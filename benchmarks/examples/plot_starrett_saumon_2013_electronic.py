@@ -45,7 +45,7 @@ article.  Every :math:`E` and :math:`\gamma` entry uses Hartree, while
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
    <tr><td>2s</td><td>-3.41</td><td>-3.39</td><td>-3.40</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
-   <tr><td>2p</td><td>-2.04</td><td>-2.02</td><td>-2.02</td>
+   <tr><td>2p</td><td>-2.04</td><td>-2.02</td><td>-2.03</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
    <tr><td>3s</td><td>unbound</td><td>unbound</td><td>unbound</td>
    <td>&mdash;</td><td>&mdash;</td><td>&mdash;</td></tr>
@@ -62,20 +62,20 @@ article.  Every :math:`E` and :math:`\gamma` entry uses Hartree, while
    </thead><tbody>
    <tr><td>1s</td><td>-54.9</td><td>-54.8</td><td>-54.8</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
-   <tr><td>2s</td><td>-3.60</td><td>-3.50</td><td>-3.57</td>
+   <tr><td>2s</td><td>-3.60</td><td>-3.51</td><td>-3.57</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
    <tr><td>2p</td><td>-2.23</td><td>-2.14</td><td>-2.21</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
-   <tr><td>3s</td><td>-0.0125</td><td>unbound</td><td>-0.00763</td>
-   <td>0.134</td><td>&mdash;</td><td>0.0842</td></tr>
+   <tr><td>3s</td><td>-0.0125</td><td>unbound</td><td>-0.00846</td>
+   <td>0.134</td><td>&mdash;</td><td>0.0928</td></tr>
    </tbody></table>
 
    <table class="docutils align-default">
    <caption>Scattering width \(\gamma\) [Ha]</caption>
    <thead><tr><th>\(T\) [eV]</th><th>Paper SC</th>
    <th>Otter-IS</th><th>Otter-SC</th></tr></thead><tbody>
-   <tr><td>2</td><td>0.0698</td><td>0.0367</td><td>0.0617</td></tr>
-   <tr><td>15</td><td>0.174</td><td>0.109</td><td>0.170</td></tr>
+   <tr><td>2</td><td>0.0698</td><td>0.0374</td><td>0.0628</td></tr>
+   <tr><td>15</td><td>0.174</td><td>0.111</td><td>0.171</td></tr>
    </tbody></table>
 
 As a formula-only audit, evaluating Otter's Eq. (81) with the *published*
@@ -111,14 +111,14 @@ nominally corresponding Otter values.
    <th>Paper</th><th>Otter-IS</th><th>Otter-SC</th>
    <th>\(\Gamma_{\rm OCP}\)</th><th>\(\Gamma_{\rm TCP}\)</th></tr>
    </thead><tbody>
-   <tr><td>2</td><td>1.98</td><td>2.09</td><td>2.09</td>
+   <tr><td>2</td><td>1.98</td><td>2.07</td><td>2.07</td>
    <td>3.00</td><td>3.00</td><td>3.00</td><td>41.0</td><td>5.05</td></tr>
-   <tr><td>6</td><td>2.11</td><td>2.19</td><td>2.19</td>
+   <tr><td>6</td><td>2.11</td><td>2.18</td><td>2.18</td>
    <td>3.00</td><td>3.00</td><td>3.00</td><td>13.6</td><td>2.04</td></tr>
-   <tr><td>10</td><td>2.24</td><td>2.33</td><td>2.33</td>
+   <tr><td>10</td><td>2.24</td><td>2.31</td><td>2.31</td>
    <td>3.00</td><td>3.03</td><td>3.02</td><td>8.14</td><td>1.60</td></tr>
-   <tr><td>15</td><td>2.51</td><td>2.56</td><td>2.56</td>
-   <td>3.18</td><td>3.24</td><td>3.20</td><td>6.12</td><td>1.34</td></tr>
+   <tr><td>15</td><td>2.51</td><td>2.54</td><td>2.54</td>
+   <td>3.18</td><td>3.24</td><td>3.19</td><td>6.12</td><td>1.34</td></tr>
    </tbody></table>
 
    <table class="docutils align-default">
@@ -156,6 +156,12 @@ is a useful controlled comparison, but it is not claimed to reproduce every
 detail of the simultaneous 2013 QTCP/TFTCP solver.  Al uses quantum orbitals;
 Fe uses Thomas--Fermi electrons, matching the model named for Table III.
 
+The September 2026 refresh uses adaptive full-AA precision for QM SC feedback
+and checks the unmixed correlation-potential residual. All eight SC pairs
+converged. Inner SCF and outer SC acceptance are distinct; the archive records
+both the outer residual and whether QM precision refinement was performed.
+This is a numerical accuracy safeguard, not a change to Eq. (81).
+
 Set ``USE_PRECOMPUTED_DATA = False`` below to recompute all eight independent
 IS/SC pairs.  New calculations are staged under ``benchmarks/outputs`` and
 never overwrite the accepted, checksummed baseline.
@@ -167,6 +173,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -183,8 +190,9 @@ from otter.experimental import SCFeedbackConfig, solve_sc_feedback_workflow
 # User input
 # =============================================================================
 USE_PRECOMPUTED_DATA = True
+if os.environ.get("OTTER_RECOMPUTE_STARRETT_SAUMON_ELECTRONIC", "0") == "1":
+    USE_PRECOMPUTED_DATA = False
 MAX_STATE_WORKERS = 2
-CONTINUUM_WORKERS_PER_STATE = 4
 # =============================================================================
 
 
@@ -270,14 +278,11 @@ STATES = state_definitions()
 
 def load_reference_tables() -> dict[str, Any]:
     """Verify and load the three published numerical tables."""
-    manifest = json.loads(
-        (REFERENCE_DIR / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((REFERENCE_DIR / "manifest.json").read_text(encoding="utf-8"))
     if (
         manifest.get("schema_version") != "otter_reference_manifest_v1"
         or manifest.get("reference_id") != BENCHMARK_ID
-        or manifest["publication"].get("doi")
-        != "10.1103/PhysRevE.87.013104"
+        or manifest["publication"].get("doi") != "10.1103/PhysRevE.87.013104"
     ):
         raise ValueError("Unexpected Starrett--Saumon reference manifest.")
     for record in manifest["files"]:
@@ -307,28 +312,24 @@ def load_reference_tables() -> dict[str, Any]:
 def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
     """Return the complete IS workflow used to initialise SC feedback."""
     is_tf = str(state["electronic_model"]) == "tf"
+    model_override = {"electronic_model": "tf"} if is_tf else {}
+    aa_options: dict[str, Any] = {
+        "bound_zero_tail_refine": not is_tf,
+    }
+    if is_tf:
+        # The nondegenerate 5000-eV Fe chemical potential lies below the
+        # ordinary warm-dense bracket.
+        aa_options["mu_bounds"] = (-2000.0, 200.0)
+    else:
+        # Include the paper's shallow 15-eV 3s comparison state.
+        aa_options["bound_zero_tail_max_binding_ha"] = 3.0e-2
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
         temperature_ev=float(state["temperature_ev"]),
         ion_temperature_ev=float(state["temperature_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
-        electronic_model=str(state["electronic_model"]),
-        aa_overrides={
-            # The nondegenerate 5000-eV Fe chemical potential lies below the
-            # ordinary warm-dense bracket.  Only the scalar search interval
-            # is enlarged; the converged TF equations are unchanged.
-            "mu_bounds": (-2000.0, 200.0) if is_tf else (-200.0, 200.0),
-            "cont_n_jobs": int(CONTINUUM_WORKERS_PER_STATE),
-            "cont_shards": int(2 * CONTINUUM_WORKERS_PER_STATE),
-            # SC feedback can move an s state through the E=0 threshold.
-            # Match that candidate to its all-space tail before allowing its
-            # finite-box sign to define the bound/free partition.
-            "bound_zero_tail_refine": not is_tf,
-            # The paper's 15-eV 3s level is -0.0125 Ha.  Include that entire
-            # physical comparison window rather than the library's narrower
-            # near-zero diagnostic default (1e-3 Ha).
-            "bound_zero_tail_max_binding_ha": 3.0e-2,
-        },
+        **model_override,
+        aa_overrides=aa_options,
         hnc_closure_transform_tol=2.5e-3,
         hnc_max_iter=500,
         show_progress=False,
@@ -411,9 +412,11 @@ def electronic_result(workflow: dict[str, Any]) -> dict[str, Any]:
 def solve_state(state: dict[str, Any]) -> dict[str, Any]:
     """Solve one IS workflow and continue it to experimental SC feedback."""
     config = workflow_config(state)
+    print(f"[IS start] {state['state_id']}", flush=True)
     started = time.perf_counter()
     is_workflow = solve_plasma_workflow(config)
     is_elapsed_s = time.perf_counter() - started
+    print(f"[IS complete; SC start] {state['state_id']}: {is_elapsed_s:.1f} s", flush=True)
 
     started = time.perf_counter()
     sc_workflow = solve_sc_feedback_workflow(
@@ -438,6 +441,9 @@ def solve_state(state: dict[str, Any]) -> dict[str, Any]:
         "sc_converged": bool(feedback["converged"]),
         "sc_iterations": int(feedback["iterations"]),
         "fixed_is_mu_ha": float(feedback["fixed_is_mu_ha"]),
+        "sc_max_g_change": float(feedback["history"][-1]["max_g_change"]),
+        "sc_v_corr_residual_ha": float(feedback["history"][-1]["max_v_corr_residual_ha"]),
+        "sc_inner_full_refined": bool(feedback["history"][-1]["inner_full_refined"]),
     }
 
 
@@ -447,6 +453,7 @@ def pack_rows(rows: list[dict[str, Any]]) -> dict[str, np.ndarray]:
     ordered = [by_id[str(state["state_id"])] for state in STATES]
     archive: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
+        "storage_profile": np.asarray("electronic_summary"),
         "structure_labels": np.asarray(STRUCTURE_LABELS),
         "level_labels": np.asarray(LEVEL_LABELS),
     }
@@ -461,6 +468,9 @@ def pack_rows(rows: list[dict[str, Any]]) -> dict[str, np.ndarray]:
         "sc_converged",
         "sc_iterations",
         "fixed_is_mu_ha",
+        "sc_max_g_change",
+        "sc_v_corr_residual_ha",
+        "sc_inner_full_refined",
     ):
         archive[field] = np.asarray([row[field] for row in ordered])
     for field in (
@@ -474,13 +484,17 @@ def pack_rows(rows: list[dict[str, Any]]) -> dict[str, np.ndarray]:
         "threshold_state_status",
     ):
         archive[field] = np.asarray(
-            [[row[structure][field] for structure in STRUCTURE_LABELS]
-             for row in ordered]
+            [
+                [row[structure][field] for structure in STRUCTURE_LABELS]
+                for row in ordered
+            ]
         )
     for field in ("level_energy_ha", "level_m"):
         archive[field] = np.asarray(
-            [[row[structure][field] for structure in STRUCTURE_LABELS]
-             for row in ordered],
+            [
+                [row[structure][field] for structure in STRUCTURE_LABELS]
+                for row in ordered
+            ],
             dtype=float,
         )
     return add_archive_metadata(archive)
@@ -513,13 +527,14 @@ def add_archive_metadata(
             "sc_v_corr_tol_ha": float(SC_CONTROLS.v_corr_tol),
             "sc_v_corr_mix": float(SC_CONTROLS.v_corr_mix),
             "sc_fixed_is_mu": True,
+            "sc_inner_full_tol_scale": SC_CONTROLS.inner_full_tol_scale,
+            "sc_potential_convergence_metric": "unmixed_current_output_minus_used_input",
         },
         "state": {"benchmark_id": BENCHMARK_ID, "count": state_count},
         "producer": {
             "project": "Otter",
             "script_relative_path": (
-                "benchmarks/examples/"
-                "plot_starrett_saumon_2013_electronic.py"
+                "benchmarks/examples/" "plot_starrett_saumon_2013_electronic.py"
             ),
         },
         "citation_keys": ["StarrettSaumon2013", "StarrettSaumon2014"],
@@ -561,6 +576,8 @@ def compute_candidate() -> dict[str, np.ndarray]:
     """Compute all IS/SC pairs in bounded parallelism and stage a candidate."""
     rows: list[dict[str, Any]] = []
     failures: dict[str, str] = {}
+    checkpoint_dir = OUTPUT_DIR / "completed_pairs"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
     with ProcessPoolExecutor(max_workers=MAX_STATE_WORKERS) as pool:
         futures = {pool.submit(solve_state, state): state for state in STATES}
         for future in as_completed(futures):
@@ -570,14 +587,19 @@ def compute_candidate() -> dict[str, np.ndarray]:
                 row = future.result()
             except Exception as error:
                 failures[state_id] = f"{type(error).__name__}: {error}"
-                print(f"[rejected] {state_id}: {failures[state_id]}")
+                print(f"[rejected] {state_id}: {failures[state_id]}", flush=True)
             else:
                 rows.append(row)
+                # Compact scalar/level rows, not a restartable AA density dump.
+                (checkpoint_dir / f"{state_id}.json").write_text(
+                    json.dumps(row, indent=2, default=lambda value: np.asarray(value).tolist())
+                )
                 total = row["is_elapsed_s"] + row["sc_extension_elapsed_s"]
                 print(
                     f"[accepted] {state_id}: {total:.1f} s, "
-                    f"SC outer={row['sc_iterations']}"
+                    f"SC outer={row['sc_iterations']}", flush=True,
                 )
+    (OUTPUT_DIR / "failures.json").write_text(json.dumps(failures, indent=2))
     if failures:
         raise RuntimeError(f"IS/SC benchmark failures: {failures}")
 
@@ -590,6 +612,8 @@ def compute_candidate() -> dict[str, np.ndarray]:
         "status": "candidate_not_accepted",
         "configuration": {
             "scope": "is_and_experimental_sc_feedback",
+            "external_average_atom": True,
+            "qoz_hnc": True,
             "bound_energy_cut_mode": "zero",
             "bound_zero_tail_refine": True,
             "bound_zero_tail_max_binding_ha": 3.0e-2,
@@ -603,6 +627,8 @@ def compute_candidate() -> dict[str, np.ndarray]:
                 "v_corr_tol_ha": float(SC_CONTROLS.v_corr_tol),
                 "v_corr_mix": float(SC_CONTROLS.v_corr_mix),
                 "fixed_is_mu": True,
+                "inner_full_tol_scale": SC_CONTROLS.inner_full_tol_scale,
+                "potential_convergence_metric": "unmixed_current_output_minus_used_input",
             },
         },
         "producer": {
@@ -674,6 +700,7 @@ def state_index(state: dict[str, np.ndarray], state_id: str) -> int:
 
 def print_comparison(state: dict[str, np.ndarray], reference: dict[str, Any]) -> None:
     """Print the table values using the gallery's three-digit convention."""
+
     def cell(
         value: float,
         width: int,
@@ -762,10 +789,7 @@ def print_comparison(state: dict[str, np.ndarray], reference: dict[str, Any]) ->
             state_id = (
                 f"al_rho2p7_te{temperature:g}_qm"
                 if element == "Al"
-                else (
-                    f"fe_rho{float(row['rho_g_cc']):g}_"
-                    f"te{temperature:g}_tf"
-                )
+                else (f"fe_rho{float(row['rho_g_cc']):g}_" f"te{temperature:g}_tf")
             )
             index = state_index(state, state_id)
             print(

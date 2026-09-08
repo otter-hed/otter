@@ -95,6 +95,47 @@ closed by default when the outer iteration is unconverged.  Set
 best-effort diagnostic; the portable production state writer rejects such a
 result.
 
+Numerical convergence and inner accuracy
+------------------------------------------
+
+An individually converged AA calculation need not be accurate enough for an
+outer feedback loop. In particular, a small full-density change can coexist
+with a larger change in the pseudoatom screening response. Otter therefore
+uses the ordinary QM full-SCF tolerances early in SC feedback, then tightens
+them when the outer residual enters the final decade of the requested
+accuracy, or after three updates without improvement. The tighter precision
+is retained for subsequent outer iterations and must be used before accepting
+a QM SC solution.
+
+``SCFeedbackConfig.inner_full_tol_scale`` defaults to ``0.01``. On refinement,
+the full-SCF map, density and potential tolerances are capped at that fraction
+of their ordinary AA defaults. Stricter user tolerances are preserved.
+``None`` disables this safeguard for numerical diagnosis. This control does
+not change ordinary IS calculations, TF, external-SCF tolerances, energy
+quadrature, B3 settings, or shallow-state resolution criteria. These numerical
+controls are implementation choices, not prescriptions from the cited papers.
+
+Potential convergence requires the **unmixed fixed-point residual** evaluated
+on the current output:
+
+.. math::
+
+   R_V = \max_r\left|
+       \mathcal{C}[g^{\rm out}, n_{\rm scr}^{\rm out}](r)
+       - V_{\rm corr}^{\rm in}(r)\right|,
+
+where :math:`\mathcal{C}` denotes the implemented correlation-potential map
+above. ``max_v_corr_residual_ha`` records this residual; the historical
+``max_v_corr_change_ha`` still records the mixed update. Both must pass
+``v_corr_tol``, along with the existing ``g_tol`` test. Reducing the mixing
+coefficient cannot by itself make the true residual pass.
+
+``SCFeedbackConvergenceError`` remains a subclass of ``RuntimeError`` and
+retains the unconverged last workflow in ``exception.result``, including the
+complete ``sc_feedback.history``. It can also be transported from a process
+worker. Such output is diagnostic only. A ``resolved`` electronic threshold
+classification is separate from convergence of this outer feedback loop.
+
 Scope and limitations
 ---------------------
 
@@ -125,6 +166,7 @@ API
    :toctree: ../_autosummary
 
    SCFeedbackConfig
+   SCFeedbackConvergenceError
    solve_sc_feedback_workflow
    mixture_ionic_background_profiles
    estimate_mixture_correlation_potentials

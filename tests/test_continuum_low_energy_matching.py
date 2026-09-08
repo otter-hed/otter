@@ -10,6 +10,7 @@ continuum threshold.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from otter.electronic.continuum import scattering as qmod
 from otter.numerics.grids import create_sqrt_grid
@@ -18,6 +19,68 @@ from otter.numerics.grids import create_sqrt_grid
 def _phase_error_mod_pi(delta: float, reference: float) -> float:
     """Return the absolute scattering-phase error modulo pi."""
     return float(abs(0.5 * np.angle(np.exp(2.0j * (delta - reference)))))
+
+
+@pytest.mark.parametrize("energy", [1e-6, 0.5])
+@pytest.mark.parametrize("tail", ["fragmented", "rejected", "potential_only",
+                                  "coulomb", "shifted", "unconstrained"])
+def test_match_plan_agrees_with_scalar_windows_and_basis(energy, tail):
+    """Batching must preserve kr relaxation, potential rejection and basis unions."""
+    # At E=0.5, integer radii lie exactly on kr=l+1 boundaries. The final
+    # one-point valid run is too short and must not hide the earlier long run.
+    r = np.arange(1., 21.)
+    v = np.full_like(r, 0.05)
+    if tail in ("fragmented", "potential_only"):
+        v[2:7] = v[10:17] = v[19:] = 0.
+    elif tail == "coulomb":
+        v = -0.2/r
+    elif tail == "shifted":
+        v = 0.1 + 0.005*r
+    elif tail == "unconstrained":
+        v = None
+    options = dict(
+        match_fraction=0.2, match_slice=(1, 20), match_r_cut=None,
+        match_fraction_mode="r", match_width=None, match_kr_min=4.,
+        match_v_tol=1e-4, match_min_points=3, match_asymptotic="auto",
+        match_coulomb_tol=0.01, match_allow_shift=True,
+    )
+    if tail in ("coulomb", "shifted", "unconstrained"):
+        options["match_v_tol"] = None
+    if tail in ("potential_only", "unconstrained"):
+        options["match_kr_min"] = None
+    slices, flags, bases, cache = qmod._prepare_match_plan_for_energy(
+        r, v, energy, 24, **options,
+    )
+    window_options = {k: value for k, value in options.items() if k not in (
+        "match_asymptotic", "match_coulomb_tol", "match_allow_shift",
+    )}
+    for l in range(25):
+        window, meta = qmod._select_match_window(r, v, energy, l, **window_options)
+        assert slices[l] == window
+        assert flags[l] == meta["fallback"]
+        i0, i1 = window
+        expected = None if meta["fallback"] else qmod._resolve_asymptotic_basis_meta(
+            r[i0:i1], None if v is None else v[i0:i1], energy, "auto",
+            options["match_v_tol"] or 0., 0.01, True,
+        )
+        assert bases[l] == expected
+
+    free_ls = [l for l, basis in enumerate(bases) if basis and basis["kind"] == "free"]
+    if free_ls:
+        i0 = min(slices[l][0] for l in free_ls)
+        i1 = max(slices[l][1] for l in free_ls)
+        last_l = max(free_ls)
+    elif any(flags):
+        i0, i1, last_l = 0, r.size, 24
+    else:
+        assert cache is None
+        return
+    z = np.sqrt(2*energy)*r[i0:i1]
+    j, y = qmod._free_bessel_tables_numba(z, last_l)
+    assert cache["i0"] == i0
+    np.testing.assert_array_equal(cache["z"], z)
+    np.testing.assert_array_equal(cache["j_tab"], j)
+    np.testing.assert_array_equal(cache["y_tab"], y)
 
 
 def _match_l0(
@@ -235,7 +298,9 @@ def test_match_l_cap_retains_low_partial_waves_at_threshold() -> None:
         "match",
     )
 
-    assert cap == 2
+    # Matching is possible before oscillation. Keep evanescent channels as
+    # well as the mandatory low-l threshold channels, within the given ceiling.
+    assert 2 <= cap <= 8
 
 
 def test_failed_production_match_never_uses_raw_origin_normalization() -> None:

@@ -41,10 +41,11 @@ from typing import Any, Iterable
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
-
-BOHR_TO_ANGSTROM = 0.529177210903
-HARTREE_TO_EV = 27.211386245988
-EV_TO_KELVIN = 11604.51812155008
+from otter.numerics.constants import (
+    BOHR_TO_ANGSTROM,
+    EV_TO_KELVIN,
+    HA_TO_EV,
+)
 
 
 @dataclass(frozen=True)
@@ -339,20 +340,20 @@ def _write_table(
         interpolation_r = np.maximum(radius_bohr, source_r[0])
         energy = (
             np.asarray(interpolator(interpolation_r), dtype=float)
-            * HARTREE_TO_EV
+            * HA_TO_EV
         )
         force = (
             -np.asarray(interpolator.derivative()(interpolation_r), dtype=float)
-            * HARTREE_TO_EV
+            * HA_TO_EV
             / BOHR_TO_ANGSTROM
         )
         force[radius_bohr < source_r[0]] = 0.0
         if charged:
-            energy = energy + coefficient / radius_bohr * HARTREE_TO_EV
+            energy = energy + coefficient / radius_bohr * HA_TO_EV
             force = force + (
                 coefficient
                 / radius_bohr**2
-                * HARTREE_TO_EV
+                * HA_TO_EV
                 / BOHR_TO_ANGSTROM
             )
         cutoff_force = float(force[-1])
@@ -365,11 +366,11 @@ def _write_table(
         coulomb_energy = np.zeros_like(energy)
         coulomb_force = np.zeros_like(force)
         if charged:
-            coulomb_energy = coefficient / radius_bohr * HARTREE_TO_EV
+            coulomb_energy = coefficient / radius_bohr * HA_TO_EV
             coulomb_force = (
                 coefficient
                 / radius_bohr**2
-                * HARTREE_TO_EV
+                * HA_TO_EV
                 / BOHR_TO_ANGSTROM
             )
             energy = energy - coulomb_energy
@@ -775,7 +776,6 @@ def run_otter_lammps_md(
         "md_nve_elapsed_ps": np.asarray(nve_elapsed_ps),
         "md_thermo_sampled_min_timestep_ps": np.asarray(sampled_min_dt_ps),
         "md_thermo_sampled_max_timestep_ps": np.asarray(sampled_max_dt_ps),
-        "md_mean_temperature_k": np.asarray(mean_temperature),
         "md_nve_mean_temperature_k": np.asarray(mean_temperature),
         "md_atoms": np.asarray(types.size),
         "md_rdf_blocks": np.asarray(rdf_blocks.shape[0]),

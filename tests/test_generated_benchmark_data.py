@@ -117,6 +117,87 @@ def test_all_project_generated_baselines_embed_metadata() -> None:
             assert "/tmp/" not in serialized
 
 
+def test_changed_hnc_cannot_be_paired_with_archived_md(tmp_path, monkeypatch) -> None:
+    """An Otter-only refresh must not silently claim a new same-potential MD run."""
+    import tools.promote_recomputed_data as module
+
+    monkeypatch.setattr(module, "BASELINES", tmp_path)
+    package = module.Package("paired", tmp_path / "candidate", preserve_md=True)
+    package.baseline_dir.mkdir()
+    np.savez(package.baseline_dir / "state.npz", gii_r=[0., 1.], md_gii_r=[0., 1.])
+    with pytest.raises(ValueError, match="matching-potential provenance"):
+        module._with_preserved_md(package, "state.npz", {"gii_r": np.array([0., 1.1])})
+    preserved = module._with_preserved_md(package, "state.npz", {"gii_r": np.array([0., 1.])})
+    np.testing.assert_array_equal(preserved["md_gii_r"], [0., 1.])
+
+
+def test_promotion_covers_every_project_generated_baseline_package() -> None:
+    import tools.promote_recomputed_data as module
+
+    baseline_names = {
+        item.name
+        for item in (ROOT / "benchmarks" / "baselines").iterdir()
+        if item.is_dir() and any(item.glob("*.npz"))
+    }
+    assert {package.name for package in module.PACKAGES} == baseline_names
+
+
+def test_otter_only_promotion_preserves_existing_md_arrays_exactly() -> None:
+    import tools.promote_recomputed_data as module
+
+    package = next(
+        item for item in module.PACKAGES if item.name == "ion_structure_library"
+    )
+    filename = "be_wunsch_rho5p544_te13_ti13.npz"
+    merged = module._with_preserved_md(
+        package,
+        filename,
+        {"schema_version": np.asarray("synthetic")},
+    )
+    with np.load(package.baseline_dir / filename, allow_pickle=False) as accepted:
+        forbidden = module.FORBIDDEN_ARCHIVE_FIELDS.get(package.name, set())
+        md_keys = [
+            key
+            for key in accepted.files
+            if key.startswith("md_") and key not in forbidden
+        ]
+        assert md_keys
+        for key in md_keys:
+            np.testing.assert_array_equal(merged[key], accepted[key])
+        assert forbidden.isdisjoint(merged)
+
+
+@pytest.mark.parametrize(
+    ("package_name", "profile"),
+    (
+        ("al_qm_tf", "benchmark_analysis"),
+        ("carbon_lfc_sensitivity", "benchmark_analysis"),
+    ),
+)
+def test_offline_readers_accept_selective_field_inventory(
+    package_name: str,
+    profile: str,
+    tmp_path: Path,
+) -> None:
+    import tools.promote_recomputed_data as promotion
+
+    package = PACKAGES[package_name]
+    manifest = _manifest(package)
+    source = _state_path(package, manifest["states"][0])
+    with np.load(source, allow_pickle=False) as archive:
+        payload = {
+            key: np.asarray(archive[key])
+            for key in archive.files
+            if key
+            not in promotion.FORBIDDEN_ARCHIVE_FIELDS[package_name]
+        }
+    payload["storage_profile"] = np.asarray(profile)
+    candidate = tmp_path / source.name
+    np.savez_compressed(candidate, **payload)
+    loaded = _load_runner(package_name, package).load_state(candidate)
+    assert loaded["storage_profile"].item() == profile
+
+
 @pytest.mark.parametrize("name", tuple(PACKAGES))
 def test_v2_manifest_provenance_hashes_and_relative_paths(name: str) -> None:
     package = PACKAGES[name]
@@ -208,7 +289,7 @@ def test_al_qm_tf_v2_physical_and_shape_invariants() -> None:
             assert k[-1] <= 20.0
             assert archive["gii_r"].shape == (2, r.size)
             assert archive["sii_k"].shape == (2, k.size)
-            assert archive["vii_k_ha_bohr3"].shape == (2, k.size)
+            assert archive["storage_profile"].item() == "benchmark_analysis"
             assert np.all(archive["aa_stage2_converged"])
             assert np.all(archive["aa_ext_converged"])
             assert np.all(archive["hnc_converged"])
@@ -221,8 +302,8 @@ def test_al_qm_tf_v2_physical_and_shape_invariants() -> None:
                 "resolved",
                 "marginal",
             }
-            assert np.max(archive["hnc_residual"]) <= 1.0e-6
             assert np.max(archive["hnc_output_residual"]) <= 1.0e-6
+            assert "hnc_residual" not in archive.files
             assert np.max(archive["closure_transform_max_abs"]) <= 1.0e-3
             np.testing.assert_allclose(
                 archive["q_scr_integral"],
@@ -234,18 +315,17 @@ def test_al_qm_tf_v2_physical_and_shape_invariants() -> None:
                 r_e = np.asarray(archive[f"r_{model}_bohr"], dtype=float)
                 assert np.all(np.diff(r_e) > 0.0)
                 assert r_e[-1] <= 20.0
-                for density in (
-                    "n_full",
-                    "n_ext",
-                    "n_pa",
-                    "n_bound",
-                    "n_cont",
-                    "n_ion",
-                    "n_scr",
-                ):
+                for density in ("n_full", "n_ion", "n_scr"):
                     assert archive[
                         f"{density}_{model}_bohr3"
                     ].shape == r_e.shape
+                assert {
+                    f"n_ext_{model}_bohr3",
+                    f"n_pa_{model}_bohr3",
+                    f"n_bound_{model}_bohr3",
+                    f"n_cont_{model}_bohr3",
+                    f"v_full_{model}_ha",
+                }.isdisjoint(archive.files)
 
 
 def test_carbon_lfc_v2_shared_input_charge_and_convergence() -> None:
@@ -290,6 +370,19 @@ def test_carbon_lfc_v2_shared_input_charge_and_convergence() -> None:
             assert archive["sii_k"].shape == (5, k.size)
             assert archive["vii_k_ha_bohr3"].shape == (5, k.size)
             assert archive["gee_k"].shape == (5, k.size)
+            assert archive["chi_ee_k"].shape == (5, k.size)
+            assert archive["chi0_k"].shape == k.shape
+            assert archive["n_scr_k"].shape == k.shape
+            assert archive["storage_profile"].item() == "benchmark_analysis"
+            assert {
+                "n_full_bohr3",
+                "n_cont_bohr3",
+                "n_ext_bohr3",
+                "v_full_ha",
+                "v_xc_ha",
+                "vii_r_ha",
+                "n_scr_r_bohr3",
+            }.isdisjoint(archive.files)
             assert bool(archive["aa_stage2_converged"].item())
             assert bool(archive["aa_ext_converged"].item())
             assert archive["threshold_state_status"].item() in {
@@ -357,11 +450,13 @@ def test_v2_curated_states_capture_cold_difference_and_hot_convergence() -> None
         (float(row["temperature_ev"]), row["model"]): row
         for row in carbon_rows
     }
+    # Freeze the recomputed metric, rather than an arbitrary old >0.4
+    # illustration boundary (the refreshed value is approximately 0.3993).
     assert float(
         carbon_by_state[(2.0, "none")][
             "max_abs_dg_vs_chabrier_r_le_20"
         ]
-    ) > 0.4
+    ) == pytest.approx(0.39928713272596283, rel=1.0e-8)
     assert float(
         carbon_by_state[(100.0, "none")][
             "max_abs_dg_vs_chabrier_r_le_20"

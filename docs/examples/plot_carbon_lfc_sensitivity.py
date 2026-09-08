@@ -68,7 +68,6 @@ LFC_MODELS = (
 REFERENCE_LFC = "chabrier1990"
 
 MAX_STATE_WORKERS = 2
-CONTINUUM_WORKERS_PER_STATE = 6
 QOZ_N_POINTS = 8192
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TOL = 1.0e-4
@@ -165,8 +164,6 @@ def workflow_config(
         ),
         rho_g_cc=RHO_G_CC,
         aa_overrides={
-            "cont_n_jobs": CONTINUUM_WORKERS_PER_STATE,
-            "cont_shards": 2 * CONTINUUM_WORKERS_PER_STATE,
             "bound_zero_tail_refine": True,
             "bound_zero_tail_max_binding_ha": 1.0e-2,
             "bound_zero_tail_scan_points": 48,

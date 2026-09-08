@@ -17,6 +17,13 @@ Polypropylene (PP/CH2): HNC versus same-potential MD
    .. image:: /_static/benchmarks/ch2_hnc_md/ch2_md.png
       :alt: OVITO rendering of the PP CH2 same-potential MD trajectory
 
+.. note::
+
+   This page retains the original matched-potential HNC/MD data and video.
+   Neither MD nor its paired HNC curves was replaced by results from a
+   different electronic potential. The updated electronic solver has a
+   separate validation record in :doc:`/benchmarks/validation_20260908`.
+
 The material is polypropylene (PP), represented in this ion-structure model
 by its reduced C:H composition, CH2, at :math:`\rho=0.946` g cm\ :sup:`-3`.
 The calculation compares Otter multicomponent QOZ/HNC with classical LAMMPS
@@ -362,7 +369,7 @@ for column, te_ev in enumerate(TE_VALUES):
         color = ALPHA_COLORS[alpha]
         for pair, label in enumerate(PAIR_LABELS):
             axes[pair, column].plot(
-                data["hnc_r_bohr"][state], data["hnc_gij_r"][state, pair],
+                data["hnc_r_bohr"], data["hnc_gij_r"][state, pair],
                 color=color, lw=2.0, alpha=0.88,
             )
             g_md = data["md_gij_r"][state, pair]
@@ -403,7 +410,7 @@ for column, te_ev in enumerate(TE_VALUES):
         color = ALPHA_COLORS[alpha]
         for pair, label in enumerate(PAIR_LABELS):
             hnc = np.interp(
-                data["md_r_bohr"], data["hnc_r_bohr"][state],
+                data["md_r_bohr"], data["hnc_r_bohr"],
                 data["hnc_gij_r"][state, pair],
             )
             delta = data["md_gij_r"][state, pair] - hnc
@@ -465,7 +472,7 @@ for column, te_ev in enumerate(TE_VALUES):
         color = ALPHA_COLORS[alpha]
         for pair, label in enumerate(PAIR_LABELS):
             axes[pair, column].plot(
-                data["hnc_k_bohr_inv"][state],
+                data["hnc_k_bohr_inv"],
                 data["hnc_sij_k"][state, pair],
                 color=color, lw=2.0, alpha=0.88,
             )
@@ -509,7 +516,7 @@ for column, te_ev in enumerate(TE_VALUES):
         color = ALPHA_COLORS[alpha]
         for pair, label in enumerate(PAIR_LABELS):
             hnc = np.interp(
-                data["md_k_bohr_inv"], data["hnc_k_bohr_inv"][state],
+                data["md_k_bohr_inv"], data["hnc_k_bohr_inv"],
                 data["hnc_sij_k"][state, pair],
             )
             delta = data["md_sij_k"][state, pair] - hnc

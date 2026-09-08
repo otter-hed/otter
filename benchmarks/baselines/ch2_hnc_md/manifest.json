@@ -11,9 +11,9 @@
   },
   "producer": {
     "project": "Otter",
-    "project_version": "0.2.2",
+    "project_version": "0.2.4",
     "source_driver": "applications/ch2_xrts_dataset/compare_hnc_md.py",
-    "source_driver_sha256_at_packaging": "2dc3dcd07c2c619d5cacb801156334b936951d7cc7e0de639041e3886770d2db",
+    "source_driver_sha256_at_packaging": "093ab8ed561f4a8ae894bb28c3c7cced471f07e3a0318baa2e7b9b96d8640737",
     "gallery_script": "benchmarks/examples/plot_ch2_hnc_md.py",
     "gallery_script_sha256": "a4d08e95c062ec5bdab0addebc672b7d8490e23e41672eb45d628b908f8c561d",
     "git_commit_at_packaging": "78c51ad5d4f671f89428a62053538da8b11423db",
@@ -37,7 +37,9 @@
         "ch2_te99_ti49.5": "125508cf1d7348f9d7dc193520eae8e2d9e95a36479247afb6dc02eea155b0be",
         "ch2_te99_ti99": "ce612d741227745800fea3013a75db51080bb9eaa4d832f249525e2ca08eea59"
       }
-    }
+    },
+    "otter_hnc_recomputed_with_md_preserved": true,
+    "md_arrays_reused_without_modification": true
   },
   "method_publications": [
     {
@@ -60,8 +62,16 @@
     "material_label": "polypropylene (PP), represented by reduced atomic composition CH2",
     "composition": "C1H2",
     "mass_density_g_cm3": 0.946,
-    "electron_temperatures_ev": [9.0, 29.0, 99.0],
-    "ion_to_electron_temperature_ratios": [0.2, 0.5, 1.0],
+    "electron_temperatures_ev": [
+      9.0,
+      29.0,
+      99.0
+    ],
+    "ion_to_electron_temperature_ratios": [
+      0.2,
+      0.5,
+      1.0
+    ],
     "electronic_model": "qm",
     "structure_model": "IS",
     "electronic_reuse": "one converged electronic result per electron temperature",
@@ -71,15 +81,27 @@
     "qoz_potential_max_abs_delta_within_each_te": 5.684341886080802e-14,
     "compact_baseline_transform": {
       "hnc_interpolation": "linear",
-      "hnc_r_grid_bohr": [0.0, 10.0, 2001],
-      "hnc_k_grid_bohr_inv": [0.0, 4.5, 1801],
+      "hnc_r_grid_bohr": [
+        0.0,
+        10.0,
+        2001
+      ],
+      "hnc_k_grid_bohr_inv": [
+        0.0,
+        4.5,
+        1801
+      ],
       "md_grids_modified": false
     },
     "same_potential_md": {
       "engine": "LAMMPS (7 Feb 2024 - Update 1)",
       "mpi_processes": 16,
       "openmp_threads_per_mpi_task": 1,
-      "lammps_processor_grid": [2, 2, 4],
+      "lammps_processor_grid": [
+        2,
+        2,
+        4
+      ],
       "structure_factor_workers": 8,
       "boundary_conditions": "cubic periodic",
       "box_length_angstrom": 29.32294404316832,
@@ -101,8 +123,14 @@
           "timestep_ps": 1.3330154149423721e-05,
           "nvt_steps": 10000,
           "nve_steps": 100000,
-          "hnc_elapsed_s_range": [0.5393386429932434, 1.1641979110136162],
-          "md_plus_analysis_elapsed_s_range": [514.3252659979917, 562.9698621330026]
+          "hnc_elapsed_s_range": [
+            0.5393386429932434,
+            1.1641979110136162
+          ],
+          "md_plus_analysis_elapsed_s_range": [
+            514.3252659979917,
+            562.9698621330026
+          ]
         },
         {
           "state": "Te=99 eV, Ti=49.5 eV",
@@ -140,7 +168,10 @@
         "uncertainty": "SEM across the 20 independently transformed RDF blocks"
       },
       "hot_core_regularization": {
-        "states": ["ch2_te99_ti49.5", "ch2_te99_ti99"],
+        "states": [
+          "ch2_te99_ti49.5",
+          "ch2_te99_ti99"
+        ],
         "analytic_core_end_bohr": 0.3,
         "blend_end_bohr": 0.5,
         "resolved_qoz_potential_refitted": false
@@ -157,20 +188,39 @@
     "equilibrium_controls": 3,
     "maximum_abs_nve_relative_energy_drift": 0.0006565607938387239,
     "maximum_hnc_output_residual": 3.4817022048528483e-08,
-    "pairwise_g_rmse_range": [0.002807062844960556, 0.018255400143250246],
-    "pairwise_s_rmse_range": [0.006318247655633024, 0.016940849315049574],
-    "rdf_vs_density_mode_s_rmse_range": [0.006288608823856307, 0.016156461291492907],
+    "pairwise_g_rmse_range": [
+      0.002807062844960556,
+      0.018255400143250246
+    ],
+    "pairwise_s_rmse_range": [
+      0.006318247655633024,
+      0.016940849315049574
+    ],
+    "rdf_vs_density_mode_s_rmse_range": [
+      0.006288608823856307,
+      0.016156461291492907
+    ],
     "rdf_vs_density_mode_s_signed_mean": -6.0748739612414846e-05,
     "rdf_vs_density_mode_s_max_abs": 0.09242927357578312,
-    "rdf_tail_max_abs_range": [0.0006216999999999473, 0.004483849999999956],
-    "hnc_elapsed_s_range": [0.37649702597991563, 1.1641979110136162],
-    "md_elapsed_s_range": [514.3252659979917, 13457.237488774],
+    "rdf_tail_max_abs_range": [
+      0.0006216999999999473,
+      0.004483849999999956
+    ],
+    "hnc_elapsed_s_range": [
+      0.37649702597991563,
+      1.1641979110136162
+    ],
+    "md_elapsed_s_range": [
+      514.3252659979917,
+      13457.237488774
+    ],
     "hnc_elapsed_s_sum": 6.742759518994717,
     "md_elapsed_s_sum": 27944.785070653015
   },
   "baseline": {
     "path": "ch2_hnc_md.npz",
-    "sha256": "46b24b1d41eb8978d72d1b93ce865cf705aac9cb38f04f6af376222e38d8555c"
+    "sha256": "5d7d5a09ae0def42049d555dd954efa533c4f9eb06b77805ddddf7a8d7adbad7",
+    "same_potential_md": true
   },
   "media": [
     {
@@ -213,5 +263,7 @@
       "sha256": "f264ba48a874527f7417050dd9e2186c18d1ad1954cefecc79f69fddf488870c",
       "role": "gallery-first rendering of the RDF-transform minus density-mode residuals"
     }
-  ]
+  ],
+  "validation_scope": "archived_matched_potential_comparison",
+  "validation_inventory": "../validation_20260908.json"
 }
