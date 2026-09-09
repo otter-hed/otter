@@ -1,4 +1,7 @@
-""" """
+"""
+Calculates a set of ionic static structure factors and writes them to disc.
+Allows parallelization over several computations.
+"""
 
 import h5py
 import numpy as np
