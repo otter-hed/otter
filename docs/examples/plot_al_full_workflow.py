@@ -17,7 +17,13 @@ tail, and QOZ construction follow :cite:t:`StarrettSaumon2014`. The default
 finite-temperature jellium local-field correction follows
 :cite:t:`Chabrier1990`.
 
-The two overview figures show the electronic structure and the ionic workflow.
+The first figure shows unweighted bound-state wavefunctions, ionic electron
+densities, and form factors by level. The following figures show the electronic
+structure, screening cloud and pair interactions, and ionic correlations.
+The Rayleigh weight per ion is
+:math:`W_R(k)=|f(k)+q(k)|^2 S_{ii}(k)`.
+Only the element, density and temperatures are set; numerical controls use
+Otter's defaults.
 Set ``EXPORT_SLIDE_FIGURES = True`` to also save individual density,
 :math:`g_{ii}(r)`, and :math:`S_{ii}(k)` figures for slides.
 
@@ -43,6 +49,43 @@ the source recalculates them with the installed Otter version.
 
 .. include:: /_static/gallery_results/plot_al_full_workflow/results.rst
 
+Orbital access and NPZ export
+------------------------------------------------------------
+
+The completed workflow provides the raw orbital arrays without another solve:
+
+.. code-block:: python
+
+   from otter import bound_wavefunctions, ion_orbital_form_factors
+
+   aa = result["electronic"]["result"]
+   ion = result["ion"]
+   Zbar = aa["zbar_partition"]
+   Zstar = aa["zstar"]
+   R_nl = bound_wavefunctions(aa)             # raw R_nl on aa["r_bound"]
+   n_nl = aa["ion_orbital_density_r"]         # on aa["r"]
+   f_nl = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
+
+This script also saves ``benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz``
+with :func:`otter.save_plasma_state`. It contains unweighted wavefunctions,
+ionic density components, per-level form factors, level labels, and basic
+state metadata. Access the saved arrays with:
+
+.. code-block:: python
+
+   from otter import load_plasma_state
+
+   state = load_plasma_state(
+       "benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz"
+   )
+   R_nl = state["species_0_bound_wavefunction_r"]
+   n_nl = state["species_0_ion_orbital_density_r"]
+   f_nl = state["species_0_ion_orbital_density_k"]
+
+See :ref:`orbital-npz-access` for selective saving, radial grids, level
+indexing, and mixture access. The :math:`4\pi r^2` display factors and the
+optional FD wavefunction weighting do not modify the saved arrays.
+
 """
 
 from __future__ import annotations
@@ -57,7 +100,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter import PlasmaWorkflowConfig, solve_plasma_workflow, save_plasma_state, load_plasma_state
 from otter.electronic import FullExternalConfig
 from otter.io.state import StateExportOptions, build_state_arrays
 from otter.numerics.constants import HA_TO_EV
@@ -77,8 +120,6 @@ RHO_G_CC = 8.1
 TE_EV = 1.0
 TI_EV = 1.0
 
-HNC_TOL = 1.0e-6
-HNC_CLOSURE_TOL = 1.0e-3
 # =============================================================================
 
 
@@ -102,6 +143,7 @@ BASELINE_DIR = ROOT / "benchmarks" / "baselines" / "al_full_workflow_1ev"
 OUTPUT_DIR = ROOT / "benchmarks" / "outputs" / "al_full_workflow_1ev"
 FIGURE_DIR = OUTPUT_DIR / "figures"
 RECOMPUTED_PATH = OUTPUT_DIR / "recomputed" / "Al_rho8p1gcc_Te1eV_Ti1eV.npz"
+ORBITAL_STATE_PATH = OUTPUT_DIR / "Al_orbitals_state.npz"
 
 
 def sha256_file(path: Path) -> str:
@@ -136,8 +178,6 @@ def workflow_config() -> PlasmaWorkflowConfig:
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
-        hnc_tol=HNC_TOL,
-        hnc_closure_transform_tol=HNC_CLOSURE_TOL,
     )
 
 
@@ -201,9 +241,9 @@ def pack_workflow(
     q_used = np.asarray(ion["n_scr_k"], dtype=float)
     if threshold_status == "unresolved":
         raise RuntimeError("The final average atom has an unresolved threshold state.")
-    if float(ion["hnc_best_residual"]) > HNC_TOL:
-        raise RuntimeError("The final HNC residual exceeds the stated tolerance.")
-    if float(ion["closure_transform_max_abs"]) > HNC_CLOSURE_TOL:
+    if not bool(ion["hnc_converged"]):
+        raise RuntimeError("The final HNC state did not converge.")
+    if float(ion["closure_transform_max_abs"]) > float(ion["closure_transform_tol"]):
         raise RuntimeError(
             "The final finite-transform g(r)/S(k) mismatch exceeds tolerance."
         )
@@ -286,10 +326,58 @@ def calculate_state() -> dict[str, np.ndarray]:
     started = time.perf_counter()
     workflow = solve_plasma_workflow(workflow_config())
     state = pack_workflow(workflow, elapsed_s=time.perf_counter() - started)
+    save_plasma_state(
+        ORBITAL_STATE_PATH,
+        workflow,
+        options=StateExportOptions(
+            profile="electronic_summary", include_groups=("orbital_densities",),
+        ),
+    )
     RECOMPUTED_PATH.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(RECOMPUTED_PATH, **state)
     print(f"Saved newly calculated state: {RECOMPUTED_PATH}")
     return state
+
+
+def plot_bound_orbitals(state, *, title, r_max=5.0, k_max=10.0):
+    """Plot the orbital arrays from this example's standard NPZ export."""
+    r_wave = state["species_0_r_bound_bohr"]
+    r = state["species_0_r_bohr"]
+    k = state["species_0_orbital_k_bohr_inv"]
+    wave = state["species_0_bound_wavefunction_r"]
+    density = state["species_0_ion_orbital_density_r"]
+    factors = state["species_0_ion_orbital_density_k"]
+    angular = state["species_0_bound_l"]
+    principal = state["species_0_bound_principal_n"]
+    r_ws = float(state["species_0_r_ws_bohr"])
+    total_density = density.sum(axis=0)
+    wave_mask, r_mask, k_mask = r_wave <= r_max, r <= r_max, k <= k_max
+    wave_shell, density_shell = 4 * np.pi * r_wave**2, 4 * np.pi * r**2
+    shell_letters = "spdfghiklm"
+    with style_context("thesis", palette="bing"):
+        fig, axes = plt.subplots(1, 3, figsize=grid_figsize(1, 3), layout="constrained")
+        for i, (l, n) in enumerate(zip(angular, principal)):
+            l, n = int(l), int(n)
+            label = f"{n}{shell_letters[l]}" if l < len(shell_letters) else f"n={n}, l={l}"
+            axes[0].plot(r_wave[wave_mask], (wave_shell * wave[i])[wave_mask], label=label)
+            axes[1].plot(r[r_mask], (density_shell * density[i])[r_mask], label=label)
+            axes[2].plot(k[k_mask], factors[i, k_mask], label=label)
+        axes[1].plot(r[r_mask], (density_shell * total_density)[r_mask], color="black", ls="--", label="Total")
+        axes[2].plot(k[k_mask], factors.sum(axis=0)[k_mask], color="black", ls="--", label="Total")
+        axes[0].set(xlabel=r"$r$ [$a_B$]", xlim=(-0.25, r_max),
+                    ylabel=r"$4\pi r^2 R_{nl}(r)$ [$a_B^{1/2}$]",
+                    title="Unweighted wavefunctions")
+        axes[1].set(xlabel=r"$r$ [$a_B$]", xlim=(-0.25, r_max),
+                    ylabel=r"$4\pi r^2 n^{\rm ion}_{nl}(r)$ [$a_B^{-1}$]", title="Ion-orbital densities")
+        axes[2].set(xlabel=r"$k$ [$a_B^{-1}$]", xlim=(0, k_max),
+                    ylabel=r"$f_{nl}(k)=n^{\rm ion}_{nl}(k)$", title="Ion-orbital form factors")
+        for ax in axes[:2]:
+            ax.axvline(r_ws, color="0.6", ls="--", lw=1.0, label=r"$R_{\rm WS}$")
+        for ax in axes:
+            if ax.lines:
+                ax.legend()
+        fig.suptitle(title)
+    return fig
 
 
 def main() -> None:
@@ -364,16 +452,20 @@ def main() -> None:
         )
 
 
+    electronic_title = (
+        rf"Al, $\rho={float(state['rho_g_cc']):g}$ g cm$^{{-3}}$, "
+        rf"$T_e={float(state['te_ev']):g}$ eV, "
+        rf"$\mu={float(state['mu_ha']):.5f}$ Ha"
+    )
+    orbital_state = load_plasma_state(ORBITAL_STATE_PATH)
+    fig_orbitals = plot_bound_orbitals(orbital_state, title=electronic_title)
+    save_figure(fig_orbitals, FIGURE_DIR / "al_full_workflow_orbitals", close=False)
+
     # %%
     # Electronic structure
     # --------------------
     #
-    # Solid curves are the full and external effective potentials.  The middle
-    # panel keeps the requested linear ``[-1, 1] Ha`` screening-scale window.  The
-    # right panel widens that same linear scale so the dashed nuclear and Hartree
-    # components remain visible.  These are solver components on the adopted
-    # outer-potential gauge; the panel is not asserted to be an exact algebraic
-    # decomposition after every tail and gauge operation.
+    # Potentials use the solver's outer-potential gauge.
 
     with style_context("thesis", palette="bing"):
         r_e = np.asarray(state["r_e_bohr"], dtype=float)
@@ -389,25 +481,28 @@ def main() -> None:
             1,
             3,
             figsize=grid_figsize(1, 3),
+            layout="constrained",
         )
         density_curves = (
-            ("n_full_bohr3", r"$n^{\rm full}$"),
-            ("n_bound_bohr3", r"$n^{\rm ion}$"),
-            ("n_ext_bohr3", r"$n^{\rm ext}$"),
-            ("n_pa_bohr3", r"$n^{\rm PA}$"),
-            ("n_scr_bohr3", r"$n^{\rm scr}$"),
-            ("n0_bohr3", r"$n_0$"),
+            (state["n_full_bohr3"], r"$n^{\rm full}$"),
+            (np.interp(r_e, orbital_state["species_0_r_bohr"],
+                       orbital_state["species_0_ion_orbital_density_r"].sum(axis=0)),
+             r"$n^{\rm ion}$"),
+            (state["n_ext_bohr3"], r"$n^{\rm ext}$"),
+            (state["n_pa_bohr3"], r"$n^{\rm PA}$"),
+            (state["n_scr_bohr3"], r"$n^{\rm scr}$"),
+            (state["n0_bohr3"], r"$n_0$"),
         )
-        for key, label in density_curves:
+        for density, label in density_curves:
             ax_density.plot(
                 r_e[mask_e],
-                (shell * np.asarray(state[key], dtype=float))[mask_e],
+                (shell * density)[mask_e],
                 label=label,
             )
         ax_density.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
         ax_density.set(
-            xlabel=r"$r$ [Bohr]",
-            ylabel=r"$4\pi r^2n(r)$ [Bohr$^{-1}$]",
+            xlabel=r"$r$ [$a_B$]",
+            ylabel=r"$4\pi r^2n(r)$ [$a_B^{-1}$]",
             xlim=(-0.5, 8.0),
             ylim=(-1.0, 15.0),
             title="Electronic densities",
@@ -430,7 +525,7 @@ def main() -> None:
         ax_potential.axhline(0.0, color="0.5", ls=":", lw=0.9)
         ax_potential.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
         ax_potential.set(
-            xlabel=r"$r$ [Bohr]",
+            xlabel=r"$r$ [$a_B$]",
             ylabel=r"$V(r)$ [Ha]",
             xlim=(-0.5, 5.0),
             ylim=(-1.0, 1.0),
@@ -469,7 +564,7 @@ def main() -> None:
         ax_decomposition.axhline(0.0, color="0.5", ls=":", lw=0.9)
         ax_decomposition.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
         ax_decomposition.set(
-            xlabel=r"$r$ [Bohr]",
+            xlabel=r"$r$ [$a_B$]",
             ylabel=r"$V(r)$ [Ha]",
             xlim=(-0.5, 8.0),
             ylim=(-8.0, 8.0),
@@ -477,13 +572,7 @@ def main() -> None:
         )
         ax_decomposition.legend(ncol=2)
 
-        fig_electronic.suptitle(
-            rf"Al, $\rho={float(state['rho_g_cc']):g}$ g cm$^{{-3}}$, "
-            rf"$T_e=T_i={float(state['te_ev']):g}$ eV, "
-            rf"$\mu={float(state['mu_ha']):.5f}$ Ha",
-            y=0.99,
-        )
-        fig_electronic.tight_layout(rect=(0.0, 0.0, 1.0, 0.965))
+        fig_electronic.suptitle(electronic_title)
         save_figure(
             fig_electronic,
             FIGURE_DIR / "al_full_workflow_electronic",
@@ -495,29 +584,18 @@ def main() -> None:
     # Pseudoatom to ion structure
     # ---------------------------
     #
-    # Here ``f(k)=n_ion(k)`` and ``q(k)=n_scr(k)`` use electron-number Fourier
-    # normalization.  ``q_raw`` is the interpolated pseudoatom cloud before the
-    # documented scalar charge-closure correction; ``q_used`` is the cloud that
-    # enters QOZ and integrates to the selected pseudoatom-partition ionization.
-    # The interaction then enters the one-component OZ/HNC solve.
+    # f(k)=n_ion(k) and q(k)=n_scr(k) use electron-number normalization.
 
     with style_context("thesis", palette="bing"):
         k = np.asarray(state["k_bohr_inv"], dtype=float)
         r = np.asarray(state["r_bohr"], dtype=float)
         k_mask = k <= 8.0
         r_mask = r <= 12.0
-        fig_pipeline, axes = plt.subplots(
-            2,
-            3,
-            figsize=grid_figsize(2, 3),
+        fig_pipeline, (ax_q, ax_vk, ax_vr) = plt.subplots(
+            1, 3, figsize=grid_figsize(1, 3), layout="constrained",
         )
-        ax_f, ax_q, ax_vk, ax_vr, ax_g, ax_s = axes.ravel()
-
-        ax_f.plot(k[k_mask], np.asarray(state["n_ion_k_electrons"])[k_mask])
-        ax_f.set(
-            title=r"$f(k)=n_{\rm ion}(k)$",
-            xlabel=r"$k$ [Bohr$^{-1}$]",
-            ylabel="electrons",
+        fig_ionic, (ax_g, ax_s, ax_w) = plt.subplots(
+            1, 3, figsize=grid_figsize(1, 3), layout="constrained",
         )
 
         ax_q.plot(
@@ -526,21 +604,21 @@ def main() -> None:
         )
         ax_q.set(
             title=r"$q(k)=n_{\rm scr}(k)$",
-            xlabel=r"$k$ [Bohr$^{-1}$]",
+            xlabel=r"$k$ [$a_B^{-1}$]",
             ylabel="electrons",
         )
 
         ax_vk.plot(k[k_mask], np.asarray(state["vii_k_ha_bohr3"])[k_mask])
         ax_vk.set(
             title=r"$V_{ii}(k)$",
-            xlabel=r"$k$ [Bohr$^{-1}$]",
-            ylabel=r"Ha Bohr$^3$",
+            xlabel=r"$k$ [$a_B^{-1}$]",
+            ylabel=r"Ha $a_B^3$",
         )
 
         ax_vr.plot(r[r_mask], np.asarray(state["vii_r_ha"])[r_mask])
         ax_vr.set(
             title=r"$V_{ii}(r)$",
-            xlabel=r"$r$ [Bohr]",
+            xlabel=r"$r$ [$a_B$]",
             ylabel="Ha",
             xlim=(-0.5, 12.0),
         )
@@ -549,7 +627,7 @@ def main() -> None:
         ax_g.axhline(1.0, color="0.5", lw=0.8, ls=":")
         ax_g.set(
             title=r"$g_{ii}(r)$",
-            xlabel=r"$r$ [Bohr]",
+            xlabel=r"$r$ [$a_B$]",
             ylabel=r"$g_{ii}(r)$",
             xlim=(-0.5, 12.0),
         )
@@ -558,20 +636,35 @@ def main() -> None:
         ax_s.axhline(1.0, color="0.5", lw=0.8, ls=":")
         ax_s.set(
             title=r"$S_{ii}(k)$",
-            xlabel=r"$k$ [Bohr$^{-1}$]",
+            xlabel=r"$k$ [$a_B^{-1}$]",
             ylabel=r"$S_{ii}(k)$",
         )
 
-        fig_pipeline.suptitle(
+        weight = np.abs(state["n_ion_k_electrons"] + state["n_scr_k_electrons"])**2 * state["sii_k"]
+        ax_w.plot(k[k_mask], weight[k_mask])
+        ax_w.set(
+            title="Rayleigh weight",
+            xlabel=r"$k$ [$a_B^{-1}$]",
+            ylabel=r"$W_R(k)$",
+        )
+
+        ionic_title = (
             rf"Al pseudoatom/QOZ/HNC, "
             rf"$\rho={float(state['rho_g_cc']):g}$ g cm$^{{-3}}$, "
-            rf"$T_e=T_i={float(state['te_ev']):g}$ eV",
-            y=0.99,
+            rf"$T_e={float(state['te_ev']):g}$ eV, "
+            rf"$T_i={float(state['ti_ev']):g}$ eV"
         )
-        fig_pipeline.tight_layout(rect=(0.0, 0.0, 1.0, 0.965))
+        fig_pipeline.suptitle(ionic_title)
+        fig_ionic.suptitle(ionic_title)
         save_figure(
             fig_pipeline,
             FIGURE_DIR / "al_full_workflow_ionic_pipeline",
+            close=False,
+        )
+
+        save_figure(
+            fig_ionic,
+            FIGURE_DIR / "al_full_workflow_ionic_structure",
             close=False,
         )
 
@@ -582,19 +675,19 @@ def main() -> None:
             )
 
             fig_density, ax_density_slide = plt.subplots(figsize=grid_figsize(1, 1))
-            for key, label in density_curves:
+            for density, label in density_curves:
                 ax_density_slide.plot(
                     r_e[mask_e],
-                    (shell * np.asarray(state[key], dtype=float))[mask_e],
+                    (shell * density)[mask_e],
                     label=label,
                 )
             ax_density_slide.axvline(r_ws, color="0.25", ls=":", lw=1.1, label=r"$R_{\rm WS}$")
             ax_density_slide.set(
-                xlabel=r"$r$ [Bohr]",
-                ylabel=r"$4\pi r^2 n(r)$ [Bohr$^{-1}$]",
+                xlabel=r"$r$ [$a_B$]",
+                ylabel=r"$4\pi r^2 n(r)$ [$a_B^{-1}$]",
                 xlim=(-0.5, 8.0),
                 ylim=(-1.0, 15.0),
-                title=slide_title + r", $\mu=" + f"{float(state['mu_ha']):.5f}" + r"$ Ha",
+                title=electronic_title,
             )
             ax_density_slide.legend(ncol=2)
             fig_density.tight_layout()
@@ -608,7 +701,7 @@ def main() -> None:
             ax_gii_slide.plot(r[r_mask], np.asarray(state["gii_r"])[r_mask])
             ax_gii_slide.axhline(1.0, color="0.5", lw=0.9, ls=":")
             ax_gii_slide.set(
-                xlabel=r"$r$ [Bohr]",
+                xlabel=r"$r$ [$a_B$]",
                 ylabel=r"$g_{ii}(r)$",
                 xlim=(-0.5, 12.0),
                 title=slide_title + r", $g_{ii}(r)$",
@@ -620,7 +713,7 @@ def main() -> None:
             ax_sii_slide.plot(k[k_mask], np.asarray(state["sii_k"])[k_mask])
             ax_sii_slide.axhline(1.0, color="0.5", lw=0.9, ls=":")
             ax_sii_slide.set(
-                xlabel=r"$k$ [Bohr$^{-1}$]",
+                xlabel=r"$k$ [$a_B^{-1}$]",
                 ylabel=r"$S_{ii}(k)$",
                 xlim=(0.0, 8.0),
                 title=slide_title + r", $S_{ii}(k)$",

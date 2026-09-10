@@ -92,6 +92,8 @@ def test_be65_default_full_scf_does_not_use_free_wave_branch():
 
     config = FullExternalConfig(element="Be", rho_g_cc=65., temperature_ev=50., run_mode="full")
     result = solve_full_only(config)
+    assert result["zstar"] == result["n0"] / result["meta"]["n_i_bohr3"]
+    assert result["meta"]["zstar"] == result["zstar"]
     assert result["stage2_converged"]
     assert result["threshold_state_status"] == "resolved"
     assert result["continuum_matching_window_full_valid"]

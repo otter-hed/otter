@@ -6,13 +6,19 @@
 .. image:: /_static/gallery_results/plot_al_full_workflow/figure_002.svg
    :alt: Recorded result for plot_al_full_workflow
 
+.. image:: /_static/gallery_results/plot_al_full_workflow/figure_003.svg
+   :alt: Recorded result for plot_al_full_workflow
+
+.. image:: /_static/gallery_results/plot_al_full_workflow/figure_004.svg
+   :alt: Recorded result for plot_al_full_workflow
+
 Recorded terminal output
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
    Al: rho=8.1 g/cc, Te=Ti=1 eV
-   mu=1.04464546 Ha, HNC residual=2.829e-07
+   mu=1.04464546 Ha, HNC residual=2.692e-11
    Zbar(AA-WS/partition/QOZ)=3.02589456/3.02275458/3.02275458
    Qscr(native/grid/used)=3.02213137/3.02213578/3.02275458; scale=1.00020476
      level        E [Ha]        E [eV]         FD   occupation

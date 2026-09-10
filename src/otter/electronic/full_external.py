@@ -3083,6 +3083,19 @@ def _build_bound_tables_and_dos(
         vals = np.asarray(eigvals, dtype=float)
         vectors = np.asarray(eigvecs, dtype=float)
 
+    # Retain the original radial KS functions, not occupation/partition-weighted
+    # amplitudes. Use only the final SCF eigenpairs (including matched poles),
+    # never a reporting-only finite-box re-solve with different orbitals.
+    wavefunctions = None
+    if eigvals is not None and eigvecs is not None:
+        valid = np.isfinite(vals) & (vals < float(energy_cut))
+        if vectors.shape != (vals.shape[0], r.size, vals.shape[1]):
+            raise ValueError("Final bound eigenvectors must have (l, r_bound, n) shape.")
+        wavefunctions = np.zeros((*vals.shape, r.size), dtype=float)
+        wavefunctions[valid] = (
+            np.moveaxis(vectors, 1, -1)[valid] / np.sqrt(np.maximum(r, 1.0e-14))
+        )
+
     e_mat = np.asarray(vals, dtype=float)
     # The production SCF can replace a shallow Dirichlet-box orbital by a
     # zero-tail matched pole, including the case where the finite box misses
@@ -3167,6 +3180,9 @@ def _build_bound_tables_and_dos(
         "dos_cont_ideal": dos_cont_full,
         "dos_cont_ideal_fd": dos_cont_fd_full,
     }
+    if wavefunctions is not None:
+        output["r_bound"] = r
+        output["bound_wavefunction_r"] = wavefunctions
     if (
         vectors is not None
         and ion_cutoff is not None
@@ -3945,6 +3961,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     dict
         Unified result dictionary with:
         - solver outputs (densities, potentials, mu, history),
+        - background ionization ``zstar = n0 / n_i``,
         - metadata ("meta"),
         - optional save paths ("saved_paths") when cfg.save_data=True.
     """
@@ -4966,6 +4983,8 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     # this separate from the TCP charge defined by integral(n_scr), following
     # Starrett & Saumon (2014), Eqs. (9), (10), and (15).
     result["zbar"] = zbar_ws
+    # Background-density ionization; distinct from the n_ion partition charge.
+    result["zstar"] = float(result["n0"]) / float(n_i)
 
     full_controls = _resolve_b3_tail_controls(
         cfg,
@@ -5195,6 +5214,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "mu_final_ha": float(result["mu"]),
         "final_mu": float(result["mu"]),
         "n0_final_bohr3": float(result["n0"]),
+        "zstar": float(result["zstar"]),
         "cont_e_max": float(cfg.cont_e_max),
         "cont_stage2_e_max_mode": str(cfg.cont_stage2_e_max_mode),
         "cont_stage2_e_max_occ_tol": float(cfg.cont_stage2_e_max_occ_tol),

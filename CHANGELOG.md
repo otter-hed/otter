@@ -5,6 +5,35 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+## 0.3.1 — 2026-09-10
+
+- Use default numerical controls in both the Al gallery and standalone Colab;
+  remove the gallery's extra HNC tolerances. Show partition Zbar and explicit
+  Zstar, retain SCF progress and wall time, and test the complete configuration
+  for parity.
+  Document the same direct charge access for individual mixture species and
+  the species-vector fields in standard NPZ exports.
+
+- Expose `zstar` directly in QM/TF AA results and electronic exports. Portable
+  exports prefer this value while retaining the n0/n_i fallback for older
+  results; mixture values use each AA-cell density, not bulk partial density.
+  Clarify export groups, convergence checks, configuration provenance and
+  result/metadata access in the state guide. Add the Al Rayleigh-weight panel.
+  Do not count disabled external-stage placeholders as an executed AA stage.
+  Read nuclear charge from AA metadata when needed to export native TF results.
+
+- Document selective orbital saving/loading and add orbital plots to the Al
+  gallery and Colab notebook. Keep plotting code in the examples; use matching
+  three-panel layouts, a_B units and electronic-only temperature labels.
+  Correct the Al density plot to show n_ion rather than n_bound under that label.
+
+- Expose the final, unweighted KS radial wavefunctions on their bound grid;
+  optionally return/display amplitudes multiplied by FD occupation (off by
+  default). Reuse existing ion-orbital densities and the QOZ radial transform
+  for per-level form factors, with a runnable plotting example. Portable
+  orbital exports retain raw wavefunctions and full-grid-transformed form
+  factors when available. TF and solver defaults are unchanged.
+
 ## 0.3.0 — 2026-09-10
 
 ### Release scope

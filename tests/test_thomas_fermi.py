@@ -63,6 +63,8 @@ def test_tf_full_external_preserves_neutral_pseudoatom_identity() -> None:
         return float(4.0 * np.pi * np.trapezoid(density * r**2, r))
 
     assert result["converged"] is True
+    assert result["zstar"] == result["n0"] / result["meta"]["n_i_bohr3"]
+    assert result["meta"]["zstar"] == result["zstar"] == result["zbar"]
     assert result["ext_status"]["converged"] is True
     assert result["xc_provenance"]["provider"] == "otter_builtin"
     assert result["xc_provenance"]["components"][0]["dois"] == [
@@ -94,6 +96,27 @@ def test_full_external_dispatches_tf_backend() -> None:
     assert result["meta"]["electronic_model"] == "thomas_fermi"
     assert result["threshold_state_status"] == "not_applicable_tf"
     assert result["converged"] is True
+
+
+def test_tf_full_only_workflow_exports_direct_zstar(tmp_path):
+    import json
+    from otter import StateExportOptions, load_plasma_state, save_plasma_state
+
+    workflow = solve_plasma_workflow(PlasmaWorkflowConfig(
+        elements=["Al"], rho_g_cc=8.1, temperature_ev=1.0,
+        electronic_model="tf", run_mode="full", show_progress=False,
+    ))
+    aa = workflow["electronic"]["result"]
+    assert aa["stage2_converged"]
+    assert aa["zstar"] == aa["n0"] / aa["meta"]["n_i_bohr3"]
+    assert "bound_wavefunction_r" not in aa
+    path = save_plasma_state(tmp_path / "tf.npz", workflow,
+                            options=StateExportOptions(profile="electronic_summary"))
+    state = load_plasma_state(path)
+    assert state["zstar"][0] == state["species_0_zstar"] == aa["zstar"]
+    assert state["species_nuclear_charge"][0] == 13
+    metadata = json.loads(str(state["metadata_json"].item()))
+    assert metadata["export"]["computed_stages"] == ["electronic.full"]
 
 
 def test_full_external_dispatches_tf_sc_controls(monkeypatch) -> None:

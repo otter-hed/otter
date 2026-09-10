@@ -13,6 +13,8 @@ Otter is based primarily on the pseudoatom model of
 
 - finite-temperature quantum (KS-DFT, QM) and Thomas–Fermi (TF) electronic structure; the
   QM model provides orbital levels, occupations, and density components;
+- per-level ionic densities and form factors, raw KS radial wavefunctions,
+  and direct access to partition mean ionization and background ionization;
 - pseudoatom densities `n_pa(r)` and screening densities `n_scr(r)`, with form factors
   `f(k)=n_ion(k)` and `q(k)=n_scr(k)`;
 - effective ion–ion potentials `V_ij(r)` and `V_ij(k)`;
@@ -180,7 +182,7 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu and Dominik Kraus, *Otter*, version 0.3.0, computer software (2026),
+> Chongbing Qu and Dominik Kraus, *Otter*, version 0.3.1, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
@@ -188,7 +190,7 @@ If you use Otter in a scientific publication, please cite:
   author  = {Qu, Chongbing and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
-  note    = {Computer software, version 0.3.0},
+  note    = {Computer software, version 0.3.1},
   url     = {https://github.com/otter-hed/otter}
 }
 ```

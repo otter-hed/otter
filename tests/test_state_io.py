@@ -23,6 +23,40 @@ from otter.numerics.transforms import (
 from otter.workflows import PlasmaWorkflowConfig
 
 
+@pytest.mark.parametrize("n_species", [1, 2])
+def test_orbital_wavefunctions_and_form_factors_roundtrip(tmp_path, n_species):
+    workflow = _synthetic_workflow(n_species)
+    entries = ([{"result": workflow["electronic"]["result"]}] if n_species == 1
+               else workflow["electronic"]["result"]["species"])
+    for entry in entries:
+        aa = entry["result"]
+        aa["r_bound"] = np.linspace(0.001, 8.0, 91)
+        aa["bound_wavefunction_r"] = np.zeros((2, 2, 91))
+        aa["bound_wavefunction_r"][0, 0] = np.exp(-aa["r_bound"])
+        aa["bound_wavefunction_r"][1, 0] = -aa["r_bound"] * np.exp(-aa["r_bound"])
+    options = StateExportOptions(r_max_bohr=1.0, k_max_bohr_inv=5.0)
+    arrays = build_state_arrays(workflow, options=options)
+    save_plasma_state(tmp_path / "orbitals.npz", workflow, options=options)
+    saved = load_plasma_state(tmp_path / "orbitals.npz")
+    for i, entry in enumerate(entries):
+        prefix = f"species_{i}_"
+        aa = entry["result"]
+        mask = aa["r_bound"] < 1.0
+        np.testing.assert_array_equal(saved[prefix + "bound_wavefunction_r"],
+                                      aa["bound_wavefunction_r"][:, 0, :][:, mask])
+        # Cropping real space must not truncate the input to the transform.
+        np.testing.assert_allclose(saved[prefix + "ion_orbital_density_k"].sum(axis=0),
+                                   saved["f_k"][i], atol=1e-13)
+        np.testing.assert_array_equal(saved[prefix + "orbital_k_bohr_inv"], saved["k_bohr_inv"])
+        np.testing.assert_array_equal(arrays[prefix + "bound_wavefunction_r"], saved[prefix + "bound_wavefunction_r"])
+    small = build_state_arrays(workflow, options=StateExportOptions(profile="electronic_summary"))
+    assert not any("wavefunction" in key or "orbital_density" in key for key in small)
+    invalid = dict(arrays)
+    invalid["species_0_bound_wavefunction_r"] = np.zeros((1, 1))
+    with pytest.raises(ValueError, match="orbital/grid shape"):
+        validate_state_arrays(invalid)
+
+
 def _synthetic_workflow(n_species: int = 1) -> dict:
     transform = precompute_dst_lattice_transform_like(np.linspace(1.0e-4, 32.0, 257))
     r = np.asarray(transform.r)
@@ -236,6 +270,93 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
         "Chabrier1990",
     ]
     assert metadata["convergence"]["electronic"][0]["species"] == "C"
+
+
+@pytest.mark.parametrize("n_species", [1, 2])
+@pytest.mark.parametrize("profile", ["electronic_summary", "ion_structure", "complete"])
+def test_zstar_direct_export_and_legacy_fallback(tmp_path, n_species, profile):
+    workflow = _synthetic_workflow(n_species)
+    entries = ([{"result": workflow["electronic"]["result"]}] if n_species == 1
+               else workflow["electronic"]["result"]["species"])
+    if profile == "electronic_summary":
+        workflow["ion"] = None
+    options = StateExportOptions(profile=profile)
+    legacy = build_state_arrays(workflow, options=options)
+    np.testing.assert_array_equal(legacy["zstar"], legacy["n0_bohr3"] / legacy["n_i_bohr3"])
+    expected = []
+    for index, entry in enumerate(entries):
+        # A distinguishable rounding bit checks that exports use the stored value.
+        value = np.nextafter(legacy["zstar"][index], np.inf)
+        entry["result"]["zstar"] = value
+        expected.append(value)
+    path = save_plasma_state(tmp_path / "explicit.npz", workflow, options=options)
+    saved = load_plasma_state(path)
+    np.testing.assert_array_equal(saved["zstar"], expected)
+    for index, value in enumerate(expected):
+        assert saved[f"species_{index}_zstar"] == value
+    entries[0]["result"]["zstar"] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        build_state_arrays(workflow, options=options)
+
+
+def test_legacy_zstar_uses_aa_metadata_density_not_bulk_partial_density():
+    workflow = _synthetic_workflow(2)
+    for index, entry in enumerate(workflow["electronic"]["result"]["species"]):
+        aa = entry["result"]
+        aa.pop("n_i", None)
+        aa.pop("n_i_bohr3", None)
+        aa.setdefault("meta", {})["n_i_bohr3"] = 0.3 + index * 0.1
+        aa["meta"]["Z"] = aa.pop("Z")
+        entry.pop("Z", None)
+    arrays = build_state_arrays(workflow, options=StateExportOptions(profile="electronic_summary"))
+    np.testing.assert_allclose(arrays["n_i_bohr3"], [0.3, 0.4])
+    np.testing.assert_array_equal(arrays["species_nuclear_charge"], [6, 1])
+    np.testing.assert_array_equal(arrays["zstar"], arrays["n0_bohr3"] / arrays["n_i_bohr3"])
+
+
+@pytest.mark.parametrize("enable_field", ["ext_status", "meta"])
+def test_disabled_external_placeholders_do_not_claim_a_computed_stage(enable_field):
+    workflow = _synthetic_workflow(1)
+    workflow["ion"] = None
+    aa = workflow["electronic"]["result"]
+    # TF retains placeholder n_ext and an ext_status even in full-only mode.
+    if enable_field == "ext_status":
+        aa["ext_status"] = {"enabled": False, "converged": True}
+    else:
+        aa.setdefault("meta", {})["ext_enabled"] = False
+    arrays = build_state_arrays(workflow, options=StateExportOptions(profile="electronic_summary"))
+    meta = json.loads(str(arrays["metadata_json"].item()))
+    assert meta["export"]["computed_stages"] == ["electronic.full"]
+
+
+def test_state_guide_save_and_numpy_read_examples_match(tmp_path, monkeypatch):
+    from pathlib import Path
+    import re
+    import otter
+
+    guide = (Path(__file__).resolve().parents[1] / "docs/source/user_guide/state_exports.rst").read_text()
+    blocks = re.findall(r"\.\. code-block:: python\n\n((?:   [^\n]*\n|\n)+)", guide)
+    blocks = ["\n".join(line[3:] if line.startswith("   ") else line
+                         for line in block.splitlines()) for block in blocks]
+    save_example = next(block for block in blocks if 'save_state_path="outputs/ch1p36_state.npz"' in block)
+    read_example = next(block for block in blocks if 'with np.load("outputs/ch1p36_state.npz"' in block)
+    monkeypatch.chdir(tmp_path)
+
+    def solve(config):
+        workflow = _synthetic_workflow(2)
+        path = save_plasma_state(config.save_state_path, workflow, options=StateExportOptions(
+            profile=config.state_export_profile, include_groups=config.state_include_groups,
+        ))
+        workflow["saved_paths"] = {"state_npz": str(path)}
+        return workflow
+
+    monkeypatch.setattr(otter, "solve_plasma_workflow", solve)
+    namespace = {}
+    exec(compile(save_example, "state_exports:save", "exec"), namespace)
+    exec(compile(read_example, "state_exports:numpy", "exec"), namespace)
+    assert namespace["Zstar"].shape == (2,)
+    assert namespace["S"].shape[:2] == (2, 2)
+    assert "G_ee_k" not in namespace["state"]
 
 
 def test_electronic_summary_is_full_only_and_minimal() -> None:
@@ -472,7 +593,7 @@ def test_state_validator_accepts_legacy_v1_without_interaction_channels() -> Non
     legacy = {
         key: value
         for key, value in arrays.items()
-        if key not in {"v_ie_k", "v_ei_k", "v_ee_k", "c_ie_k", "c_ee_k"}
+        if key not in {"v_ie_k", "v_ei_k", "v_ee_k", "c_ie_k", "c_ee_k", "zstar"}
     }
     legacy["schema_version"] = np.asarray("otter_state_v1")
     metadata = json.loads(str(legacy["metadata_json"].item()))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from otter._version import __version__
+from otter.electronic.orbitals import bound_wavefunctions, ion_orbital_form_factors
 from otter.workflows import (
     PlasmaWorkflowConfig,
     PreparedMulticomponentIonStructure,
@@ -39,9 +40,11 @@ __all__ = [
     "StateExportOptions",
     "continue_plasma_workflow_from_electronic_result",
     "bibliography_entries",
+    "bound_wavefunctions",
     "get_bibtex_ref_string",
     "get_cite_ref_string",
     "get_formatted_ref_string",
+    "ion_orbital_form_factors",
     "parse_formula_composition",
     "prepare_multicomponent_ion_structure_from_electronic_result",
     "load_plasma_state",

@@ -130,6 +130,7 @@ def save_full_external_data(
     # so the same function works for full-only or full+external runs.
     key_order = (
         "r",
+        "zstar",
         "n_ion",
         "n_cont",
         "n_full",
@@ -309,6 +310,7 @@ def save_mixture_data(
             "mu",
             "n0",
             "zbar",
+            "zstar",
             "q_full_ws",
             "q_cont_ws",
             "q_ext_ws",

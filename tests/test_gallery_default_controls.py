@@ -60,6 +60,9 @@ def test_al_recomputation_and_public_page_use_the_same_configuration(monkeypatch
     runner = load("benchmarks/runners/regenerate_al_full_workflow.py", monkeypatch)
     page = load("docs/examples/plot_al_full_workflow.py", monkeypatch)
     assert asdict(runner._configuration(runner._load_library_regenerator())) == asdict(page.workflow_config())
+    assert asdict(page.workflow_config()) == asdict(PlasmaWorkflowConfig(
+        elements=["Al"], rho_g_cc=8.1, temperature_ev=1.0, ion_temperature_ev=1.0,
+    ))
 
 
 def test_carbon_scan_uses_default_numerics_and_changes_cache_fingerprint(monkeypatch):

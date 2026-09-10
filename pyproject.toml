@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "otter-hed"
-version = "0.3.0"
+version = "0.3.1"
 description = "Average-atom, pseudoatom, and ionic-structure calculations for dense plasmas."
 readme = "README.md"
 requires-python = ">=3.12"

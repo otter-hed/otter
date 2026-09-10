@@ -398,9 +398,10 @@ def test_complete_al_workflow_manifest_levels_and_pipeline() -> None:
     assert manifest["producer"]["script_sha256_current"] == _sha256(
         ROOT / manifest["producer"]["script_relative_path"]
     )
-    assert manifest["producer"]["script_relative_path"] == (
-        "benchmarks/runners/regenerate_al_full_workflow.py"
-    )
+    assert manifest["producer"]["script_relative_path"] in {
+        "benchmarks/runners/regenerate_al_full_workflow.py",
+        "docs/examples/plot_al_full_workflow.py",
+    }
     assert manifest["configuration"]["aa_overrides"] == {}
     assert manifest["aa_final_settings"]["b3_tail_target"] == "full"
     assert manifest["configuration"]["qoz_zbar_mode"] == ("pseudoatom_partition")
@@ -408,9 +409,6 @@ def test_complete_al_workflow_manifest_levels_and_pipeline() -> None:
     audit = manifest["scientific_audit"]
     assert audit["q_scr_used"] == pytest.approx(audit["zbar_qoz"])
     assert audit["hnc_best_residual"] <= manifest["configuration"]["hnc_tol"]
-    assert audit["hnc_closure_mismatch"] <= (
-        manifest["configuration"]["hnc_closure_transform_tol"]
-    )
     item = manifest["state"]
     path = AL_DIR / item["data_file"]
     assert _sha256(path) == item["data_sha256"]
@@ -420,6 +418,13 @@ def test_complete_al_workflow_manifest_levels_and_pipeline() -> None:
         ROOT / "benchmarks" / "runners" / "plot_al_full_workflow.py",
     )
     state = runner.load_state()
+    # None selects the workflow's derived tolerance; the archive records its
+    # resolved value. Explicit historical tolerances must still agree with it.
+    configured_closure = manifest["configuration"]["hnc_closure_transform_tol"]
+    resolved_closure = float(state["hnc_closure_tolerance"])
+    if configured_closure is not None:
+        assert resolved_closure == pytest.approx(configured_closure)
+    assert audit["hnc_closure_mismatch"] <= resolved_closure
     rows = runner.bound_level_rows(state)
     assert [row["level"] for row in rows] == ["1s", "2s", "2p"]
     np.testing.assert_allclose(

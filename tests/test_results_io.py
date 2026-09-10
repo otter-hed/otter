@@ -26,6 +26,7 @@ def test_full_external_archive_is_pickle_free_with_none_metadata(tmp_path) -> No
         result={
             "r": r,
             "n_full": np.exp(-r),
+            "zstar": 2.5,
             "bound_q_ion_ws": np.asarray(((1.2, 0.1), (0.2, np.nan))),
         },
         metadata={"optional": None, "converged": True},
@@ -33,6 +34,7 @@ def test_full_external_archive_is_pickle_free_with_none_metadata(tmp_path) -> No
     path = Path(written["data_npz"])
     _assert_pickle_free(path)
     with np.load(path, allow_pickle=False) as payload:
+        assert payload["zstar"].item() == 2.5
         assert payload["meta_optional"].item() == "null"
         np.testing.assert_allclose(
             payload["bound_q_ion_ws"],
@@ -56,6 +58,7 @@ def test_mixture_archive_encodes_nonnumeric_history_without_objects(tmp_path) ->
                 "r": r,
                 "n_full": np.exp(-r),
                 "n0": 0.01,
+                "zstar": 0.1,
                 "mu": 0.1,
                 "r_ws": 1.0,
             },
@@ -84,4 +87,5 @@ def test_mixture_archive_encodes_nonnumeric_history_without_objects(tmp_path) ->
         ]
         assert payload["history_diagnostic"].dtype.kind == "U"
         assert payload["meta_root_detail"].item() == "null"
+        assert payload["C_zstar"].item() == payload["H_zstar"].item() == 0.1
     assert not list(tmp_path.glob(f".{path.name}.*.tmp"))

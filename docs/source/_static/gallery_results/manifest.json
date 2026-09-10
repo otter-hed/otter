@@ -1,18 +1,28 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "c1f627375315ec4e46d4a07c76bb74d4bb07de46392437cc9754674b80226230",
+    "rendering_source_sha256": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695",
     "figures": {
-      "figure_001.svg": "66914f5dd3f224ff8f03b81207b8f73d2899b53b29a6dddca5e08cc2d9203578",
-      "thumbnail.png": "8b62021102aab6a42cc256c3de285c06666af40cabc11eb45f4add1496e7f367",
-      "figure_002.svg": "9ff8156b07da1764e495fd63a4095b8c86d38984504f0943d29dfd8bde987fc7"
+      "figure_001.svg": "701a123a2adb2681ceea23d81d0e9e36b88f12aa459e896cb4f0c6721d93d95c",
+      "thumbnail.png": "b41c2d244646680090ea6fab1c65c810613e017723ac6f5228d865984bd4f1f1",
+      "figure_002.svg": "7176967a4e6377819043a45baa080b6cb3eb28157bee5376a324c3cba30d9246",
+      "figure_003.svg": "d7f2f42a8ec4ab0ff43ab21a34752a49ba5b6d3e5f6454a98c5b9297d101bd98",
+      "figure_004.svg": "6b4498ef9dfe2ac3bd0e4f54c5a49e4c78ffbf00fc9c55db2ff722622aa9d4bd"
     },
-    "results_sha256": "c7f286649b99be58696d9179d059dd0fcb89a6db55821d38c597e2c0cb116290",
+    "results_sha256": "cf11844326be7a2ddfeb002599367b2b6b7b039175d015ff51bbe1cb9b8de98e",
     "role": "recorded_presentation_only_not_a_solver_input",
+    "orbital_state": {
+      "path": "benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz",
+      "sha256": "1c2c25f3bd0027044f6d4aef68e3df6a75af8b071a8e9cf2bab3c97e6391860e",
+      "role": "locally_reproduced_standard_orbital_export"
+    },
     "initial_html_capture": {
       "source_sha256_at_capture": "88372c825609433e04a48cdf03d7a670b377118158fa8d9238060aa77b329448",
       "html_sha256_at_capture": "0c9d14a2e2f33a7f6b569876cc1b7da6acc1f7416af8d46c3d9689485a101e4b"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archives": {
+      "benchmarks/baselines/al_full_workflow_1ev/Al_rho8p1gcc_Te1eV_Ti1eV.npz": "fd80c9b943dad162906e8717a56b54befb49470a79ee4f941728db2a87feb339",
+      "benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz": "1c2c25f3bd0027044f6d4aef68e3df6a75af8b071a8e9cf2bab3c97e6391860e"
+    }
   },
   "docs/examples/plot_al_is_sc_comparison.py": {
     "rendering_source_sha256": "9d35730224ac64ea7e72b6457a153bcddc4563cf08f7017770e8978a2d4f8633",

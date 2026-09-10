@@ -38,6 +38,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from otter.electronic.orbitals import ion_orbital_form_factors
 from otter.io._npz import save_npz_atomic
 from otter._version import __version__
 from otter.numerics.transforms import (
@@ -225,10 +226,15 @@ def _species_entries(workflow: Mapping[str, Any]) -> list[dict[str, Any]]:
                 list(workflow.get("species_symbols", ["?"]))[0],
             )
         )
-        return [{"element": symbol, "result": electronic_result}]
+        return [{
+            "element": symbol,
+            "Z": dict(electronic_result.get("meta", {})).get("Z", np.nan),
+            "result": electronic_result,
+        }]
     return [
         {
             **dict(entry),
+            "Z": entry.get("Z", dict(entry["result"].get("meta", {})).get("Z", np.nan)),
             "result": dict(entry["result"]),
         }
         for entry in electronic_result["species"]
@@ -332,6 +338,9 @@ def _entry_n_i(entry: Mapping[str, Any]) -> float:
         return float(result["n_i"])
     if "n_i_bohr3" in result:
         return float(result["n_i_bohr3"])
+    meta = result.get("meta", {})
+    if isinstance(meta, Mapping) and "n_i_bohr3" in meta:
+        return float(meta["n_i_bohr3"])
     if "volume_bohr3" in entry:
         return 1.0 / float(entry["volume_bohr3"])
     r_ws = result.get("r_ws", entry.get("r_ws_bohr"))
@@ -369,12 +378,22 @@ def _species_vector(
     return np.asarray(values, dtype=float)
 
 
+def _entry_zstar(entry: Mapping[str, Any]) -> float:
+    """Use the explicit AA value, with n0/n_i fallback for older results."""
+    result = entry["result"]
+    if "zstar" in result:
+        return float(result["zstar"])
+    return float(result.get("n0", np.nan)) / _entry_n_i(entry)
+
+
 def _add_species_electronic_arrays(
     arrays: dict[str, np.ndarray],
     *,
     entries: list[dict[str, Any]],
     r_max_bohr: float,
     groups: frozenset[str],
+    ion: Mapping[str, Any],
+    k_max_bohr_inv: float,
 ) -> None:
     """Add native-grid AA fields using stable species-index prefixes."""
     for species_index, entry in enumerate(entries):
@@ -424,7 +443,7 @@ def _add_species_electronic_arrays(
             "zbar_aa": result.get("zbar", np.nan),
             "zbar_partition": result.get("zbar_partition", np.nan),
             "zbar_ws": result.get("zbar_ws", result.get("zbar", np.nan)),
-            "zstar": n0 / n_i if np.isfinite(n0) and n_i > 0.0 else np.nan,
+            "zstar": _entry_zstar(entry),
             "bound_energy_cut_ha": result.get("bound_energy_cut_ha", np.nan),
             "shallowest_bound_energy_ha": result.get(
                 "shallowest_bound_energy_ha", np.nan
@@ -514,6 +533,21 @@ def _add_species_electronic_arrays(
                                 arrays[prefix + source] = np.asarray(
                                     value[selected][:, r_mask], dtype=float
                                 )
+                        wave = _finite_numeric(result.get("bound_wavefunction_r"))
+                        if wave is not None:
+                            r_bound = np.asarray(result["r_bound"], dtype=float)
+                            if wave.shape != (*energies.shape, r_bound.size):
+                                raise ValueError("Bound wavefunctions must align with r_bound and levels.")
+                            bound_mask = r_bound < float(r_max_bohr)
+                            arrays[prefix + "r_bound_bohr"] = r_bound[bound_mask]
+                            arrays[prefix + "bound_wavefunction_r"] = wave[selected][:, bound_mask]
+                        if "ion_orbital_density_r" in result and "r" in ion and "k" in ion:
+                            k_full = np.asarray(ion["k"], dtype=float)
+                            k_mask = k_full < float(k_max_bohr_inv)
+                            # Transform the full profiles before cropping the archive.
+                            per_level_k = ion_orbital_form_factors(result, r=ion["r"], k=k_full)
+                            arrays[prefix + "orbital_k_bohr_inv"] = k_full[k_mask]
+                            arrays[prefix + "ion_orbital_density_k"] = per_level_k[selected][:, k_mask]
 
             for source in (
                 "bound_occ_mode",
@@ -576,11 +610,15 @@ def _metadata(
     mixture_meta = dict(electronic_result.get("meta", {}))
     groups = options.groups
     computed_stages = ["electronic.full"]
-    if entries and all(
-        "n_ext" in dict(entry["result"])
-        or bool(dict(entry["result"]).get("ext_status"))
-        for entry in entries
-    ):
+    external_enabled = []
+    for entry in entries:
+        final = dict(entry["result"])
+        status = dict(final.get("ext_status", {}))
+        meta = dict(final.get("meta", {}))
+        external_enabled.append(bool(status.get(
+            "enabled", meta.get("ext_enabled", "n_ext" in final)
+        )))
+    if entries and all(external_enabled):
         computed_stages.append("electronic.external")
     if ion:
         computed_stages.append("qoz")
@@ -691,14 +729,17 @@ def _metadata(
             "charge_fix": ion.get("charge_fix"),
         },
         "definitions": {
-            "zbar": "QOZ charge selected by qoz_zbar_mode",
-            "zstar": "n0 / n_i",
+            "zbar": ("QOZ charge selected by qoz_zbar_mode" if ion else
+                     "AA zbar_partition, with legacy zbar fallback"),
+            "zstar": "n0 / n_i for each species' AA-cell ion density",
             "bound_orbital_density_r": (
                 "per-level contribution to n_bound using bound_occ_mode"
             ),
             "ion_orbital_density_r": (
                 "per-level contribution to n_ion including M(E) and f_cut(r)"
             ),
+            "bound_wavefunction_r": "R_nl(r) on r_bound_bohr, no occupation, M(E), or f_cut; Bohr^(-3/2)",
+            "ion_orbital_density_k": "radial Fourier transform of n_ion_nl on the full QOZ grid; electrons",
             "real_space_electron_channels": (
                 "inverse transform on the finite QOZ DST lattice"
             ),
@@ -791,14 +832,13 @@ def build_state_arrays(
     zstar_values = []
     for entry in entries:
         electronic_result = dict(entry["result"])
-        n_i_value = _entry_n_i(entry)
         n0_value = float(electronic_result.get("n0", np.nan))
         mu_values.append(float(electronic_result.get("mu", entry.get("mu_ha", np.nan))))
         r_ws_values.append(
             float(electronic_result.get("r_ws", entry.get("r_ws_bohr", np.nan)))
         )
         n0_values.append(n0_value)
-        zstar_values.append(n0_value / n_i_value)
+        zstar_values.append(_entry_zstar(entry))
     arrays["mu_ha"] = np.asarray(mu_values, dtype=float)
     arrays["r_ws_bohr"] = np.asarray(r_ws_values, dtype=float)
     arrays["n0_bohr3"] = np.asarray(n0_values, dtype=float)
@@ -809,6 +849,8 @@ def build_state_arrays(
         entries=entries,
         r_max_bohr=float(opts.r_max_bohr),
         groups=groups,
+        ion=ion,
+        k_max_bohr_inv=float(opts.k_max_bohr_inv),
     )
 
     if opts.requires_ion_stage:
@@ -1357,6 +1399,20 @@ def validate_state_arrays(arrays: Mapping[str, Any]) -> None:
                     r_native.size,
                 ):
                     raise ValueError(f"{key} has an inconsistent orbital/r shape.")
+            for field, grid_name in (
+                ("bound_wavefunction_r", "r_bound_bohr"),
+                ("ion_orbital_density_k", "orbital_k_bohr_inv"),
+            ):
+                key, grid_key = prefix + field, prefix + grid_name
+                if key not in converted:
+                    continue
+                if grid_key not in converted:
+                    raise ValueError(f"{key} requires {grid_key}.")
+                grid = converted[grid_key]
+                if grid.ndim != 1 or np.any(grid <= 0) or np.any(np.diff(grid) <= 0):
+                    raise ValueError(f"{grid_key} must be positive and increasing.")
+                if converted[key].shape != (n_level, grid.size):
+                    raise ValueError(f"{key} has an inconsistent orbital/grid shape.")
 
     try:
         r_limit = float(metadata["window"]["r_max_bohr_exclusive"])

@@ -31,8 +31,6 @@ STATE = {
     "te_ev": 1.0,
     "ti_ev": 1.0,
 }
-HNC_TOL = 1.0e-6
-HNC_CLOSURE_TOL = 1.0e-3
 
 
 def _sha256(path: Path) -> str:
@@ -81,18 +79,13 @@ def _load_library_regenerator() -> ModuleType:
 
 
 def _configuration(producer: ModuleType):
-    """Return this gallery state with a strict HNC stopping contract.
-
-    The reusable ion-library scan uses a looser nonlinear tolerance across
-    several states.  At this cold, strongly coupled Al point that stopping
-    point can satisfy the map residual while retaining a larger finite-DST
-    ``g(r) <-> S(k)`` mismatch.  The complete workflow example continues the
-    same equations to a tighter fixed point; no physical model is changed.
-    """
-    cfg = producer._configuration(STATE)
-    cfg.hnc_tol = float(HNC_TOL)
-    cfg.hnc_closure_transform_tol = float(HNC_CLOSURE_TOL)
-    return cfg
+    """Build the Al state with Otter's default numerical controls."""
+    return producer.PlasmaWorkflowConfig(
+        elements=[STATE["element"]],
+        rho_g_cc=STATE["rho_g_cc"],
+        temperature_ev=STATE["te_ev"],
+        ion_temperature_ev=STATE["ti_ev"],
+    )
 
 
 def _augment_v2_payload(

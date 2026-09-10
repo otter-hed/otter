@@ -70,10 +70,12 @@ def test_al_slide_exports_are_opt_in_and_not_recorded(monkeypatch):
     def saves(node):
         return [item for item in ast.walk(node) if isinstance(item, ast.Call)
                 and isinstance(item.func, ast.Name) and item.func.id == 'save_figure']
-    assert len(saves(tree)) - len(saves(slide_block)) == 2
+    assert len(saves(tree)) - len(saves(slide_block)) == 4
     assert len(saves(slide_block)) == 3
     recorded = ROOT / 'docs/source/_static/gallery_results/plot_al_full_workflow'
-    assert len(list(recorded.glob('figure_*.svg'))) == 2
+    assert len(list(recorded.glob('figure_*.svg'))) == 4
+    assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+               and node.func.id == 'plot_bound_orbitals' for node in ast.walk(tree))
 
 
 def test_ch136_documents_the_screening_cloud_workflow(monkeypatch):

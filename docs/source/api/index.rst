@@ -22,6 +22,8 @@ below.
    StateExportOptions
    save_plasma_state
    load_plasma_state
+   bound_wavefunctions
+   ion_orbital_form_factors
 
 Workflow results and state files
 --------------------------------
