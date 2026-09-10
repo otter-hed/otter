@@ -1157,8 +1157,7 @@ def main() -> None:
         "Saved figures: "
         + ", ".join(str(path.relative_to(ROOT)) for path in saved_paths.values())
     )
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

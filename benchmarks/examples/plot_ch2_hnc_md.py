@@ -691,8 +691,7 @@ def main() -> None:
         f"max abs={np.max(data['md_sij_estimator_max_abs']):.5f}."
     )
 
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

@@ -87,7 +87,8 @@
     },
     "generated_at_utc": "2026-09-10T17:24:06.832926+00:00",
     "note": "One default-config Colab solve; identical gallery configuration and plotted arrays verified. Dirty source identified by hashes, not HEAD alone.",
-    "script_sha256_current": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695",
+    "script_sha256_current": "d46e7d81166990e8cf3de69e0c4cc3dd4a8c699e1f4ca71efeb75e74fa4c1b6d",
+    "display_only_update": "Removed the backend-name display filter; calculation and figure construction unchanged. Generation hashes and numerical data retained.",
     "script_sha256_at_generation": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695"
   },
   "configuration": {

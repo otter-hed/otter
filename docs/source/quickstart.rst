@@ -4,7 +4,7 @@ Quick start
 Google Colab
 ------------
 
-Run the aluminium workflow in a browser, with the same two overview figures
+Run the aluminium workflow in a browser, with the same four figure groups
 and colours as :doc:`gen_examples/plot_al_full_workflow`. The Colab default is
 Al at :math:`8.1\,\mathrm{g\,cm^{-3}}` and :math:`T_e=T_i=1\,\mathrm{eV}`:
 
@@ -26,6 +26,13 @@ The default state is Al at :math:`8.1\,\mathrm{g\,cm^{-3}}` and
 :math:`T_e=T_i=15\,\mathrm{eV}`.  The input block controls the state and output.
 The script plots the electronic density, effective potential,
 :math:`g_{ii}(r)`, and :math:`S_{ii}(k)`.
+
+To reproduce the four figure groups in the Al gallery and Colab instead,
+including the bound-orbital panels and Rayleigh weight, run::
+
+   poetry run python docs/examples/plot_al_full_workflow.py
+
+That example uses :math:`T_e=T_i=1\,\mathrm{eV}` at the same density.
 
 For a strongly coupled one-component ion fluid, the optional
 Rosenfeld--Ashcroft closure is selected in the same configuration:

@@ -1189,8 +1189,7 @@ def main() -> None:
             for kind, path in saved_paths.items()
         )
     )
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

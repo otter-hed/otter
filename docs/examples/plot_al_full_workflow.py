@@ -721,8 +721,7 @@ def main() -> None:
             fig_sii.tight_layout()
             save_figure(fig_sii, FIGURE_DIR / "al_full_workflow_sii", close=True)
 
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

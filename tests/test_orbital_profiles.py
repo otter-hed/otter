@@ -199,9 +199,14 @@ def test_al_gallery_uses_portable_orbitals_without_transform(orbital_state, monk
     monkeypatch.setattr(module, "load_plasma_state", lambda path: state)
     monkeypatch.setattr(module, "RECOMPUTE_WITH_OTTER", True)
     monkeypatch.setattr(module, "save_figure", lambda fig, *a, **kw: figures.append(fig))
+    shown = []
+    monkeypatch.setattr(plt, "show", lambda: shown.append(
+        [plt.figure(number) for number in plt.get_fignums()]
+    ))
     try:
         module.main()
         assert len(figures) == 4
+        assert shown == [figures]
         assert figures[0].axes[0].get_title() == "Unweighted wavefunctions"
         assert figures[1].axes[0].get_title() == "Electronic densities"
         for figure in figures:

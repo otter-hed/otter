@@ -25,6 +25,10 @@ The script computes its states and writes local results beneath
 applicable; the electronic-level benchmark prints numerical tables. Failures
 raise an error instead of silently substituting previously accepted results.
 
+On a desktop, plots open through Matplotlib's configured interactive backend
+(for example, TkAgg or QtAgg). On a headless server, run with ``MPLBACKEND=Agg``
+and open the saved PNG/PDF files; that backend does not create windows.
+
 The three download buttons
 ---------------------------
 

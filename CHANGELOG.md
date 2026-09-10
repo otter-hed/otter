@@ -5,6 +5,11 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Restore interactive figure windows in the example and benchmark scripts.
+  Delegate display to Matplotlib instead of rejecting every backend whose
+  name contains `agg` (including the interactive TkAgg and QtAgg backends).
+  Saved figures, numerical settings and solver results are unchanged.
+
 ## 0.3.1 — 2026-09-10
 
 - Use default numerical controls in both the Al gallery and standalone Colab;

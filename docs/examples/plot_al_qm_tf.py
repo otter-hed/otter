@@ -452,8 +452,7 @@ def main() -> None:
     )
     plot_style.close()
 
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

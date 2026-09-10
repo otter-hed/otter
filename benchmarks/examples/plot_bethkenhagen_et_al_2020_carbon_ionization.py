@@ -252,8 +252,7 @@ def plot_comparison(
         )
     print(f"saved PNG: {paths['png'].relative_to(ROOT)}")
     print(f"saved PDF: {paths['pdf'].relative_to(ROOT)}")
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 def main() -> None:

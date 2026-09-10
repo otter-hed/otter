@@ -378,8 +378,7 @@ def main() -> None:
             close=False,
         )
 
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 

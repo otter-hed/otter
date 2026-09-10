@@ -1,6 +1,6 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695",
+    "rendering_source_sha256": "d46e7d81166990e8cf3de69e0c4cc3dd4a8c699e1f4ca71efeb75e74fa4c1b6d",
     "figures": {
       "figure_001.svg": "701a123a2adb2681ceea23d81d0e9e36b88f12aa459e896cb4f0c6721d93d95c",
       "thumbnail.png": "b41c2d244646680090ea6fab1c65c810613e017723ac6f5228d865984bd4f1f1",
@@ -22,10 +22,14 @@
     "local_archives": {
       "benchmarks/baselines/al_full_workflow_1ev/Al_rho8p1gcc_Te1eV_Ti1eV.npz": "fd80c9b943dad162906e8717a56b54befb49470a79ee4f941728db2a87feb339",
       "benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz": "1c2c25f3bd0027044f6d4aef68e3df6a75af8b071a8e9cf2bab3c97e6391860e"
+    },
+    "display_only_update": {
+      "previous_source_sha256": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
     }
   },
   "docs/examples/plot_al_is_sc_comparison.py": {
-    "rendering_source_sha256": "9d35730224ac64ea7e72b6457a153bcddc4563cf08f7017770e8978a2d4f8633",
+    "rendering_source_sha256": "1edbde08ea9662973bba0cdcd9fb269b0968f99d26f5d6104a956b5577acdcba",
     "figures": {
       "figure_001.svg": "b95a8f23374206c9ae4a9f4ad9390677f3883897c6f182cb514b727babcd27ea",
       "thumbnail.png": "e9d8aab3992759de9226439176b32468a5b9350e72bacda28580b542b46a91d2",
@@ -38,10 +42,14 @@
       "source_sha256_at_capture": "de73e8cc99be290c46b6187924cad2ff1230c3f50c320bcf4f30ecc472d48633",
       "html_sha256_at_capture": "189e3299b90c50f8e4e6664d771c9334b0654705df25a34f1926e071251c9157"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "9d35730224ac64ea7e72b6457a153bcddc4563cf08f7017770e8978a2d4f8633",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "docs/examples/plot_al_qm_tf.py": {
-    "rendering_source_sha256": "7804b83fe97e64204ce1cfabe9fe0abdb3b30d8d1ac9aa8d372a7516a770f142",
+    "rendering_source_sha256": "70d5a426e55abb40497109133d2c09ee61cac494a2b8462ec0a3f0015c44ddd3",
     "figures": {
       "figure_001.svg": "79e0f8a339a5bbb7d16f9a0ffe9ee8c445078ef2e633689b8e8d46b831b69ffe",
       "thumbnail.png": "cec397e220621399cda4a1911a6ff51e9704d6200c3eb57d7b38f6091e2692b2",
@@ -53,7 +61,11 @@
       "source_sha256_at_capture": "2d20e9328ed537b20febb6e446c2d6a592713056f88ce2094fc3658e17207fc0",
       "html_sha256_at_capture": "30fdec61083f6576e11675399c6630b71c0d9e2d598204e2815177f927a73ae6"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "7804b83fe97e64204ce1cfabe9fe0abdb3b30d8d1ac9aa8d372a7516a770f142",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "docs/examples/plot_al_rayleigh_weight.py": {
     "rendering_source_sha256": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
@@ -70,7 +82,7 @@
     "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
   },
   "docs/examples/plot_carbon_ionization_levels.py": {
-    "rendering_source_sha256": "0cc8e3c2ed70fe21c7bf93dd6528b584fca2ed70d97d4ecee22c21a3d6d2b96a",
+    "rendering_source_sha256": "2b691137d2fad408c2df551b63e6ddabdc85c9f6052fd44c72dba9301da27bb3",
     "figures": {
       "figure_001.svg": "8a306ad1088ad432c57e03ab7b5c77214417e5508f30b9941deff3f54fba3002",
       "thumbnail.png": "20a1f51978ed7f35f51c5315053f71ae772ce0990879eb8a4026ab4db901d130",
@@ -82,10 +94,14 @@
       "source_sha256_at_capture": "684c297f32b13c717547e481f33bc5f51dfaefb26bf854c27f51e7414afed781",
       "html_sha256_at_capture": "3d1020bd887bf75ced3f0276887e1ba4d9d7d322611e320a13060f68745e37c5"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "0cc8e3c2ed70fe21c7bf93dd6528b584fca2ed70d97d4ecee22c21a3d6d2b96a",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "docs/examples/plot_carbon_lfc_sensitivity.py": {
-    "rendering_source_sha256": "0d76f339b01e5aac8a15878c7177d5d88d9c87ef2398023e5d219660f1e8b9ae",
+    "rendering_source_sha256": "9f0286f65c1c41aa4726c7b3adbcb45967c32fa85f034229b35f177a8ae01935",
     "figures": {
       "figure_001.svg": "032df6f87884217a4306a6f2e313b2216b38f48030003e3f95bf6357eda2310f",
       "thumbnail.png": "8805e88d022d2b095d320f0e516037ae81645dcb82caaaa30ef26157e3cecd7f",
@@ -99,10 +115,14 @@
       "source_sha256_at_capture": "c38a0248012490249cdb0855ac8e1a1d32dad0fc98e14acff804a53cdc94ce6d",
       "html_sha256_at_capture": "f0b2c7c4ce7d99b918df8cd313d8d2ea2095d7753f3139237bfd4b0e802faced"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "0d76f339b01e5aac8a15878c7177d5d88d9c87ef2398023e5d219660f1e8b9ae",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "docs/examples/plot_ch136_mixture_workflow.py": {
-    "rendering_source_sha256": "e1dc5f2749093c2883d74a0855cee84a16a0ebf37042fa38c747cf29fc1d88a4",
+    "rendering_source_sha256": "e70eb31efaea5be199f2622fcdbb0aeb0619c26a8ab344a8b40b5c3263abd95b",
     "figures": {
       "figure_001.svg": "dea7957b217ed1fd9d1b79d913a9e82bcf2a632077c3db9a7b894eee1b419dbd",
       "thumbnail.png": "23a1c492ae586e3aa235186b206dd704f8fd22e8bc629a01e54d28fd5aa0926a"
@@ -113,10 +133,14 @@
       "source_sha256_at_capture": "c28eb326d71d4c19f85a9b1c7819b32fe4fbe2a4f8c5096a2f3853ec8a9e5d51",
       "html_sha256_at_capture": "e885f0890ea6c2c848d89ed6c622b88ed3f0097e6ada094c909b4b937879e915"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "e1dc5f2749093c2883d74a0855cee84a16a0ebf37042fa38c747cf29fc1d88a4",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_argha_roy_carbon_sii.py": {
-    "rendering_source_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
+    "rendering_source_sha256": "be5de8acadf89dbe558c0e2f5afa85aba979572e91ef8d080f5759c267be0369",
     "figures": {
       "figure_001.svg": "c50f883d1498ae38a473de11cb0cc5efa421c1ea018e7f0bea20dc188bce00c1",
       "thumbnail.png": "28f8138e7f7e0d2666381925bab586a2aa1d98b72ae16c46af2a69df674d36bc"
@@ -127,10 +151,14 @@
       "source_sha256_at_capture": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
       "html_sha256_at_capture": "d2832e8a54ea106d1558b9693e5591b4fecf788467b96803e0f19e62f33bd0d4"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py": {
-    "rendering_source_sha256": "e46a541657df2ab2af3822ce8b6cea19515facf6ac1ac1b6f7676ccd4de4a87d",
+    "rendering_source_sha256": "b132d133ab48650f5b7d02078e8d2723a20f70a700d1b2fa78244cf066c7bc83",
     "figures": {
       "figure_001.svg": "530d26c02c23cfb5f73de5b4f2a99775f9eed4ac7eaff3d4e61932e5d3fe8e00",
       "thumbnail.png": "4403aa7d50b5e0bcc81498769e395de675d6f5978398c7da9864d238553cfbf5"
@@ -141,10 +169,14 @@
       "source_sha256_at_capture": "dbcb4551381a80b10031b987ef3447284ec3de22e6a797b2d2c1412846e42791",
       "html_sha256_at_capture": "18bac43156936cdbe85f114f180239b5055e65475a25fd803a41afc0dc340e51"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "e46a541657df2ab2af3822ce8b6cea19515facf6ac1ac1b6f7676ccd4de4a87d",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_ch2_hnc_md.py": {
-    "rendering_source_sha256": "c2c4e9d609d0673dba55c4e190fd14711c29cd2456563cfa6999650ec09981d5",
+    "rendering_source_sha256": "1e0743747671f213f67571c01e9fac51881d53b6b4da95ef1b6e3a1f1b950ee5",
     "figures": {
       "figure_001.svg": "3089d07f5e82860089f696eab48b2d2b08c5bc140842dd398738b61addb04e4d",
       "thumbnail.png": "6861f3b4e3e14cd5abf79f2c87e28b3d16fc7d325195ae1b3ce9c6f63bb426de",
@@ -160,7 +192,11 @@
       "source_sha256_at_capture": "d66ca663a64fa4f4429aa541106bc90027f543a948256746df990e4e713dd8b5",
       "html_sha256_at_capture": "cc7d6e229f29e32de033d76d900dad0b5ce4b3f8972946fded26a2702c489510"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "c2c4e9d609d0673dba55c4e190fd14711c29cd2456563cfa6999650ec09981d5",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_doppner_2023_be_ionization.py": {
     "rendering_source_sha256": "44230a75f8c5cd49d7123d67edf29f73de1cc02d1651d2ec4d8920e5f842ee7b",
@@ -177,7 +213,7 @@
     "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
   },
   "benchmarks/examples/plot_ion_structure_library.py": {
-    "rendering_source_sha256": "dba8ff988e3b41fd433cedcf87b91b79ebf74662b86111e871deaf3aad33f702",
+    "rendering_source_sha256": "c7f54eb5679a6b8cf1dfae78477e5c9da97f8dc0305c033e1a6d3e006664f804",
     "figures": {
       "figure_001.svg": "8570a38b14ce93da4a7ee477173a1c918b253d64d475ad7381a9019c3647f711",
       "thumbnail.png": "b325c2a28fdd0360d57bb7a0cc717a62400ea4669cdb4d38a0abd03834ee0d43",
@@ -189,10 +225,14 @@
       "source_sha256_at_capture": "b193ebd249cb88da251bff2a911ffcef4b8684a48ebe32699ca03cff37a03680",
       "html_sha256_at_capture": "54162fa1d4edf967b225aad3cd76499d916e1ceaf8d412f5c9e281b4b1bbdf93"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "dba8ff988e3b41fd433cedcf87b91b79ebf74662b86111e871deaf3aad33f702",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py": {
-    "rendering_source_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+    "rendering_source_sha256": "b2e6aeb39155c44d6daf709da61d3a558a56f542fff29857e470c18f43913f87",
     "figures": {
       "figure_001.svg": "a40e4a97a5ceb7182c874786af3469b90e24a849266ec6d7d1dd5881f61519b7",
       "thumbnail.png": "8e0e1769eb6951481648f6570eee295d6d46ae23b8dd2c0e39fc6e8ac98eacb5"
@@ -203,10 +243,14 @@
       "source_sha256_at_capture": "c25c3d92aff6a910c39cc2c2b092e5c5cb04980fc7aedd52bcbadad06f5cbaf5",
       "html_sha256_at_capture": "da17d51fd6571ad38cbe4b07c04ae3eccaa6a87c4a2ee21f44fbfa666eb41cb4"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py": {
-    "rendering_source_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
+    "rendering_source_sha256": "62de015624d34a8b2f6c129b4913daf9af823460ae53ea835d36e68dcafceb0a",
     "figures": {
       "figure_001.svg": "a2ace576bac37bcabc41cd6871d3b6d5aee06c53e501ab5faf5ab6795479cb1b",
       "thumbnail.png": "2208698e3c4cf11a383f408895c8b1e9d9994d22ee5c44a8e16420c6ecbc23ce"
@@ -217,10 +261,14 @@
       "source_sha256_at_capture": "bbc512814e49142e3bb05dd8e3bddcb8989c2f5e1fe493b895ea510ff9cc91ca",
       "html_sha256_at_capture": "49f01793e5bf38a933bae0ffcd8c03c9cd0fd441e7dba31d679de621e405a31c"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_starrett_et_al_2014_mixtures_fig3.py": {
-    "rendering_source_sha256": "f292c787036e4d72263da91dafcc8db201a47193e61504ea26129663999439c8",
+    "rendering_source_sha256": "5fba0aa77fd2299247f3cde2a343621b0dd2015197cfa850c96e1adc7e8bb4b1",
     "figures": {
       "figure_001.svg": "ef11034df5ba4ed2f8ceb9e74417394f3757a2168655dfd039f61a70731c2ac1",
       "thumbnail.png": "f7c05819c916a4fbc19d5ee9495d14e02483b3b0f93d753a4da9e0baa20ceb05"
@@ -231,7 +279,11 @@
       "source_sha256_at_capture": "a78f893e500b7e0e5c63ee85f2108bccc6909250fcd79c8a4ca9f578796589ff",
       "html_sha256_at_capture": "dfe7e4aa2c292fb7e37b9ba7cbe38b3577461d9372a441179666e46dc529e77a"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "display_only_update": {
+      "previous_source_sha256": "f292c787036e4d72263da91dafcc8db201a47193e61504ea26129663999439c8",
+      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    }
   },
   "benchmarks/examples/plot_starrett_saumon_2013_electronic.py": {
     "rendering_source_sha256": "02c5fa82118a0d76e171bc34503c62e9e187cc6e6a4a1c482e59eb5be8fb999c",

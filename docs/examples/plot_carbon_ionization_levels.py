@@ -1474,8 +1474,7 @@ def _plot(state: dict[str, np.ndarray]) -> None:
             fig_levels,
             FIGURE_DIR / "carbon_bound_levels_100ev",
         )
-    if "agg" not in plt.get_backend().lower():
-        plt.show()
+    plt.show()
 
 
 def _compute_and_stage() -> dict[str, np.ndarray]:

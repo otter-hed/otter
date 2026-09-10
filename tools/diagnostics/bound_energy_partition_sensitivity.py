@@ -324,7 +324,7 @@ def plot_report(states: dict[str, dict[str, np.ndarray]]) -> None:
         )))
         fig_levels.tight_layout()
         save_figure(fig_levels, OUTPUT_DIR / "carbon_partition_level_sensitivity")
-        if SHOW_FIGURES and "agg" not in plt.get_backend().lower():
+        if SHOW_FIGURES:
             plt.show()
         else:
             plt.close("all")
