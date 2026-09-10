@@ -43,7 +43,7 @@
     "note": "git_commit is a reproducible producer snapshot only when worktree_clean_at_generation is true.",
     "script_sha256_current": "a016dd25d22d35bbdc757183e3ee249f98af77bb50b0fe1e8b9bd613fa5c2181",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "worktree_dirty": true,

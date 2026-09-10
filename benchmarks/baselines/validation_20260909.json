@@ -1,7 +1,7 @@
 {
   "schema_version": "otter_validation_inventory_v2",
   "date": "2026-09-09",
-  "release_version": "3.0.0",
+  "release_version": "0.3.0",
   "calculation_version": "0.2.4",
   "parent_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
   "source_sets": {

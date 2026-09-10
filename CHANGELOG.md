@@ -5,7 +5,7 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
-## 3.0.0 — 2026-09-09
+## 0.3.0 — 2026-09-10
 
 ### Release scope
 
@@ -106,6 +106,9 @@ have not yet been released are collected under “Unreleased”.
 
 ### Fixed
 
+- Declare the checkout root and `src` in pytest's import paths so both
+  `poetry run pytest` and `python -m pytest` can collect repository helpers.
+  Isolated-interpreter regressions cover execution from other directories.
 - Guard QM SCF updates against losing an already-valid continuum matching
   window, and reject final states that would use the free-wave window fallback.
   The bounded backtracking preserves the physical map and all existing

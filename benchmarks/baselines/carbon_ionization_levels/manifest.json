@@ -148,7 +148,7 @@
     "provenance_limitation": "All 84 states were freshly solved in the September 8 campaign (zero reused seed rows). The configured continuum edge is E=0; bound_energy_cut_value is inactive in zero mode. There are 82 resolved and two marginal threshold diagnostics, at rho=4.6 and 300 g/cm^3. No unresolved rows are present. Data and producing-source checksums identify the calculation state.",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",

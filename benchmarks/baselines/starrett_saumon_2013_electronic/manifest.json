@@ -111,7 +111,7 @@
     "script_sha256_current": "02c5fa82118a0d76e171bc34503c62e9e187cc6e6a4a1c482e59eb5be8fb999c",
     "current_controller_sha256": "02c5fa82118a0d76e171bc34503c62e9e187cc6e6a4a1c482e59eb5be8fb999c",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "sc_default_refresh",
     "worktree_dirty": true,

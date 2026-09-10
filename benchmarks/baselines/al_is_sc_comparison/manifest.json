@@ -69,7 +69,7 @@
     "script_relative_path": "benchmarks/runners/regenerate_al_is_sc_comparison.py",
     "script_sha256_current": "387601d9c0062302b1ad08c730329a7d7e5dd655ad58493a33fd58b42aadaeda",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "sc_default_refresh",
     "worktree_dirty": true,

@@ -250,7 +250,7 @@
       "src/otter/workflows.py": "86d80f20c8c89a42e69b08fd66844a6d6299b59182572a9d079bf24e433641fb"
     },
     "fingerprint": "880984eedf7dc9540cbf9266b834c499e4008a5ad86ee2c07d76ca3d16037ea2",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",

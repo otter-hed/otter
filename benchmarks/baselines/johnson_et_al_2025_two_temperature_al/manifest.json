@@ -77,7 +77,7 @@
     "script_sha256_current": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
     "current_controller_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",

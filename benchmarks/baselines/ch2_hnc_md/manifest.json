@@ -41,7 +41,7 @@
     "otter_hnc_recomputed_with_md_preserved": true,
     "md_arrays_reused_without_modification": true,
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "version": "0.2.4",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",

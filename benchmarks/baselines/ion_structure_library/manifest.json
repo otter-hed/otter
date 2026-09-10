@@ -51,7 +51,7 @@
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "state_provenance_note": "Six states retain the recovered frozen-campaign revision. Carbon was radially refined separately; its state record and NPZ metadata identify the source and settings.",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "historical_git_commit_recovery_evidence": "provenance_recovery.json",

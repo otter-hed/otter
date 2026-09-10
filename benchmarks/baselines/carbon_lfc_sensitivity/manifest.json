@@ -15,7 +15,7 @@
     "git_status_porcelain_sha256": "735aed4dd6543b1f3c57e19482cb230a2257d2f444d6ce8b0db0b9734ed135ff",
     "note": "git_commit identifies HEAD only. When worktree_clean_at_generation is false, script_sha256 and the status hash disclose that uncommitted source participated.",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "worktree_dirty": true,

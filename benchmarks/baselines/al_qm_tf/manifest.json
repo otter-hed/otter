@@ -15,7 +15,7 @@
     "note": "The commit identifies HEAD only. If worktree_clean_at_generation is false, the script checksum and status hash document that uncommitted source was involved; the commit alone is not a reproducible producer snapshot.",
     "script_sha256_current": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "worktree_dirty": true,

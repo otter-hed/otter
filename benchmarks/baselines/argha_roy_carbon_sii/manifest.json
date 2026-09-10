@@ -21,7 +21,7 @@
     "script_sha256_current": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "version": "0.2.4",
-    "packaging_version": "3.0.0",
+    "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "script_sha256_at_generation": "823b6e3d0c6c9722312b05513965229c862ae899e3d1506ac714b85ec6461cc1"

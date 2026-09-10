@@ -1,6 +1,6 @@
 :orphan:
 
-Otter 3.0.0: numerical validation and recorded results
+Otter 0.3.0: numerical validation and recorded results
 ============================================================
 
 The example gallery and scientific benchmarks use the September 9, 2026
