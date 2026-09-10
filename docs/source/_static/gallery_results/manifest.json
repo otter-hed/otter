@@ -1,10 +1,10 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "8d6f3a246e970c1607245464836cb61f09b951f0826977960e681ab296707f62",
+    "rendering_source_sha256": "c1f627375315ec4e46d4a07c76bb74d4bb07de46392437cc9754674b80226230",
     "figures": {
       "figure_001.svg": "66914f5dd3f224ff8f03b81207b8f73d2899b53b29a6dddca5e08cc2d9203578",
       "thumbnail.png": "8b62021102aab6a42cc256c3de285c06666af40cabc11eb45f4add1496e7f367",
-      "figure_002.svg": "5df15baf4da3a192d48fc75943b4f7fc01ee7ecd9c9329d565150356a75934bf"
+      "figure_002.svg": "9ff8156b07da1764e495fd63a4095b8c86d38984504f0943d29dfd8bde987fc7"
     },
     "results_sha256": "c7f286649b99be58696d9179d059dd0fcb89a6db55821d38c597e2c0cb116290",
     "role": "recorded_presentation_only_not_a_solver_input",

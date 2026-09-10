@@ -82,6 +82,7 @@ def test_colab_runs_outside_checkout_with_defaults_and_redraws(
         temperature_ev=temperatures[0], ion_temperature_ev=temperatures[1],
     )
     assert asdict(calls[0]) == asdict(expected)
+    assert calls[0].show_progress is True
     assert namespace["electronic"] is result["electronic"]["result"]
     assert namespace["ion"] is result["ion"]
     namespace["solve_plasma_workflow"] = forbidden
@@ -90,6 +91,7 @@ def test_colab_runs_outside_checkout_with_defaults_and_redraws(
         execute("plot-ionic", namespace)
         electronic, ionic = namespace["fig_electronic"], namespace["fig_ionic"]
         assert [len(fig.axes) for fig in (electronic, ionic)] == [3, 6]
+        assert ionic.axes[1].get_legend() is None
         assert [line.get_color() for line in electronic.axes[0].lines[:6]] == list(
             PALETTES["bing"][:6]
         )
@@ -158,7 +160,8 @@ def test_colab_has_no_repository_dependency_or_numerical_overrides():
     assert {kw.arg for kw in configs[0].keywords} == {
         "elements", "rho_g_cc", "temperature_ev", "ion_temperature_ev",
     }
-    for forbidden in ("importlib", "subprocess", "gallery.", "np.load", "runpy", "REPOSITORY"):
+    for forbidden in ("importlib", "subprocess", "gallery.", "np.load", "runpy", "REPOSITORY",
+                      "redirect_stdout", "capture_output", "%%capture"):
         assert forbidden not in combined
 
 

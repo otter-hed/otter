@@ -523,14 +523,12 @@ def main() -> None:
         ax_q.plot(
             k[k_mask],
             np.asarray(state["n_scr_k_electrons"])[k_mask],
-            label=r"$q_{\rm used}$",
         )
         ax_q.set(
             title=r"$q(k)=n_{\rm scr}(k)$",
             xlabel=r"$k$ [Bohr$^{-1}$]",
             ylabel="electrons",
         )
-        ax_q.legend()
 
         ax_vk.plot(k[k_mask], np.asarray(state["vii_k_ha_bohr3"])[k_mask])
         ax_vk.set(
