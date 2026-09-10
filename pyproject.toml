@@ -68,6 +68,8 @@ otter = ["literature.bib"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Make console pytest and python -m pytest use this checkout's helpers and source.
+pythonpath = [".", "src"]
 addopts = "-ra --strict-markers"
 
 [tool.black]
