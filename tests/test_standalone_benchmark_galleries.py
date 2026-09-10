@@ -72,7 +72,7 @@ def test_benchmark_gallery_is_one_complete_otter_script(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
 
-    assert "USE_PRECOMPUTED_DATA = True" in source
+    assert "USE_PRECOMPUTED_DATA = False" in source
     assert any(
         isinstance(node, ast.ImportFrom)
         and node.module is not None
@@ -103,8 +103,8 @@ def test_benchmark_gallery_is_one_complete_otter_script(path: Path) -> None:
     assert "regenerate_" not in source
 
 
-def test_bethkenhagen_benchmark_reuses_the_carbon_ionization_scan() -> None:
-    """The literature overlay must not repeat the 100 eV carbon scan."""
+def test_bethkenhagen_benchmark_reuses_the_carbon_calculation_routine() -> None:
+    """Share the implementation, not a required precomputed scan."""
     path = (
         ROOT
         / "benchmarks"
@@ -115,6 +115,8 @@ def test_bethkenhagen_benchmark_reuses_the_carbon_ionization_scan() -> None:
     tree = ast.parse(source, filename=str(path))
 
     assert "carbon_ionization_levels" in source
+    assert "state = module._compute_and_stage()" in source
+    assert "RECOMPUTE_WITH_OTTER = True" in source
     assert "C_Te100eV_density_scan.npz" in source
     assert "solve_full_only(" not in source
     assert "solve_plasma_workflow(" not in source

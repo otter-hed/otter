@@ -16,9 +16,8 @@ checksum validation, and plotting:
 
 :ref:`sphx_glr_benchmarks_gen_benchmarks_plot_starrett_single_species_2013_2014.py`
 
-``USE_PRECOMPUTED_DATA = True`` loads checksummed current-Otter baselines.
-Set it to ``False`` to calculate the selected states locally. The script saves
-both PNG and PDF.
+The default ``USE_PRECOMPUTED_DATA = False`` calculates all selected states
+locally, without bundled NPZ. The script saves both PNG and PDF.
 
 Accepted calculations
 ---------------------

@@ -52,12 +52,22 @@ def _assert_portable_archive(path: Path) -> None:
                 assert "/tmp/" not in text
 
 
+@pytest.mark.private_baseline
 def test_library_manifest_hashes_and_portable_archives() -> None:
     manifest = _json(LIBRARY_DIR / "manifest.json")
     assert manifest["schema_version"] == "otter_benchmark_manifest_v1"
     assert manifest["benchmark_id"] == "ion_structure_library"
     assert manifest["producer"]["project"] == "Otter"
     assert len(manifest["producer"]["git_commit"]) == 40
+    if "git_commit_recovery_evidence" in manifest["producer"]:
+        recovery = _json(LIBRARY_DIR / manifest["producer"]["git_commit_recovery_evidence"])
+        assert recovery["verified_git_commit"] == manifest["producer"]["git_commit"]
+        assert recovery["verified_source_sha256"]
+        for filename, record in recovery["states"].items():
+            state = next(row for row in manifest["states"] if row["baseline_file"] == filename)
+            assert record["accepted_sha256"] == state.get(
+                "supersedes_baseline_sha256", _sha256(LIBRARY_DIR / filename))
+            assert record["numeric_fields_verified"]
     assert len(manifest["states"]) == 7
     assert manifest["data_rights"]["reference_redistribution_status"] == (
         "published_by_maintainer_with_attribution"
@@ -105,6 +115,7 @@ def test_library_manifest_hashes_and_portable_archives() -> None:
             ) == "chabrier1990"
 
 
+@pytest.mark.private_baseline
 def test_library_grid_charge_and_convergence_invariants() -> None:
     manifest = _json(LIBRARY_DIR / "manifest.json")
     for item in manifest["states"]:
@@ -238,6 +249,7 @@ def test_selective_ion_library_producer_keeps_only_analysis_fields() -> None:
     }.isdisjoint(payload)
 
 
+@pytest.mark.private_baseline
 def test_wunsch_be_contains_hnc_vmhnc_and_same_potential_md() -> None:
     path = LIBRARY_DIR / "be_wunsch_rho5p544_te13_ti13.npz"
     with np.load(path, allow_pickle=False) as archive:
@@ -301,6 +313,7 @@ def test_reference_manifest_hashes_and_release_decision() -> None:
         assert np.all(np.isfinite(values[:, :2]))
 
 
+@pytest.mark.private_baseline
 def test_offline_library_runner_recomputes_metrics() -> None:
     runner_path = ROOT / "benchmarks" / "runners" / "plot_ion_structure_library.py"
     source = runner_path.read_text(encoding="utf-8")
@@ -373,6 +386,7 @@ def test_reference_coordinate_conversions_match_source_plot_scripts() -> None:
     } == {"bohr"}
 
 
+@pytest.mark.private_baseline
 def test_complete_al_workflow_manifest_levels_and_pipeline() -> None:
     manifest = _json(AL_DIR / "manifest.json")
     assert manifest["schema_version"] == "otter_benchmark_manifest_v1"
@@ -387,17 +401,15 @@ def test_complete_al_workflow_manifest_levels_and_pipeline() -> None:
     assert manifest["producer"]["script_relative_path"] == (
         "benchmarks/runners/regenerate_al_full_workflow.py"
     )
-    assert manifest["configuration"]["bound_occ_mode"] == "fd"
-    assert manifest["configuration"]["bound_rmax_mult"] is None
-    assert manifest["configuration"]["bound_zero_tail_refine"] is False
-    assert manifest["configuration"]["b3_tail_model"] == "full"
+    assert manifest["configuration"]["aa_overrides"] == {}
+    assert manifest["aa_final_settings"]["b3_tail_target"] == "full"
     assert manifest["configuration"]["qoz_zbar_mode"] == ("pseudoatom_partition")
     assert manifest["configuration"]["qoz_renormalize_nscr_to_zbar"] is True
     audit = manifest["scientific_audit"]
     assert audit["q_scr_used"] == pytest.approx(audit["zbar_qoz"])
-    assert audit["hnc_best_residual"] <= manifest["configuration"]["hnc_tolerance"]
+    assert audit["hnc_best_residual"] <= manifest["configuration"]["hnc_tol"]
     assert audit["hnc_closure_mismatch"] <= (
-        manifest["configuration"]["hnc_transform_closure_tolerance"]
+        manifest["configuration"]["hnc_closure_transform_tol"]
     )
     item = manifest["state"]
     path = AL_DIR / item["data_file"]

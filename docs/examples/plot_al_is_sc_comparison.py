@@ -17,15 +17,34 @@ while keeping the converged IS chemical potential fixed.  Otter labels this
 path experimental because validation across a broader state space is still
 in progress.
 
-The refreshed results use adaptive QM full-AA precision in the final SC
-iterations. Outer acceptance also checks the current, unmixed correlation-
+The refreshed results use zero-tail shallow-state matching by default in QM
+SC and adaptive full-AA precision in the final SC iterations. Explicit user
+overrides are retained. Outer acceptance also checks the current, unmixed correlation-
 potential residual. This improves the accuracy of the coupled iteration;
 it does not change the IS initial state or the physical feedback equations.
 
-Set ``RECOMPUTE_WITH_OTTER = True`` below to calculate every curve directly
-with the public Otter API.  The default ``False`` path loads the reviewed,
-checksummed Otter result so that the gallery builds quickly.  A fresh result
-is saved separately and never overwrites the reviewed baseline.
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python docs/examples/plot_al_is_sc_comparison.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_al_is_sc_comparison/results.rst
+
 """
 from __future__ import annotations
 
@@ -59,10 +78,10 @@ from otter.plotting import (
 # Two independent electronic models may be evaluated concurrently.  Reduce
 # the state-worker count on a small machine.
 
-RECOMPUTE_WITH_OTTER = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_RECOMPUTE_AL_IS_SC", "0") == "1":
     RECOMPUTE_WITH_OTTER = True
-RECOMPUTE_MODEL_WORKERS = 2
+RECOMPUTE_MODEL_WORKERS = 1
 
 ELEMENT = "Al"
 RHO_G_CC = 8.1
@@ -75,34 +94,25 @@ STRUCTURES = ("is", "sc")
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
+# Use the same validated outer-SC protocol as the electronic-level benchmark.
 SC_CONTROLS = SCFeedbackConfig(
     max_outer=16,
-    g_tol=5.0e-4,
-    v_corr_tol=5.0e-4,
     v_corr_mix=0.5,
-    require_converged=True,
 )
 
 SCHEMA = "otter_al_is_sc_comparison_v1"
 
 
 def _repository_root() -> Path:
-    """Locate the repository from either the source tree or a gallery build."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate
-            / "benchmarks"
-            / "baselines"
-            / "al_is_sc_comparison"
-            / "manifest.json"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter repository root.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = _repository_root()
@@ -138,7 +148,6 @@ def workflow_config(model: str) -> PlasmaWorkflowConfig:
         rho_g_cc=RHO_G_CC,
         **model_override,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
-        hnc_max_iter=500,
     )
 
 
@@ -545,265 +554,273 @@ def print_summary(state: dict[str, np.ndarray]) -> None:
     )
 
 
-state = (
-    recompute_state() if RECOMPUTE_WITH_OTTER else load_reviewed_state()
-)
-validate_state(state)
-print(
-    "Using a fresh Otter calculation."
-    if RECOMPUTE_WITH_OTTER
-    else "Using the reviewed, checksummed Otter calculation."
-)
-print_summary(state)
-
-
-# %%
-# Ion structure
-# -------------
-# Solid lines are IS; dashed lines are the experimental SC extension.  Rows
-# distinguish KS-DFT from TF electrons.
-
-r = np.asarray(state["r_bohr"], dtype=float)
-k = np.asarray(state["k_bohr_inv"], dtype=float)
-gii = np.asarray(state["gii_r"], dtype=float)
-sii = np.asarray(state["sii_k"], dtype=float)
-model_names = tuple(state["model_display_labels"].tolist())
-structure_names = ("IS", "SC (experimental)")
-structure_styles = (
-    dict(MODEL_STYLES["is"]),
-    dict(MODEL_STYLES["sc"]),
-)
-r_mask = r <= 10.0
-k_mask = k <= 6.0
-
-with style_context("thesis", palette="bing"):
-    fig_structure, axes = plt.subplots(
-        2,
-        2,
-        figsize=grid_figsize(2, 2),
-        sharex="col",
+def main() -> None:
+    state = (
+        recompute_state() if RECOMPUTE_WITH_OTTER else load_reviewed_state()
     )
-    for model_index, model_name in enumerate(model_names):
-        for structure_index, structure_name in enumerate(structure_names):
-            style = structure_styles[structure_index]
-            axes[model_index, 0].plot(
-                r[r_mask],
-                gii[model_index, structure_index, r_mask],
-                label=structure_name,
-                **style,
+    validate_state(state)
+    print(
+        "Using a fresh Otter calculation."
+        if RECOMPUTE_WITH_OTTER
+        else "Using the reviewed, checksummed Otter calculation."
+    )
+    print_summary(state)
+
+
+    # %%
+    # Ion structure
+    # -------------
+    # Solid lines are IS; dashed lines are the experimental SC extension.  Rows
+    # distinguish KS-DFT from TF electrons.
+
+    r = np.asarray(state["r_bohr"], dtype=float)
+    k = np.asarray(state["k_bohr_inv"], dtype=float)
+    gii = np.asarray(state["gii_r"], dtype=float)
+    sii = np.asarray(state["sii_k"], dtype=float)
+    model_names = tuple(state["model_display_labels"].tolist())
+    structure_names = ("IS", "SC (experimental)")
+    structure_styles = (
+        dict(MODEL_STYLES["is"]),
+        dict(MODEL_STYLES["sc"]),
+    )
+    r_mask = r <= 10.0
+    k_mask = k <= 6.0
+
+    with style_context("thesis", palette="bing"):
+        fig_structure, axes = plt.subplots(
+            2,
+            2,
+            figsize=grid_figsize(2, 2),
+            sharex="col",
+        )
+        for model_index, model_name in enumerate(model_names):
+            for structure_index, structure_name in enumerate(structure_names):
+                style = structure_styles[structure_index]
+                axes[model_index, 0].plot(
+                    r[r_mask],
+                    gii[model_index, structure_index, r_mask],
+                    label=structure_name,
+                    **style,
+                )
+                axes[model_index, 1].plot(
+                    k[k_mask],
+                    sii[model_index, structure_index, k_mask],
+                    label=structure_name,
+                    **style,
+                )
+            axes[model_index, 0].set_ylabel(
+                model_name + "\n" + r"$g_{ii}(r)$"
             )
-            axes[model_index, 1].plot(
-                k[k_mask],
-                sii[model_index, structure_index, k_mask],
-                label=structure_name,
-                **style,
+            axes[model_index, 1].set_ylabel(r"$S_{ii}(k)$")
+            axes[model_index, 0].axhline(
+                1.0, color="0.55", ls=":", lw=0.9
             )
-        axes[model_index, 0].set_ylabel(
-            model_name + "\n" + r"$g_{ii}(r)$"
+            axes[model_index, 1].axhline(
+                1.0, color="0.55", ls=":", lw=0.9
+            )
+            axes[model_index, 0].set_xlim(-0.5, 10.0)
+            axes[model_index, 1].set_xlim(0.0, 6.0)
+            for axis in axes[model_index]:
+                axis.legend()
+        axes[0, 0].set_title("Pair distribution")
+        axes[0, 1].set_title("Static structure factor")
+        axes[-1, 0].set_xlabel(r"$r$ [Bohr]")
+        axes[-1, 1].set_xlabel(r"$k$ [Bohr$^{-1}$]")
+        fig_structure.suptitle(
+            r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=15$ eV",
+            y=0.985,
         )
-        axes[model_index, 1].set_ylabel(r"$S_{ii}(k)$")
-        axes[model_index, 0].axhline(
-            1.0, color="0.55", ls=":", lw=0.9
+        fig_structure.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
+        save_figure(
+            fig_structure,
+            FIGURE_DIR / "al_is_sc_ionic_structure",
+            close=False,
         )
-        axes[model_index, 1].axhline(
-            1.0, color="0.55", ls=":", lw=0.9
+
+
+    # %%
+    # KS-DFT level shifts
+    # -------------------
+    # The deep 1s level and valence levels use separate linear axes so that the
+    # SC-induced changes remain visible.  Fermi--Dirac occupations are printed in
+    # the terminal table above.  TF has no discrete KS eigenvalue spectrum.
+
+    is_level_map = {row["level"]: row for row in level_rows(state, "is")}
+    sc_level_map = {row["level"]: row for row in level_rows(state, "sc")}
+    all_level_names = list(dict.fromkeys([*is_level_map, *sc_level_map]))
+    deep_levels = [name for name in all_level_names if name == "1s"]
+    valence_levels = [name for name in all_level_names if name != "1s"]
+
+
+    def _draw_level_paths(
+        axis: Any,
+        labels: list[str],
+        *,
+        title: str,
+    ) -> None:
+        for color, label in zip(PALETTES["bing"][1:], labels, strict=False):
+            is_row = is_level_map.get(label)
+            sc_row = sc_level_map.get(label)
+            values = [
+                np.nan if is_row is None else float(is_row["energy_ev"]),
+                np.nan if sc_row is None else float(sc_row["energy_ev"]),
+            ]
+            axis.plot(
+                (0.0, 1.0),
+                values,
+                color=color,
+                marker="o",
+                ms=6.0,
+                label=label,
+            )
+        axis.set(
+            xticks=(0.0, 1.0),
+            xticklabels=("IS", "SC"),
+            ylabel="KS energy [eV]",
+            title=title,
         )
-        axes[model_index, 0].set_xlim(-0.5, 10.0)
-        axes[model_index, 1].set_xlim(0.0, 6.0)
-        for axis in axes[model_index]:
-            axis.legend()
-    axes[0, 0].set_title("Pair distribution")
-    axes[0, 1].set_title("Static structure factor")
-    axes[-1, 0].set_xlabel(r"$r$ [Bohr]")
-    axes[-1, 1].set_xlabel(r"$k$ [Bohr$^{-1}$]")
-    fig_structure.suptitle(
-        r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=15$ eV",
-        y=0.985,
-    )
-    fig_structure.tight_layout(rect=(0.0, 0.0, 1.0, 0.95))
-    save_figure(
-        fig_structure,
-        FIGURE_DIR / "al_is_sc_ionic_structure",
-        close=False,
-    )
+        axis.set_xlim(-0.25, 1.25)
+        axis.legend()
 
 
-# %%
-# KS-DFT level shifts
-# -------------------
-# The deep 1s level and valence levels use separate linear axes so that the
-# SC-induced changes remain visible.  Fermi--Dirac occupations are printed in
-# the terminal table above.  TF has no discrete KS eigenvalue spectrum.
-
-is_level_map = {row["level"]: row for row in level_rows(state, "is")}
-sc_level_map = {row["level"]: row for row in level_rows(state, "sc")}
-all_level_names = list(dict.fromkeys([*is_level_map, *sc_level_map]))
-deep_levels = [name for name in all_level_names if name == "1s"]
-valence_levels = [name for name in all_level_names if name != "1s"]
-
-
-def _draw_level_paths(
-    axis: Any,
-    labels: list[str],
-    *,
-    title: str,
-) -> None:
-    for color, label in zip(PALETTES["bing"][1:], labels, strict=False):
-        is_row = is_level_map.get(label)
-        sc_row = sc_level_map.get(label)
-        values = [
-            np.nan if is_row is None else float(is_row["energy_ev"]),
-            np.nan if sc_row is None else float(sc_row["energy_ev"]),
-        ]
-        axis.plot(
-            (0.0, 1.0),
-            values,
-            color=color,
-            marker="o",
-            ms=6.0,
-            label=label,
+    with style_context("thesis", palette="bing"):
+        fig_levels, level_axes = plt.subplots(
+            1,
+            2,
+            figsize=grid_figsize(1, 2),
         )
-    axis.set(
-        xticks=(0.0, 1.0),
-        xticklabels=("IS", "SC"),
-        ylabel="KS energy [eV]",
-        title=title,
-    )
-    axis.set_xlim(-0.25, 1.25)
-    axis.legend()
-
-
-with style_context("thesis", palette="bing"):
-    fig_levels, level_axes = plt.subplots(
-        1,
-        2,
-        figsize=grid_figsize(1, 2),
-    )
-    _draw_level_paths(
-        level_axes[0],
-        deep_levels,
-        title="Deep level",
-    )
-    _draw_level_paths(
-        level_axes[1],
-        valence_levels,
-        title="Valence levels",
-    )
-    fig_levels.suptitle(
-        "KS-DFT bound levels under IS and experimental SC feedback",
-        y=0.985,
-    )
-    fig_levels.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
-    save_figure(
-        fig_levels,
-        FIGURE_DIR / "al_is_sc_bound_levels",
-        close=False,
-    )
-
-
-# %%
-# Runtime and SC convergence
-# --------------------------
-# ``SC extension`` excludes the initial IS calculation.  Timings are machine
-# dependent and document only these stored runs.  A valid SC result must meet
-# both the :math:`g_{ii}` and correlation-potential change tolerances.
-
-is_time = np.asarray(state["is_elapsed_s"], dtype=float)
-sc_extension_time = np.asarray(state["sc_extension_elapsed_s"], dtype=float)
-x = np.arange(len(model_names), dtype=float)
-width = 0.34
-
-with style_context("thesis", palette="bing"):
-    fig_convergence, (ax_time, ax_history) = plt.subplots(
-        1,
-        2,
-        figsize=grid_figsize(1, 2),
-    )
-    for offset, values, label, color in (
-        (-0.5 * width, is_time, "IS", PALETTES["bing"][1]),
-        (
-            0.5 * width,
-            sc_extension_time,
-            "SC",
-            PALETTES["bing"][2],
-        ),
-    ):
-        bars = ax_time.bar(
-            x + offset,
-            values,
-            width,
-            label=label,
-            color=color,
+        _draw_level_paths(
+            level_axes[0],
+            deep_levels,
+            title="Deep level",
         )
-        ax_time.bar_label(bars, fmt="%.1f s", padding=2, fontsize=9)
-    ax_time.set(
-        xticks=x,
-        xticklabels=model_names,
-        ylabel="wall time [s]",
-        title="Recorded calculation time",
-    )
-    ax_time.set_ylim(
-        0.0,
-        1.18 * float(max(np.max(is_time), np.max(sc_extension_time))),
-    )
-    ax_time.legend()
+        _draw_level_paths(
+            level_axes[1],
+            valence_levels,
+            title="Valence levels",
+        )
+        fig_levels.suptitle(
+            "KS-DFT bound levels under IS and experimental SC feedback",
+            y=0.985,
+        )
+        fig_levels.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
+        save_figure(
+            fig_levels,
+            FIGURE_DIR / "al_is_sc_bound_levels",
+            close=False,
+        )
 
-    for model, model_name, color in zip(
-        MODELS,
-        model_names,
-        PALETTES["bing"][1:3],
-        strict=True,
-    ):
-        iteration = np.asarray(
-            state[f"{model}_sc_history_iteration"], dtype=int
-        )
-        dg = np.asarray(
-            state[f"{model}_sc_history_max_g_change"], dtype=float
-        )
-        dv = np.asarray(
-            state[f"{model}_sc_history_max_v_corr_residual_ha"],
-            dtype=float,
-        )
-        ax_history.semilogy(
-            iteration,
-            dg,
-            color=color,
-            marker="o",
-            ms=4.5,
-            label=model_name + r" $\max|\Delta g|$",
-        )
-        ax_history.semilogy(
-            iteration,
-            dv,
-            color=color,
-            ls="--",
-            marker="s",
-            ms=4.0,
-            label=model_name + r" $\max|V^C_{\rm out}-V^C_{\rm in}|$ [Ha]",
-        )
-    ax_history.axhline(
-        SC_CONTROLS.g_tol,
-        color="0.45",
-        ls=":",
-        lw=1.0,
-        label="tolerance",
-    )
-    ax_history.set(
-        xlabel="SC outer iteration",
-        ylabel="maximum change",
-        title="Experimental SC convergence",
-    )
-    ax_history.legend(fontsize=8.5)
-    fig_convergence.suptitle(
-        r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=15$ eV",
-        y=0.985,
-    )
-    fig_convergence.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
-    save_figure(
-        fig_convergence,
-        FIGURE_DIR / "al_is_sc_timing_convergence",
-        close=False,
-    )
 
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+    # %%
+    # Runtime and SC convergence
+    # --------------------------
+    # ``SC extension`` excludes the initial IS calculation.  Timings are machine
+    # dependent and document only these stored runs.  A valid SC result must meet
+    # both the :math:`g_{ii}` and correlation-potential change tolerances.
+
+    is_time = np.asarray(state["is_elapsed_s"], dtype=float)
+    sc_extension_time = np.asarray(state["sc_extension_elapsed_s"], dtype=float)
+    x = np.arange(len(model_names), dtype=float)
+    width = 0.34
+
+    with style_context("thesis", palette="bing"):
+        fig_convergence, (ax_time, ax_history) = plt.subplots(
+            1,
+            2,
+            figsize=grid_figsize(1, 2),
+        )
+        for offset, values, label, color in (
+            (-0.5 * width, is_time, "IS", PALETTES["bing"][1]),
+            (
+                0.5 * width,
+                sc_extension_time,
+                "SC",
+                PALETTES["bing"][2],
+            ),
+        ):
+            bars = ax_time.bar(
+                x + offset,
+                values,
+                width,
+                label=label,
+                color=color,
+            )
+            ax_time.bar_label(bars, fmt="%.1f s", padding=2, fontsize=9)
+        ax_time.set(
+            xticks=x,
+            xticklabels=model_names,
+            ylabel="wall time [s]",
+            title="Recorded calculation time",
+        )
+        ax_time.set_ylim(
+            0.0,
+            1.18 * float(max(np.max(is_time), np.max(sc_extension_time))),
+        )
+        ax_time.legend()
+
+        for model, model_name, color in zip(
+            MODELS,
+            model_names,
+            PALETTES["bing"][1:3],
+            strict=True,
+        ):
+            iteration = np.asarray(
+                state[f"{model}_sc_history_iteration"], dtype=int
+            )
+            dg = np.asarray(
+                state[f"{model}_sc_history_max_g_change"], dtype=float
+            )
+            dv = np.asarray(
+                state[f"{model}_sc_history_max_v_corr_residual_ha"],
+                dtype=float,
+            )
+            ax_history.semilogy(
+                iteration,
+                dg,
+                color=color,
+                marker="o",
+                ms=4.5,
+                label=model_name + r" $\max|\Delta g|$",
+            )
+            ax_history.semilogy(
+                iteration,
+                dv,
+                color=color,
+                ls="--",
+                marker="s",
+                ms=4.0,
+                label=model_name + r" $\max|V^C_{\rm out}-V^C_{\rm in}|$ [Ha]",
+            )
+        ax_history.axhline(
+            SC_CONTROLS.g_tol,
+            color="0.45",
+            ls=":",
+            lw=1.0,
+            label="tolerance",
+        )
+        ax_history.set(
+            xlabel="SC outer iteration",
+            ylabel="maximum change",
+            title="Experimental SC convergence",
+        )
+        ax_history.legend(fontsize=8.5)
+        fig_convergence.suptitle(
+            r"Al: $\rho=8.1$ g cm$^{-3}$, $T_e=T_i=15$ eV",
+            y=0.985,
+        )
+        fig_convergence.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
+        save_figure(
+            fig_convergence,
+            FIGURE_DIR / "al_is_sc_timing_convergence",
+            close=False,
+        )
+
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
+
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_al_is_sc_comparison/thumbnail.png"

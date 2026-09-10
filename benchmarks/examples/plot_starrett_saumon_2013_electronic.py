@@ -66,15 +66,15 @@ article.  Every :math:`E` and :math:`\gamma` entry uses Hartree, while
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
    <tr><td>2p</td><td>-2.23</td><td>-2.14</td><td>-2.21</td>
    <td>1.00</td><td>1.00</td><td>1.00</td></tr>
-   <tr><td>3s</td><td>-0.0125</td><td>unbound</td><td>-0.00846</td>
-   <td>0.134</td><td>&mdash;</td><td>0.0928</td></tr>
+   <tr><td>3s</td><td>-0.0125</td><td>unbound</td><td>-0.00835</td>
+   <td>0.134</td><td>&mdash;</td><td>0.0916</td></tr>
    </tbody></table>
 
    <table class="docutils align-default">
    <caption>Scattering width \(\gamma\) [Ha]</caption>
    <thead><tr><th>\(T\) [eV]</th><th>Paper SC</th>
    <th>Otter-IS</th><th>Otter-SC</th></tr></thead><tbody>
-   <tr><td>2</td><td>0.0698</td><td>0.0374</td><td>0.0628</td></tr>
+   <tr><td>2</td><td>0.0698</td><td>0.0378</td><td>0.0630</td></tr>
    <tr><td>15</td><td>0.174</td><td>0.111</td><td>0.171</td></tr>
    </tbody></table>
 
@@ -82,7 +82,7 @@ As a formula-only audit, evaluating Otter's Eq. (81) with the *published*
 15-eV 3s inputs :math:`E=-0.0125` Ha and :math:`\gamma=0.174` Ha gives
 :math:`M=0.1343`, consistent with the published 0.134.  This is not a fourth
 physical model, so it is reported as an audit rather than an extra table model.
-The accepted NPZ retains full precision; the executable summary follows the
+Local numerical output retains full precision; the executable summary follows the
 same three-significant-digit presentation.  Tables II and III use two distinct
 ionization definitions:
 
@@ -111,7 +111,7 @@ nominally corresponding Otter values.
    <th>Paper</th><th>Otter-IS</th><th>Otter-SC</th>
    <th>\(\Gamma_{\rm OCP}\)</th><th>\(\Gamma_{\rm TCP}\)</th></tr>
    </thead><tbody>
-   <tr><td>2</td><td>1.98</td><td>2.07</td><td>2.07</td>
+   <tr><td>2</td><td>1.98</td><td>2.06</td><td>2.06</td>
    <td>3.00</td><td>3.00</td><td>3.00</td><td>41.0</td><td>5.05</td></tr>
    <tr><td>6</td><td>2.11</td><td>2.18</td><td>2.18</td>
    <td>3.00</td><td>3.00</td><td>3.00</td><td>13.6</td><td>2.04</td></tr>
@@ -156,15 +156,34 @@ is a useful controlled comparison, but it is not claimed to reproduce every
 detail of the simultaneous 2013 QTCP/TFTCP solver.  Al uses quantum orbitals;
 Fe uses Thomas--Fermi electrons, matching the model named for Table III.
 
-The September 2026 refresh uses adaptive full-AA precision for QM SC feedback
-and checks the unmixed correlation-potential residual. All eight SC pairs
-converged. Inner SCF and outer SC acceptance are distinct; the archive records
+The refreshed QM SC feedback uses zero-tail shallow-state matching by default,
+adaptive full-AA precision and the unmixed correlation-potential residual.
+Inner SCF and outer SC acceptance are distinct; the numerical output records
 both the outer residual and whether QM precision refinement was performed.
 This is a numerical accuracy safeguard, not a change to Eq. (81).
 
-Set ``USE_PRECOMPUTED_DATA = False`` below to recompute all eight independent
-IS/SC pairs.  New calculations are staged under ``benchmarks/outputs`` and
-never overwrite the accepted, checksummed baseline.
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python benchmarks/examples/plot_starrett_saumon_2013_electronic.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and prints
+the numerical comparisons. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_starrett_saumon_2013_electronic/results.rst
+
 """
 
 from __future__ import annotations
@@ -189,10 +208,10 @@ from otter.experimental import SCFeedbackConfig, solve_sc_feedback_workflow
 # =============================================================================
 # User input
 # =============================================================================
-USE_PRECOMPUTED_DATA = True
+USE_PRECOMPUTED_DATA = False
 if os.environ.get("OTTER_RECOMPUTE_STARRETT_SAUMON_ELECTRONIC", "0") == "1":
     USE_PRECOMPUTED_DATA = False
-MAX_STATE_WORKERS = 2
+MAX_STATE_WORKERS = 1
 # =============================================================================
 
 
@@ -207,26 +226,24 @@ FE_HUGONIOT = (
     (39.65, 1000.0),
     (34.37, 5000.0),
 )
+# Common IS/SC comparison protocol. The validated hot-Fe controls needed
+# 13 outer iterations, beyond the library's default budget of 10.
 SC_CONTROLS = SCFeedbackConfig(
     max_outer=16,
-    g_tol=5.0e-4,
-    v_corr_tol=5.0e-4,
     v_corr_mix=0.5,
-    require_converged=True,
 )
 
 
 def repository_root() -> Path:
-    """Locate the checkout when run directly or through Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
-    source = Path(str(globals().get("__file__", Path.cwd()))).resolve()
-    candidates.extend([source.parent, *source.parents])
+    source_file = globals().get("__file__")
+    if source_file is not None:
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (candidate / "pyproject.toml").is_file() and (
-            candidate / "src" / "otter"
-        ).is_dir():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -246,6 +263,19 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def producer_source() -> dict[str, Any]:
+    """Identify the actual script, without inventing a notebook source hash."""
+    source = globals().get("__file__")
+    path = Path(source).resolve() if source is not None else None
+    return {
+        "execution_mode": "script" if path is not None else "interactive",
+        "script_filename": path.name if path is not None else None,
+        "script_relative_path": path.relative_to(ROOT).as_posix()
+        if path is not None and path.is_relative_to(ROOT) else None,
+        "script_sha256_current": sha256_file(path) if path is not None else None,
+    }
 
 
 def state_definitions() -> tuple[dict[str, Any], ...]:
@@ -313,16 +343,11 @@ def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
     """Return the complete IS workflow used to initialise SC feedback."""
     is_tf = str(state["electronic_model"]) == "tf"
     model_override = {"electronic_model": "tf"} if is_tf else {}
-    aa_options: dict[str, Any] = {
-        "bound_zero_tail_refine": not is_tf,
-    }
+    aa_options: dict[str, Any] = {}
     if is_tf:
         # The nondegenerate 5000-eV Fe chemical potential lies below the
         # ordinary warm-dense bracket.
         aa_options["mu_bounds"] = (-2000.0, 200.0)
-    else:
-        # Include the paper's shallow 15-eV 3s comparison state.
-        aa_options["bound_zero_tail_max_binding_ha"] = 3.0e-2
     return PlasmaWorkflowConfig(
         elements=[str(state["element"])],
         temperature_ev=float(state["temperature_ev"]),
@@ -331,7 +356,6 @@ def workflow_config(state: dict[str, Any]) -> PlasmaWorkflowConfig:
         **model_override,
         aa_overrides=aa_options,
         hnc_closure_transform_tol=2.5e-3,
-        hnc_max_iter=500,
         show_progress=False,
     )
 
@@ -516,8 +540,9 @@ def add_archive_metadata(
             "scope": "is_and_experimental_sc_feedback",
             "aa_n_points": 4096,
             "bound_energy_cut_mode": "zero",
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_max_binding_ha": 3.0e-2,
+            "aa_input_overrides_by_state": {
+                state["state_id"]: workflow_config(state).aa_overrides for state in STATES
+            },
             "ion_gamma_mode": "scattering",
             "al_electronic_model": "qm",
             "fe_electronic_model": "tf",
@@ -615,8 +640,9 @@ def compute_candidate() -> dict[str, np.ndarray]:
             "external_average_atom": True,
             "qoz_hnc": True,
             "bound_energy_cut_mode": "zero",
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_max_binding_ha": 3.0e-2,
+            "aa_input_overrides_by_state": {
+                state["state_id"]: workflow_config(state).aa_overrides for state in STATES
+            },
             "al_electronic_model": "qm",
             "fe_electronic_model": "tf",
             "fe_mu_bounds_ha": [-2000.0, 200.0],
@@ -632,8 +658,7 @@ def compute_candidate() -> dict[str, np.ndarray]:
             },
         },
         "producer": {
-            "script_relative_path": str(Path(__file__).resolve().relative_to(ROOT)),
-            "script_sha256_current": sha256_file(Path(__file__).resolve()),
+            **producer_source(),
             "git_commit": git_head(),
         },
         "state": {
@@ -802,8 +827,8 @@ def print_comparison(state: dict[str, np.ndarray], reference: dict[str, Any]) ->
             )
 
 
-# Load the same validated state table once for all gallery cells below.
-if __name__ == "__main__":
+def main() -> None:
+    """Calculate and print all level/ionization comparisons."""
     reference = load_reference_tables()
     state = compute_candidate() if not USE_PRECOMPUTED_DATA else load_precomputed()
     validate_archive(state)
@@ -816,3 +841,7 @@ if __name__ == "__main__":
         )
     )
     print_comparison(state, reference)
+
+
+if __name__ == "__main__":
+    main()

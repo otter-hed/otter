@@ -112,8 +112,8 @@ def test_gallery_cites_equations_and_exposes_safe_recompute_switch() -> None:
     source = (
         ROOT / "docs" / "examples" / "plot_al_is_sc_comparison.py"
     ).read_text(encoding="utf-8")
-    assert "RECOMPUTE_WITH_OTTER = False" in source
-    assert "RECOMPUTE_MODEL_WORKERS = 2" in source
+    assert "RECOMPUTE_WITH_OTTER = True" in source
+    assert "RECOMPUTE_MODEL_WORKERS = 1" in source
     assert ":cite:t:`StarrettSaumon2014`" in source
     assert "Eqs. (19)--(20)" in source
     assert "SC (experimental)" in source

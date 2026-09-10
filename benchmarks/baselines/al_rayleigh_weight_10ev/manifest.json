@@ -39,15 +39,20 @@
   "producer": {
     "project": "Otter",
     "script_relative_path": "docs/examples/plot_al_rayleigh_weight.py",
-    "script_sha256_current": "97a0ce5e94b01f6d48b389da9514d4c2512f08a4bc8618461497c4ee0515f96f",
+    "script_sha256_current": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
     "note": "All three states were freshly calculated by the standalone Otter example.",
-    "script_sha256_at_generation": "4041d47f02d27053abe8eef2e3eb1974bf1371dceb33242fde1e3d48d9d5b215",
-    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
-    "source_inventory": "../validation_20260908.json"
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+    "worktree_dirty": true,
+    "script_sha256_at_generation": "85a7329ce59d58fe43e74377b6704eeb459051f27e2143b379d57e647ab58be7"
   },
   "state": {
     "data_file": "Al_Te10eV_rayleigh.npz",
-    "data_sha256": "ff08fde848be65d6df2acd27713a74557cbe3e7d0820833cf2c27058108ea6a6"
+    "data_sha256": "04da4bc23848dca7b9cb72b4b40fc788db20ead79e203dca39020365a9befc88"
   },
   "validation_scope": "completed_is_campaign",
   "validation_inventory": "../validation_20260908.json"

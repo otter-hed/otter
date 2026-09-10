@@ -34,6 +34,7 @@ from otter.electronic.full_external import (
     FullExternalConfig,
     solve_full_only,
 )
+from otter.numerics.constants import HA_TO_EV
 from otter.plotting import PALETTES, grid_figsize, save_figure, style_context
 
 
@@ -59,7 +60,6 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = (
     ROOT / "benchmarks" / "outputs" / "bound_energy_partition_sensitivity"
 )
-HARTREE_TO_EV = 27.211386245988
 SHELLS = "spdfgh"
 
 
@@ -300,12 +300,12 @@ def plot_report(states: dict[str, dict[str, np.ndarray]]) -> None:
         )
         for mode_index, (label, state) in enumerate(states.items()):
             color, _ = styles[label]
-            edge_ev = float(state["energy_cut_ha"]) * HARTREE_TO_EV
+            edge_ev = float(state["energy_cut_ha"]) * HA_TO_EV
             ax_all.scatter(mode_index, edge_ev, marker="x", s=55, color="black")
             ax_shallow.scatter(mode_index, edge_ev, marker="x", s=55,
                                color="black", label="Ecut" if mode_index == 0 else None)
             for shell, energy, included in level_rows(state):
-                energy_ev = energy * HARTREE_TO_EV
+                energy_ev = energy * HA_TO_EV
                 marker = "o" if included else "s"
                 ax_all.scatter(mode_index, energy_ev, marker=marker, color=color)
                 if energy_ev > -1.0:
@@ -320,7 +320,7 @@ def plot_report(states: dict[str, dict[str, np.ndarray]]) -> None:
         ax_all.set_title("All finite negative levels")
         ax_shallow.set_title("Near-threshold levels")
         ax_shallow.set_ylim(-1.0, max(0.02, 1.2 * max(
-            float(state["energy_cut_ha"]) * HARTREE_TO_EV for state in states.values()
+            float(state["energy_cut_ha"]) * HA_TO_EV for state in states.values()
         )))
         fig_levels.tight_layout()
         save_figure(fig_levels, OUTPUT_DIR / "carbon_partition_level_sensitivity")

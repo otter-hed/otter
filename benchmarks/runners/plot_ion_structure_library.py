@@ -409,6 +409,8 @@ def _plot_observable(
                 if model_index == 0
                 else reference_colors[(model_index - 1) % len(reference_colors)]
             )
+            if prefix == "md_" and bool(states[result_id].get("md_is_historical", False)):
+                label += " (old potential)"
             ax.plot(
                 x_otter,
                 y_otter,

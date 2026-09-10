@@ -4,10 +4,10 @@ Two-temperature aluminium: Johnson et al. (2025)
 
 .. note::
 
-   The displayed HNC, VMHNC and MD curves are the archived, matched-potential
-   comparison, not a rerun with the September 2026 AA changes. All three
-   are retained together to preserve the closure comparison. See
-   :doc:`/benchmarks/validation_20260908` for the current validation scope.
+   HNC and VMHNC use the September 2026 Otter recalculation. The MD curves
+   are historical runs on the earlier Otter potential, not new simulations.
+   Their agreement with the new curves is not a same-potential closure test.
+   See :doc:`/benchmarks/validation_20260908`.
 
 This benchmark compares Otter IS-QOZ :math:`g_{ii}(r)` obtained with ordinary
 HNC and Rosenfeld--Ashcroft VMHNC closures with the three reference curve
@@ -18,9 +18,9 @@ aluminium at :math:`\rho=2.7` g cm\ :sup:`-3`,
 reference methods as 2TTCP HNC+bridge, DFT-MD, and YOCP HNC+bridge.  In every
 panel, the two Otter integral-equation curves reuse exactly the same ion-
 sphere (IS) electronic result and effective ion--ion potential; only the
-ionic closure changes.  Classical LAMMPS MD :cite:p:`ThompsonEtAl2022` with
-that same potential is also shown, so closure error can be separated from
-pseudoatom pair-potential error.
+ionic closure changes. Historical classical LAMMPS MD
+:cite:p:`ThompsonEtAl2022` is retained as a separately labelled comparison.
+Differences from that MD can include changes to the electronic potential.
 
 The VMHNC bridge is the Percus--Yevick hard-sphere bridge with its packing
 fraction fixed by the variational condition of :cite:t:`Faussurier2004`, not
@@ -48,14 +48,6 @@ cites the earlier empirical Yukawa bridge of
 The reference abscissa is :math:`r` in atomic units (Bohr), as shown on the
 published Fig. 2 axis.  No coordinate conversion is applied.
 
-Edit only the input block below.  ``USE_PRECOMPUTED_DATA = True`` verifies
-the dedicated accepted-baseline manifest and every NPZ checksum.  With
-``False``, this same file calls the public Otter workflow, writes candidate
-results under ``benchmarks/outputs``, and plots them.
-``USE_RECOMPUTED_CANDIDATES = True`` loads those still-unreviewed candidates
-with their separate manifest and checksums for local review; it never promotes
-or overwrites an accepted baseline.
-
 When recomputing, ``RUN_SAME_POTENTIAL_MD = True`` follows Johnson's stated
 dimensionless protocol: 2048 ions, :math:`\Delta t=0.005\omega_p^{-1}`;
 :math:`50\omega_p^{-1}` NVT equilibration followed by
@@ -66,6 +58,32 @@ They are distributed with article/panel attribution and license status
 ``NOASSERTION``.
 See :doc:`the provenance and reuse notice
 </benchmarks/johnson_et_al_2025_two_temperature_al>`.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Reproducing the MD curves also requires LAMMPS and MPI and can take hours.
+AA calculations keep one continuum worker per atom.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_johnson_et_al_2025_two_temperature_al/results.rst
+
 """
 
 from __future__ import annotations
@@ -97,7 +115,7 @@ from otter.plotting import grid_figsize, save_figure, set_style
 # =============================================================================
 # User input
 # =============================================================================
-USE_PRECOMPUTED_DATA = True
+USE_PRECOMPUTED_DATA = False
 if os.environ.get("OTTER_RECOMPUTE_JOHNSON_AL", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 USE_RECOMPUTED_CANDIDATES = False
@@ -112,7 +130,7 @@ if os.environ.get("OTTER_RUN_JOHNSON_SAME_POTENTIAL_MD", "1") == "0":
 LAMMPS_EXECUTABLE = "lmp"
 MPI_LAUNCHER = "mpirun"
 MPI_PROCESSES_PER_MD_STATE = 10
-MAX_PARALLEL_MD_STATES = 2
+MAX_PARALLEL_MD_STATES = 1
 MD_CELLS_PER_AXIS = 8  # FCC: 4 * 8^3 = 2048 Al ions.
 MD_TIMESTEP_OMEGA_P_INV = 5.0e-3
 MD_EQUILIBRATION_OMEGA_P_INV = 50.0
@@ -120,7 +138,7 @@ MD_PRODUCTION_OMEGA_P_INV = 500.0
 MD_RDF_BINS = 500
 
 # Two states run concurrently; each AA uses the single-worker default.
-MAX_STATE_WORKERS = 2
+MAX_STATE_WORKERS = 1
 
 HNC_CLOSURE_TOL = 2.5e-3
 VMHNC_ETA_TOL = 1.0e-6
@@ -160,23 +178,15 @@ REFERENCE_METHODS: tuple[tuple[str, str, str], ...] = (
 
 
 def repository_root() -> Path:
-    """Locate the checkout when run directly or through Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        manifest = (
-            candidate
-            / "benchmarks"
-            / "baselines"
-            / BENCHMARK_ID
-            / "manifest.json"
-        )
-        if manifest.is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -305,9 +315,8 @@ def workflow_config(
         ion_temperature_ev=1.0,
         rho_g_cc=2.7,
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
-        hnc_max_iter=500,
         hnc_bridge_model=str(bridge_model),
-        vmhnc_eta_tol=float(VMHNC_ETA_TOL),
+        **({"vmhnc_eta_tol": float(VMHNC_ETA_TOL)} if bridge_model != "none" else {}),
         show_progress=False,
     )
 
@@ -976,204 +985,216 @@ def load_references() -> dict[tuple[float, str], tuple[np.ndarray, np.ndarray]]:
     return references
 
 
-if not USE_PRECOMPUTED_DATA:
-    states = solve_all_states()
-elif USE_RECOMPUTED_CANDIDATES:
-    states = load_recomputed_candidates()
-else:
-    states = load_precomputed_states()
-references = load_references()
-print(
-    "Using "
-    + (
-        "new candidates calculated directly by this gallery script."
-        if not USE_PRECOMPUTED_DATA
-        else (
-            "checksummed, unreviewed recomputation candidates."
-            if USE_RECOMPUTED_CANDIDATES
-            else "reviewed, checksummed Otter baselines."
-        )
-    )
-)
-
-
-def print_metrics() -> None:
-    """Report interpolation errors without treating unlike methods as exact."""
+def main() -> None:
+    if not USE_PRECOMPUTED_DATA:
+        states = solve_all_states()
+    elif USE_RECOMPUTED_CANDIDATES:
+        states = load_recomputed_candidates()
+    else:
+        states = load_precomputed_states()
+    references = load_references()
+    if any(bool(payload.get("md_is_historical", False)) for payload in states.values()):
+        print("MD is historical (old potential); HNC and VMHNC use refreshed Otter data.")
     print(
-        f"{'state':24s} {'Otter closure':16s} {'reference':20s} "
-        f"{'RMSE':>10s} {'MAE':>10s} {'max':>10s}"
+        "Using "
+        + (
+            "new candidates calculated directly by this gallery script."
+            if not USE_PRECOMPUTED_DATA
+            else (
+                "checksummed, unreviewed recomputation candidates."
+                if USE_RECOMPUTED_CANDIDATES
+                else "reviewed, checksummed Otter baselines."
+            )
+        )
     )
-    for definition in STATES:
-        state_id = str(definition["state_id"])
-        if state_id not in states:
-            print(f"{state_id:24s} {'no accepted Otter state':20s}")
-            continue
-        te_ev = float(definition["te_ev"])
-        payload = states[state_id]
-        closures = (
-            ("HNC", "r_bohr", "gii_r"),
-            ("VMHNC", "r_bohr", "vmhnc_gii_r"),
-            ("same-potential MD", "md_r_bohr", "md_gii_r"),
-        )
-        for closure, r_key, g_key in closures:
-            if r_key not in payload:
-                continue
-            r_otter = np.asarray(payload[r_key], dtype=float)
-            g_otter = np.asarray(payload[g_key], dtype=float)
-            for token, label, _marker in REFERENCE_METHODS:
-                r_ref, g_ref = references[(te_ev, token)]
-                mask = (r_ref >= r_otter[0]) & (r_ref <= r_otter[-1])
-                delta = np.interp(r_ref[mask], r_otter, g_otter) - g_ref[mask]
-                print(
-                    f"{state_id:24s} {closure:16s} {label:20s} "
-                    f"{np.sqrt(np.mean(delta**2)):10.4e} "
-                    f"{np.mean(np.abs(delta)):10.4e} "
-                    f"{np.max(np.abs(delta)):10.4e}"
-                )
+
+
+    def print_metrics() -> None:
+        """Report interpolation errors without treating unlike methods as exact."""
         print(
-            f"{state_id}: shared IS Zbar={float(payload['zbar_partition']):.8f}, "
-            f"VMHNC eta={float(payload['vmhnc_eta']):.8f}, "
-            "variational residual="
-            f"{float(payload['vmhnc_variational_residual']):.3e}"
+            f"{'state':24s} {'Otter closure':16s} {'reference':20s} "
+            f"{'RMSE':>10s} {'MAE':>10s} {'max':>10s}"
         )
+        for definition in STATES:
+            state_id = str(definition["state_id"])
+            if state_id not in states:
+                print(f"{state_id:24s} {'no accepted Otter state':20s}")
+                continue
+            te_ev = float(definition["te_ev"])
+            payload = states[state_id]
+            closures = (
+                ("HNC", "r_bohr", "gii_r"),
+                ("VMHNC", "r_bohr", "vmhnc_gii_r"),
+                ("historical MD" if bool(payload.get("md_is_historical", False))
+                 else "same-potential MD", "md_r_bohr", "md_gii_r"),
+            )
+            for closure, r_key, g_key in closures:
+                if r_key not in payload:
+                    continue
+                r_otter = np.asarray(payload[r_key], dtype=float)
+                g_otter = np.asarray(payload[g_key], dtype=float)
+                for token, label, _marker in REFERENCE_METHODS:
+                    r_ref, g_ref = references[(te_ev, token)]
+                    mask = (r_ref >= r_otter[0]) & (r_ref <= r_otter[-1])
+                    delta = np.interp(r_ref[mask], r_otter, g_otter) - g_ref[mask]
+                    print(
+                        f"{state_id:24s} {closure:16s} {label:20s} "
+                        f"{np.sqrt(np.mean(delta**2)):10.4e} "
+                        f"{np.mean(np.abs(delta)):10.4e} "
+                        f"{np.max(np.abs(delta)):10.4e}"
+                    )
+            print(
+                f"{state_id}: shared IS Zbar={float(payload['zbar_partition']):.8f}, "
+                f"VMHNC eta={float(payload['vmhnc_eta']):.8f}, "
+                "variational residual="
+                f"{float(payload['vmhnc_variational_residual']):.3e}"
+            )
 
 
-print_metrics()
+    print_metrics()
 
 
-# %%
-# Pair-distribution comparison
-# ----------------------------
-#
-# Both Otter curves use the same pseudoatom IS-QOZ potential.  Their difference
-# isolates the ionic closure; neither is relabelled as the paper's 2TTCP model.
-# At low Te, neither closure can restore chemical bonding absent from the
-# spherical pseudoatom pair potential.
+    # %%
+    # Pair-distribution comparison
+    # ----------------------------
+    #
+    # Both Otter curves use the same pseudoatom IS-QOZ potential.  Their difference
+    # isolates the ionic closure; neither is relabelled as the paper's 2TTCP model.
+    # At low Te, neither closure can restore chemical bonding absent from the
+    # spherical pseudoatom pair potential.
 
-set_style("thesis", palette="bing")
-fig, axes = plt.subplots(
-    2,
-    2,
-    figsize=grid_figsize(2, 2),
-    sharex=True,
-    sharey=True,
-)
-axes = np.asarray(axes).ravel()
-colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    set_style("thesis", palette="bing")
+    fig, axes = plt.subplots(
+        2,
+        2,
+        figsize=grid_figsize(2, 2),
+        sharex=True,
+        sharey=True,
+    )
+    axes = np.asarray(axes).ravel()
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-for panel_index, (axis, definition) in enumerate(zip(axes, STATES)):
-    state_id = str(definition["state_id"])
-    te_ev = float(definition["te_ev"])
-    if state_id in states:
-        payload = states[state_id]
-        axis.plot(
-            np.asarray(payload["r_bohr"]),
-            np.asarray(payload["gii_r"]),
-            color="black",
-            lw=2.3,
-            label="Otter IS-QOZ/HNC",
-            zorder=2,
-        )
-        axis.plot(
-            np.asarray(payload["r_bohr"]),
-            np.asarray(payload["vmhnc_gii_r"]),
-            color=colors[3 % len(colors)],
-            lw=2.1,
-            ls="--",
-            alpha=0.9,
-            label="Otter IS-QOZ/VMHNC",
-            zorder=2,
-        )
-        if "md_gii_r" in payload:
-            r_md = np.asarray(payload["md_r_bohr"], dtype=float)
-            g_md = np.asarray(payload["md_gii_r"], dtype=float)
-            sem_md = np.asarray(payload["md_gii_block_sem"], dtype=float)
+    for panel_index, (axis, definition) in enumerate(zip(axes, STATES)):
+        state_id = str(definition["state_id"])
+        te_ev = float(definition["te_ev"])
+        if state_id in states:
+            payload = states[state_id]
             axis.plot(
-                r_md,
-                g_md,
-                color=colors[4 % len(colors)],
-                lw=1.9,
-                ls="-.",
-                label="Otter IS-potential MD",
+                np.asarray(payload["r_bohr"]),
+                np.asarray(payload["gii_r"]),
+                color="black",
+                lw=2.3,
+                label="Otter IS-QOZ/HNC",
                 zorder=2,
             )
-            axis.fill_between(
-                r_md,
-                g_md - 2.0 * sem_md,
-                g_md + 2.0 * sem_md,
-                color=colors[4 % len(colors)],
-                alpha=0.12,
-                linewidth=0.0,
-                zorder=1,
+            axis.plot(
+                np.asarray(payload["r_bohr"]),
+                np.asarray(payload["vmhnc_gii_r"]),
+                color=colors[3 % len(colors)],
+                lw=2.1,
+                ls="--",
+                alpha=0.9,
+                label="Otter IS-QOZ/VMHNC",
+                zorder=2,
             )
-    else:
-        axis.text(
-            0.97,
-            0.05,
-            "No accepted Otter baseline",
-            transform=axis.transAxes,
-            ha="right",
-            va="bottom",
-            color="0.25",
-            fontsize=9,
-        )
-    for method_index, (token, label, marker) in enumerate(REFERENCE_METHODS):
-        r_ref, g_ref = references[(te_ev, token)]
-        options: dict[str, Any] = {
-            "s": 40,
-            "marker": marker,
-            "linewidths": 1.3,
-            "label": label if panel_index == 0 else "_nolegend_",
-            "zorder": 3,
-        }
-        color = colors[method_index % len(colors)]
-        if marker == "x":
-            options["color"] = color
+            if "md_gii_r" in payload:
+                r_md = np.asarray(payload["md_r_bohr"], dtype=float)
+                g_md = np.asarray(payload["md_gii_r"], dtype=float)
+                sem_md = np.asarray(payload["md_gii_block_sem"], dtype=float)
+                axis.plot(
+                    r_md,
+                    g_md,
+                    color=colors[4 % len(colors)],
+                    lw=1.9,
+                    ls="-.",
+                    label=("Otter MD (old potential)" if bool(payload.get("md_is_historical", False))
+                           else "Otter IS-potential MD"),
+                    zorder=2,
+                )
+                axis.fill_between(
+                    r_md,
+                    g_md - 2.0 * sem_md,
+                    g_md + 2.0 * sem_md,
+                    color=colors[4 % len(colors)],
+                    alpha=0.12,
+                    linewidth=0.0,
+                    zorder=1,
+                )
         else:
-            options["facecolors"] = "none"
-            options["edgecolors"] = color
-        axis.scatter(r_ref, g_ref, **options)
+            axis.text(
+                0.97,
+                0.05,
+                "No accepted Otter baseline",
+                transform=axis.transAxes,
+                ha="right",
+                va="bottom",
+                color="0.25",
+                fontsize=9,
+            )
+        for method_index, (token, label, marker) in enumerate(REFERENCE_METHODS):
+            r_ref, g_ref = references[(te_ev, token)]
+            options: dict[str, Any] = {
+                "s": 40,
+                "marker": marker,
+                "linewidths": 1.3,
+                "label": label if panel_index == 0 else "_nolegend_",
+                "zorder": 3,
+            }
+            color = colors[method_index % len(colors)]
+            if marker == "x":
+                options["color"] = color
+            else:
+                options["facecolors"] = "none"
+                options["edgecolors"] = color
+            axis.scatter(r_ref, g_ref, **options)
 
-    axis.set_title(
-        rf"{definition['panel']}: $T_e={te_ev:g}$ eV, $T_i=1$ eV"
-    )
-    axis.set_xlabel(r"$r$ [Bohr]")
-    axis.set_xlim(2.5, 8.2)
-    axis.set_ylim(-0.05, 2.30)
-    axis.axhline(1.0, color="0.55", lw=0.8, ls=":")
-    if panel_index == 0:
-        axis.set_ylabel(r"$g_{ii}(r)$")
-    if panel_index == 0:
-        axis.legend(
-            fontsize="small",
-            loc="best",
+        axis.set_title(
+            rf"{definition['panel']}: $T_e={te_ev:g}$ eV, $T_i=1$ eV"
         )
+        axis.set_xlabel(r"$r$ [Bohr]")
+        axis.set_xlim(2.5, 8.2)
+        axis.set_ylim(-0.05, 2.30)
+        axis.axhline(1.0, color="0.55", lw=0.8, ls=":")
+        if panel_index == 0:
+            axis.set_ylabel(r"$g_{ii}(r)$")
+        if panel_index == 0:
+            axis.legend(
+                fontsize="small",
+                loc="best",
+            )
 
-fig.suptitle(
-    r"Al, $\rho=2.7$ g cm$^{-3}$: "
-    "Otter versus Johnson et al. (2025)",
-    y=0.985,
-)
-fig.text(
-    0.5,
-    0.006,
-    "Reference data: Johnson et al. (2025), "
-    "doi:10.1103/5c29-kdx1.",
-    ha="center",
-    va="bottom",
-    fontsize=7.5,
-)
-fig.tight_layout(rect=(0.0, 0.025, 1.0, 0.95), pad=0.55)
-saved_paths = save_figure(
-    fig,
-    FIGURE_DIR / "johnson_et_al_2025_two_temperature_al_gii",
-)
-print(
-    "[figure] "
-    + ", ".join(
-        f"{kind}={path.relative_to(ROOT)}"
-        for kind, path in saved_paths.items()
+    fig.suptitle(
+        r"Al, $\rho=2.7$ g cm$^{-3}$: "
+        "Otter versus Johnson et al. (2025)",
+        y=0.985,
     )
-)
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+    fig.text(
+        0.5,
+        0.006,
+        "Reference data: Johnson et al. (2025), "
+        "doi:10.1103/5c29-kdx1.",
+        ha="center",
+        va="bottom",
+        fontsize=7.5,
+    )
+    fig.tight_layout(rect=(0.0, 0.025, 1.0, 0.95), pad=0.55)
+    saved_paths = save_figure(
+        fig,
+        FIGURE_DIR / "johnson_et_al_2025_two_temperature_al_gii",
+    )
+    print(
+        "[figure] "
+        + ", ".join(
+            f"{kind}={path.relative_to(ROOT)}"
+            for kind, path in saved_paths.items()
+        )
+    )
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
+
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_johnson_et_al_2025_two_temperature_al/thumbnail.png"

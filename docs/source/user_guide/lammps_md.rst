@@ -40,18 +40,21 @@ For :math:`N_s` species, the helper verifies that ``vij_r`` has shape
 ``(N_s, N_s, N_r)``, is symmetric, and contains every unique pair.  The pair
 order is ``(0,0), (0,1), ..., (N_s-1,N_s-1)``.
 
-Complete mixture example from an Otter NPZ
-------------------------------------------
+Complete mixture example from physical inputs
+----------------------------------------------
 
-The following example assumes that ``outputs/ch2_state.npz`` is a converged
-Otter state with species order C, H.  Edit the settings at the beginning of
-the script and run the Python file from the repository root.
+The following example first computes the electronic structure and QOZ pair
+potentials for CH2, then runs MD. No precomputed NPZ is needed. Edit the
+settings at the beginning and run the Python file from the repository root.
 
 .. code-block:: python
 
    from pathlib import Path
 
    import numpy as np
+
+   from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+   from otter.data.elements import element
 
    from tools.otter_lammps_md import (
        MDConfig,
@@ -62,9 +65,10 @@ the script and run the Python file from the repository root.
 
 
    # ------------------------- user settings -------------------------
-   STATE_PATH = Path("outputs/ch2_state.npz")
    OUTPUT_DIR = Path("outputs/ch2_lammps_md")
+   TE_EV = 30.0
    TI_EV = 10.0
+   RHO_G_CC = 0.946
 
    # Exact CH2 stoichiometry: 1024 C + 2048 H.
    PARTICLE_COUNTS = (1024, 2048)
@@ -78,22 +82,21 @@ the script and run the Python file from the repository root.
    # -----------------------------------------------------------------
 
 
-   with np.load(STATE_PATH, allow_pickle=False) as state:
-       symbols = tuple(str(value) for value in state["species_symbols"])
-       if symbols != ("C", "H"):
-           raise ValueError(f"Expected C,H in the NPZ, found {symbols}.")
-
-       # zbar is the charge used to construct the saved QOZ potential.
-       zbar = np.asarray(state["zbar"], dtype=float)
-       total_ion_density = float(np.sum(state["n_i_bohr3"]))
-       potentials = pair_potentials_from_otter(state)
+   workflow = solve_plasma_workflow(PlasmaWorkflowConfig(
+       elements=["C", "H"], counts=[1, 2], rho_g_cc=RHO_G_CC,
+       temperature_ev=TE_EV, ion_temperature_ev=TI_EV,
+   ))
+   ion = workflow["ion"]
+   zbar = np.asarray(ion["zbar"], dtype=float)
+   total_ion_density = float(np.sum(ion["n_i"]))
+   potentials = pair_potentials_from_otter(workflow)
 
 
    config = MDConfig(
        output_dir=OUTPUT_DIR,
        species=(
-           MDSpecies("C", 12.011, PARTICLE_COUNTS[0], charge_e=float(zbar[0])),
-           MDSpecies("H", 1.008, PARTICLE_COUNTS[1], charge_e=float(zbar[1])),
+           MDSpecies("C", element("C").atomic_mass, PARTICLE_COUNTS[0], charge_e=float(zbar[0])),
+           MDSpecies("H", element("H").atomic_mass, PARTICLE_COUNTS[1], charge_e=float(zbar[1])),
        ),
        ion_density_bohr3=total_ion_density,
        ion_temperature_ev=TI_EV,
@@ -252,6 +255,187 @@ and the Ashcroft--Langreth partial estimator
    \frac{\operatorname{Re}[\rho_a(\mathbf{k})\rho_b^*(\mathbf{k})]}
    {\sqrt{N_aN_b}}
    \right\rangle_{\text{vectors in bin, frames}}.
+
+Why particle coordinates are sufficient
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The density-mode construction starts from the instantaneous microscopic
+number density of species :math:`a`,
+
+.. math::
+
+   \widehat n_a(\mathbf r,t)
+   =\sum_{j\in a}\delta\!\left(\mathbf r-\mathbf r_j(t)\right).
+
+Fourier transforming this collection of point particles gives
+
+.. math::
+
+   \rho_a(\mathbf k,t)
+   =\int d^3r\,\widehat n_a(\mathbf r,t)e^{i\mathbf k\cdot\mathbf r}
+   =\sum_{j\in a}e^{i\mathbf k\cdot\mathbf r_j(t)}.
+
+Thus each coordinate contributes one unit phasor.  A wavevector for which
+many phasors point in the same direction has a large density amplitude;
+random phases largely cancel.  No velocity or force is required for this
+static observable.  The species labels, coordinates, and periodic cell are
+sufficient.
+
+The connection to particle-pair correlations becomes explicit by expanding
+the product in the partial structure factor:
+
+.. math::
+
+   \rho_a(\mathbf k)\rho_b^*(\mathbf k)
+   =\sum_{i\in a}\sum_{j\in b}
+   e^{i\mathbf k\cdot(\mathbf r_i-\mathbf r_j)}.
+
+Taking the real part replaces every exponential by
+:math:`\cos[\mathbf k\cdot(\mathbf r_i-\mathbf r_j)]`.  The density-mode
+estimator is therefore a normalized sum over the phases of *all relative
+particle displacements*.  For one species this gives the exact per-frame,
+per-vector identity
+
+.. math::
+
+   S_{aa}(\mathbf k)
+   =1+\frac{2}{N_a}\sum_{i<j}
+   \cos\!\left[\mathbf k\cdot(\mathbf r_i-\mathbf r_j)\right].
+
+The leading one is the normalized :math:`i=j` self contribution.  For two
+different species there is no self term:
+
+.. math::
+
+   S_{ab}(\mathbf k)
+   =\frac{1}{\sqrt{N_aN_b}}
+   \sum_{i\in a}\sum_{j\in b}
+   \cos\!\left[\mathbf k\cdot(\mathbf r_i-\mathbf r_j)\right],
+   \qquad a\ne b.
+
+Two particles in one dimension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Place two identical particles at :math:`x_1=0` and :math:`x_2=d`, and write
+:math:`q=kd`.  Their density amplitude and structure factor are
+
+.. math::
+
+   \rho(k)=1+e^{iq},
+   \qquad
+   S(k)=\frac{|\rho(k)|^2}{2}=1+\cos q
+   =2\cos^2\!\left(\frac q2\right).
+
+At :math:`q=2\pi m` the two phasors align and :math:`S=2`; at
+:math:`q=(2m+1)\pi` they cancel and :math:`S=0`.  The :math:`k` dependence is
+therefore already determined by the real-space separation :math:`d`.
+
+Three particles and the general equally spaced chain
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For three identical particles at :math:`0,d,2d`,
+
+.. math::
+
+   \rho(k)=1+e^{iq}+e^{2iq}=e^{iq}(1+2\cos q),
+
+and hence
+
+.. math::
+
+   S(k)=\frac{(1+2\cos q)^2}{3}
+   =1+\frac{4}{3}\cos q+\frac{2}{3}\cos(2q).
+
+The second expression displays the real-space pair inventory directly:
+there are two pairs separated by :math:`d` and one pair separated by
+:math:`2d`.  All three phasors align when :math:`q=2\pi m`, giving
+:math:`S=3`; they form a closed three-phasor triangle at
+:math:`q=2\pi/3` or :math:`4\pi/3`, giving :math:`S=0`.
+
+For :math:`N` equally spaced particles at :math:`x_j=jd`, the geometric sum
+generalizes this result to
+
+.. math::
+
+   \rho(k)
+   =e^{i(N-1)q/2}\frac{\sin(Nq/2)}{\sin(q/2)},
+   \qquad
+   S(k)=\frac{1}{N}
+   \left[\frac{\sin(Nq/2)}{\sin(q/2)}\right]^2.
+
+As :math:`N` grows, coherent spatial order produces increasingly narrow and
+high peaks.  For a disordered configuration at nonzero :math:`k`, the
+off-diagonal cosine terms tend to cancel under configuration averaging and
+the single-species value approaches the self background :math:`S=1`.
+
+A two-species example
+~~~~~~~~~~~~~~~~~~~~~
+
+Consider a one-dimensional periodic cell of length :math:`4d`, with two C
+particles at :math:`0,2d` and two H particles at :math:`d,3d`.  With
+:math:`q=kd`,
+
+.. math::
+
+   \rho_C=1+e^{2iq}=2e^{iq}\cos q,
+   \qquad
+   \rho_H=e^{iq}+e^{3iq}=2e^{2iq}\cos q.
+
+The three Ashcroft--Langreth partials are
+
+.. math::
+
+   S_{CC}=S_{HH}=1+\cos(2q),
+   \qquad
+   S_{CH}=2\cos^3 q.
+
+The cross partial can be positive or negative.  A positive
+:math:`S_{CH}` means that the C and H density waves at that :math:`k` are in
+phase; a negative value means that they are anticorrelated.  This does not
+make the total scattering intensity negative: an individual cross partial
+is a covariance-like contribution, not a probability.
+
+Density fluctuations and the connection to :math:`g_{ab}(r)`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+More formally, define the fluctuation mode
+
+.. math::
+
+   \delta\rho_a(\mathbf k)
+   =\rho_a(\mathbf k)-\langle\rho_a(\mathbf k)\rangle.
+
+For a homogeneous system and every nonzero periodic wavevector,
+:math:`\langle\rho_a(\mathbf k)\rangle=0`, so the density mode used above is
+already the fluctuation mode.  The excluded :math:`\mathbf k=0` mode instead
+contains the fixed mean particle numbers and is not a structural
+fluctuation.  Thus :math:`S_{ab}(k)` measures the normalized covariance of C
+and H density fluctuations at spatial wavelength :math:`2\pi/k`.
+
+Finally, averaging a pair phase over all directions of :math:`\mathbf k`
+gives
+
+.. math::
+
+   \frac{1}{4\pi}\int d\Omega_{\mathbf k}\,
+   e^{i\mathbf k\cdot\mathbf r}
+   =\frac{\sin(kr)}{kr}.
+
+Replacing the ensemble-averaged pair sum by its radial pair distribution
+then yields
+
+.. math::
+
+   S_{ab}(k)=\delta_{ab}
+   +\sqrt{n_an_b}\,4\pi\int_0^\infty dr\,r^2
+   [g_{ab}(r)-1]\frac{\sin(kr)}{kr}.
+
+This proves that the direct density-mode estimator and the radial transform
+of :math:`g_{ab}(r)-1` describe the same pair correlations in the infinite,
+fully sampled limit.  They differ in a finite simulation because the direct
+route uses discrete periodic wavevectors, whereas the RDF route bins
+distances, truncates the radial integral, and usually uses a different number
+of saved samples.
 
 The relevant output fields are:
 

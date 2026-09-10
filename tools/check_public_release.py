@@ -71,6 +71,10 @@ def main() -> int:
         help="Repository root (defaults to the parent of this script).",
     )
     parser.add_argument(
+        "--no-npz", action="store_true",
+        help="Require an NPZ-free public source snapshot (not the private development tree).",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the blocker list as JSON.",
@@ -78,6 +82,10 @@ def main() -> int:
     args = parser.parse_args()
     root = args.root.resolve()
     blockers = public_release_blockers(root)
+    if args.no_npz:
+        blockers.extend({"manifest": str(path.relative_to(root)),
+                         "field": "public_archive", "value": "NPZ must remain local/private"}
+                        for path in sorted(root.rglob("*.npz")))
     if args.json:
         print(json.dumps(blockers, indent=2, sort_keys=True))
     elif blockers:

@@ -4,16 +4,17 @@ Equilibrium aluminium structure factors: Schörner et al. (2022)
 
 .. note::
 
-   The displayed HNC, VMHNC and MD curves retain their original matched
-   potentials. They are archived comparisons, not validation of the updated
-   September 2026 AA solver. See :doc:`/benchmarks/validation_20260908`.
+   HNC and VMHNC use the September 2026 Otter recalculation. MD is retained
+   from earlier potentials and labelled accordingly; it has not been rerun.
+   This overlay does not isolate closure error at a fixed potential.
+   See :doc:`/benchmarks/validation_20260908`.
 
 This benchmark compares Otter :math:`S_{ii}(k)` with two curves
 digitized from Figure 2 of :cite:t:`SchornerEtAl2022`. Each state is calculated
 with LDA-PW92 and PBE.  For each XC model, ordinary HNC and
 Rosenfeld--Ashcroft VMHNC reuse exactly the same IS electronic state and QOZ
-pair potential.  A classical LAMMPS MD calculation with that same potential is
-also shown.  Both states have :math:`T_e=T_i`: 1 eV at
+pair potential. Historical classical LAMMPS MD is also shown, separately
+labelled as using the earlier potential. Both states have :math:`T_e=T_i`: 1 eV at
 :math:`\rho=4.712` g cm\ :sup:`-3` and 5 eV at
 :math:`\rho=8.1` g cm\ :sup:`-3`.
 
@@ -23,16 +24,37 @@ correction :math:`S_{ii}^{\mathrm{corrected}}=S_{ii}^{\mathrm{stored}}+1.5`
 to the 1 eV curve only. The source CSV remains unchanged; the transformation
 is recorded in its manifest and tested explicitly.
 
-Set ``USE_PRECOMPUTED_DATA = False`` to calculate all four state/XC cases with
-the public Otter workflow, solve both closures, run same-potential MD, and
-write candidates below ``benchmarks/outputs``.  This requires the optional
-Libxc bindings, LAMMPS, and MPI.  The default loads checksum-verified, reviewed
-Otter baselines so documentation builds stay fast and deterministic.
-
 VMHNC uses a variational hard-sphere bridge.  It is not IEMHNC: the latter
 maps an OCP bridge to a Yukawa one-component plasma (YOCP).  The PA-QOZ
 potential used here is not assumed to be Yukawa, so no IEMHNC label is attached
 without an additional, explicitly audited Yukawa mapping.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python benchmarks/examples/plot_schorner_et_al_2022_al_sii.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Reproducing the MD curves also requires LAMMPS and MPI and can take hours.
+The LDA/PBE calculations require the optional Libxc bindings.
+AA calculations keep one continuum worker per atom.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_schorner_et_al_2022_al_sii/results.rst
+
 """
 
 from __future__ import annotations
@@ -53,6 +75,7 @@ from scipy.constants import physical_constants
 
 from otter.electronic.full_external import FullExternalConfig
 from otter import (
+    __version__ as otter_version,
     PlasmaWorkflowConfig,
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
@@ -71,16 +94,15 @@ from otter.plotting import (
 # =============================================================================
 # User input
 # =============================================================================
-USE_PRECOMPUTED_DATA = True
+USE_PRECOMPUTED_DATA = False
 if os.environ.get("OTTER_RECOMPUTE_SCHORNER_AL", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 USE_RECOMPUTED_CANDIDATES = False
 
 # Four independent state/XC cases; each AA uses the single-worker default.
 # The optional MD protocol has its own MPI controls.
-MAX_CASE_WORKERS = 4
+MAX_CASE_WORKERS = 1
 HNC_CLOSURE_TOL = 2.5e-3
-HNC_MAX_ITER = 1000
 VMHNC_ETA_TOL = 1.0e-6
 K_RETAIN_MAX_BOHR_INV = 20.0
 R_RETAIN_MAX_BOHR = 20.0
@@ -90,7 +112,7 @@ if os.environ.get("OTTER_RUN_SCHORNER_SAME_POTENTIAL_MD", "1") == "0":
     RUN_SAME_POTENTIAL_MD = False
 LAMMPS_EXECUTABLE = "lmp"
 MPI_LAUNCHER = "mpirun"
-MAX_PARALLEL_MD_CASES = 2
+MAX_PARALLEL_MD_CASES = 1
 MPI_PROCESSES_PER_MD_CASE = 10
 MD_CELLS_PER_AXIS = 8  # 4 * 8**3 = 2048 Al ions.
 MD_TIMESTEP_OMEGA_P_INV = 5.0e-3
@@ -135,23 +157,15 @@ def case_id(state: dict[str, Any], xc: dict[str, str]) -> str:
 
 
 def repository_root() -> Path:
-    """Locate the checkout when run directly or through Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        manifest = (
-            candidate
-            / "benchmarks"
-            / "reference_data"
-            / BENCHMARK_ID
-            / "manifest.json"
-        )
-        if manifest.is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -294,9 +308,8 @@ def workflow_config(
         rho_g_cc=float(state["rho_g_cc"]),
         xc_model=str(xc["xc_model"]),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
-        hnc_max_iter=int(HNC_MAX_ITER),
         hnc_bridge_model=str(bridge_model),
-        vmhnc_eta_tol=float(VMHNC_ETA_TOL),
+        **({"vmhnc_eta_tol": float(VMHNC_ETA_TOL)} if bridge_model != "none" else {}),
         show_progress=False,
     )
 
@@ -444,7 +457,7 @@ def pack_result(
         },
         "producer": {
             "project": "Otter",
-            "version": "0.2.2",
+            "version": otter_version,
             "script_relative_path": str(SCRIPT_PATH.relative_to(ROOT)),
             "script_sha256": sha256_file(SCRIPT_PATH),
         },
@@ -741,31 +754,15 @@ run             {production_steps}
     rdf_path = workdir / "rdf_blocks.dat"
     log_path = workdir / "log.lammps"
     trajectory_path = workdir / "trajectory.lammpstrj"
-    completed_run = (
-        rdf_path.is_file()
-        and log_path.is_file()
-        and trajectory_path.is_file()
-        and "Loop time" in log_path.read_text(encoding="utf-8")
-    )
-    if not completed_run:
-        with (workdir / "screen.log").open("w", encoding="utf-8") as screen:
-            subprocess.run(
-                [
-                    launcher,
-                    "-np",
-                    str(MPI_PROCESSES_PER_MD_CASE),
-                    lammps,
-                    "-in",
-                    "in.al_md",
-                    "-log",
-                    "log.lammps",
-                ],
-                cwd=workdir,
-                env=environment,
-                stdout=screen,
-                stderr=subprocess.STDOUT,
-                check=True,
-            )
+    # Fresh electronic states imply fresh pair tables. An old completed log
+    # does not certify that its trajectory used these same potentials.
+    with (workdir / "screen.log").open("w", encoding="utf-8") as screen:
+        subprocess.run(
+            [launcher, "-np", str(MPI_PROCESSES_PER_MD_CASE), lammps,
+             "-in", "in.al_md", "-log", "log.lammps"],
+            cwd=workdir, env=environment, stdout=screen,
+            stderr=subprocess.STDOUT, check=True,
+        )
     radius, g_blocks = _read_lammps_rdf(rdf_path)
     positions, box_length_bohr = _read_lammps_trajectory(trajectory_path)
     k, sii, sii_sem, vectors_per_bin = _direct_structure_factor(
@@ -905,7 +902,7 @@ def save_candidates(states: dict[str, dict[str, np.ndarray]]) -> None:
         "benchmark_id": BENCHMARK_ID,
         "producer": {
             "project": "Otter",
-            "project_version": "0.2.2",
+            "project_version": otter_version,
             "script_relative_path": str(SCRIPT_PATH.relative_to(ROOT)),
             "script_sha256": sha256_file(SCRIPT_PATH),
         },
@@ -1008,151 +1005,164 @@ def inverse_bohr_sii(
     return k_angstrom_inv, np.asarray(state[sii_key], dtype=float)
 
 
-reference_curves = load_reference_curves()
-if not USE_PRECOMPUTED_DATA:
-    otter_states = solve_all_states()
-elif USE_RECOMPUTED_CANDIDATES:
-    otter_states = load_recomputed_candidates()
-else:
-    otter_states = load_precomputed_states()
+def main() -> None:
+    reference_curves = load_reference_curves()
+    if not USE_PRECOMPUTED_DATA:
+        otter_states = solve_all_states()
+    elif USE_RECOMPUTED_CANDIDATES:
+        otter_states = load_recomputed_candidates()
+    else:
+        otter_states = load_precomputed_states()
 
-print(
-    f"{'case':>29s} {'method':>8s} {'RMSE':>12s} "
-    f"{'MAE':>12s} {'max|delta|':>12s}"
-)
-for state in STATES:
-    reference_id = str(state["state_id"])
-    k_ref, sii_ref = reference_curves[reference_id]
-    for xc in XC_MODELS:
-        identifier = case_id(state, xc)
-        payload = otter_states[identifier]
-        methods = (
-            ("HNC", "k_bohr_inv", "sii_k"),
-            ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
-            ("MD", "md_k_bohr_inv", "md_sii_k"),
-        )
-        for method, k_key, sii_key in methods:
-            if k_key not in payload or sii_key not in payload:
-                continue
-            k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
-            mask = (k_ref >= k_otter[0]) & (k_ref <= k_otter[-1])
-            delta = np.interp(k_ref[mask], k_otter, sii_otter) - sii_ref[mask]
-            print(
-                f"{identifier:>29s} {method:>8s} "
-                f"{np.sqrt(np.mean(delta**2)):12.4e} "
-                f"{np.mean(np.abs(delta)):12.4e} "
-                f"{np.max(np.abs(delta)):12.4e}"
+    if any(bool(payload.get("md_is_historical", False)) for payload in otter_states.values()):
+        print("MD rows below are historical old-potential runs; HNC and VMHNC use refreshed Otter data.")
+
+    print(
+        f"{'case':>29s} {'method':>8s} {'RMSE':>12s} "
+        f"{'MAE':>12s} {'max|delta|':>12s}"
+    )
+    for state in STATES:
+        reference_id = str(state["state_id"])
+        k_ref, sii_ref = reference_curves[reference_id]
+        for xc in XC_MODELS:
+            identifier = case_id(state, xc)
+            payload = otter_states[identifier]
+            methods = (
+                ("HNC", "k_bohr_inv", "sii_k"),
+                ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
+                ("MD", "md_k_bohr_inv", "md_sii_k"),
             )
-        if "md_k_bohr_inv" in payload and "md_sii_k" in payload:
-            k_md, sii_md = inverse_bohr_sii(payload, "md_k_bohr_inv", "md_sii_k")
-            for method, k_key, sii_key in methods[:2]:
-                k_closure, sii_closure = inverse_bohr_sii(payload, k_key, sii_key)
-                mask = (k_md >= k_closure[0]) & (k_md <= k_closure[-1])
-                delta = np.interp(k_md[mask], k_closure, sii_closure) - sii_md[mask]
+            for method, k_key, sii_key in methods:
+                if k_key not in payload or sii_key not in payload:
+                    continue
+                k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
+                mask = (k_ref >= k_otter[0]) & (k_ref <= k_otter[-1])
+                delta = np.interp(k_ref[mask], k_otter, sii_otter) - sii_ref[mask]
                 print(
-                    f"{identifier:>29s} {method + '-MD':>8s} "
-                    f"{np.sqrt(np.mean(delta**2)):12.4e}"
+                    f"{identifier:>29s} {method:>8s} "
+                    f"{np.sqrt(np.mean(delta**2)):12.4e} "
+                    f"{np.mean(np.abs(delta)):12.4e} "
+                    f"{np.max(np.abs(delta)):12.4e}"
                 )
+            if "md_k_bohr_inv" in payload and "md_sii_k" in payload:
+                k_md, sii_md = inverse_bohr_sii(payload, "md_k_bohr_inv", "md_sii_k")
+                for method, k_key, sii_key in methods[:2]:
+                    k_closure, sii_closure = inverse_bohr_sii(payload, k_key, sii_key)
+                    mask = (k_md >= k_closure[0]) & (k_md <= k_closure[-1])
+                    delta = np.interp(k_md[mask], k_closure, sii_closure) - sii_md[mask]
+                    print(
+                        f"{identifier:>29s} {method + '-MD':>8s} "
+                        f"{np.sqrt(np.mean(delta**2)):12.4e}"
+                    )
 
 
-# %%
-# Static ion structure factors
-# ----------------------------
-#
-# Each Otter curve has a distinct color and dash pattern from the project-wide
-# ``bing`` palette.  Markers are the corrected digitized values; the raw CSV is
-# never rewritten.
+    # %%
+    # Static ion structure factors
+    # ----------------------------
+    #
+    # Each Otter curve has a distinct color and dash pattern from the project-wide
+    # ``bing`` palette.  Markers are the corrected digitized values; the raw CSV is
+    # never rewritten.
 
-set_style("thesis", palette="bing")
-fig, axes = plt.subplots(1, 2, figsize=grid_figsize(1, 2))
-colors = PALETTES["bing"]
-reference_style = MODEL_STYLES["reference"]
-curve_styles = {
-    ("lda", "HNC"): (colors[0], "-", 2.2),
-    ("lda", "VMHNC"): (colors[1], "--", 2.0),
-    ("lda", "MD"): (colors[4], "-.", 1.8),
-    ("pbe", "HNC"): (colors[2], ":", 2.2),
-    ("pbe", "VMHNC"): (colors[3], (0, (6, 2)), 2.0),
-    ("pbe", "MD"): (colors[5], (0, (3, 1, 1, 1)), 1.8),
-}
-method_fields = (
-    ("HNC", "k_bohr_inv", "sii_k"),
-    ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
-    ("MD", "md_k_bohr_inv", "md_sii_k"),
-)
-for axis, state in zip(axes, STATES, strict=True):
-    reference_id = str(state["state_id"])
-    k_ref, sii_ref = reference_curves[reference_id]
-    for xc in XC_MODELS:
-        payload = otter_states[case_id(state, xc)]
-        for method, k_key, sii_key in method_fields:
-            if k_key not in payload or sii_key not in payload:
-                continue
-            color, linestyle, linewidth = curve_styles[(xc["key"], method)]
-            k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
-            axis.plot(
-                k_otter,
-                sii_otter,
-                color=color,
-                linestyle=linestyle,
-                linewidth=linewidth,
-                alpha=0.72 if method != "MD" else 0.60,
-                label=(
-                    f"{xc['label']} {method} ($\\pm 2$ SEM)"
-                    if method == "MD"
-                    else f"{xc['label']} {method}"
-                ),
-            )
-            if method == "MD":
-                sem = np.asarray(payload["md_sii_block_sem"], dtype=float)
-                axis.fill_between(
+    set_style("thesis", palette="bing")
+    fig, axes = plt.subplots(1, 2, figsize=grid_figsize(1, 2))
+    colors = PALETTES["bing"]
+    reference_style = MODEL_STYLES["reference"]
+    curve_styles = {
+        ("lda", "HNC"): (colors[0], "-", 2.2),
+        ("lda", "VMHNC"): (colors[1], "--", 2.0),
+        ("lda", "MD"): (colors[4], "-.", 1.8),
+        ("pbe", "HNC"): (colors[2], ":", 2.2),
+        ("pbe", "VMHNC"): (colors[3], (0, (6, 2)), 2.0),
+        ("pbe", "MD"): (colors[5], (0, (3, 1, 1, 1)), 1.8),
+    }
+    method_fields = (
+        ("HNC", "k_bohr_inv", "sii_k"),
+        ("VMHNC", "k_bohr_inv", "vmhnc_sii_k"),
+        ("MD", "md_k_bohr_inv", "md_sii_k"),
+    )
+    for axis, state in zip(axes, STATES, strict=True):
+        reference_id = str(state["state_id"])
+        k_ref, sii_ref = reference_curves[reference_id]
+        for xc in XC_MODELS:
+            payload = otter_states[case_id(state, xc)]
+            for method, k_key, sii_key in method_fields:
+                if k_key not in payload or sii_key not in payload:
+                    continue
+                color, linestyle, linewidth = curve_styles[(xc["key"], method)]
+                k_otter, sii_otter = inverse_bohr_sii(payload, k_key, sii_key)
+                axis.plot(
                     k_otter,
-                    sii_otter - 2.0 * sem,
-                    sii_otter + 2.0 * sem,
+                    sii_otter,
                     color=color,
-                    alpha=0.14,
-                    linewidth=0.0,
+                    linestyle=linestyle,
+                    linewidth=linewidth,
+                    alpha=0.72 if method != "MD" else 0.60,
+                    label=(
+                        f"{xc['label']} {method}"
+                        + (" (old potential)" if bool(payload.get("md_is_historical", False)) else "")
+                        + " ($\\pm 2$ SEM)"
+                        if method == "MD"
+                        else f"{xc['label']} {method}"
+                    ),
                 )
-    axis.scatter(
-        k_ref,
-        sii_ref,
-        s=42,
-        marker=reference_style["marker"],
-        linewidths=1.2,
-        facecolors=reference_style["markerfacecolor"],
-        edgecolors=reference_style["color"],
-        label="Schörner et al. (2022), DFT-MD",
-        zorder=3,
+                if method == "MD":
+                    sem = np.asarray(payload["md_sii_block_sem"], dtype=float)
+                    axis.fill_between(
+                        k_otter,
+                        sii_otter - 2.0 * sem,
+                        sii_otter + 2.0 * sem,
+                        color=color,
+                        alpha=0.14,
+                        linewidth=0.0,
+                    )
+        axis.scatter(
+            k_ref,
+            sii_ref,
+            s=42,
+            marker=reference_style["marker"],
+            linewidths=1.2,
+            facecolors=reference_style["markerfacecolor"],
+            edgecolors=reference_style["color"],
+            label="Schörner et al. (2022), DFT-MD",
+            zorder=3,
+        )
+        axis.axhline(1.0, color="0.55", ls=":", lw=0.8)
+        axis.set(
+            xlim=(0.0, 8.3),
+            ylim=(0.0, 2.25 if float(state["te_ev"]) == 1.0 else 1.55),
+            xlabel=r"$k\ (\mathrm{\AA}^{-1})$",
+            ylabel=r"$S_{ii}(k)$",
+            title=(
+                rf"Al: $T_e=T_i={state['te_ev']:g}$ eV, "
+                rf"$\rho={state['rho_g_cc']:g}$ g cc$^{{-1}}$"
+            ),
+        )
+    legend_handles, legend_labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        legend_handles,
+        legend_labels,
+        fontsize=7.2,
+        ncol=4,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
     )
-    axis.axhline(1.0, color="0.55", ls=":", lw=0.8)
-    axis.set(
-        xlim=(0.0, 8.3),
-        ylim=(0.0, 2.25 if float(state["te_ev"]) == 1.0 else 1.55),
-        xlabel=r"$k\ (\mathrm{\AA}^{-1})$",
-        ylabel=r"$S_{ii}(k)$",
-        title=(
-            rf"Al: $T_e=T_i={state['te_ev']:g}$ eV, "
-            rf"$\rho={state['rho_g_cc']:g}$ g cc$^{{-1}}$"
-        ),
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
+    saved_paths = save_figure(
+        fig,
+        FIGURE_DIR / "schorner_et_al_2022_al_sii",
+        formats=("png", "pdf"),
     )
-legend_handles, legend_labels = axes[0].get_legend_handles_labels()
-fig.legend(
-    legend_handles,
-    legend_labels,
-    fontsize=7.2,
-    ncol=4,
-    loc="upper center",
-    bbox_to_anchor=(0.5, 0.99),
-)
-fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
-saved_paths = save_figure(
-    fig,
-    FIGURE_DIR / "schorner_et_al_2022_al_sii",
-    formats=("png", "pdf"),
-)
-print(
-    "Saved figures: "
-    + ", ".join(str(path.relative_to(ROOT)) for path in saved_paths.values())
-)
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+    print(
+        "Saved figures: "
+        + ", ".join(str(path.relative_to(ROOT)) for path in saved_paths.values())
+    )
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
+
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_schorner_et_al_2022_al_sii/thumbnail.png"

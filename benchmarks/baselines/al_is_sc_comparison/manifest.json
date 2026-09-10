@@ -62,15 +62,19 @@
   },
   "producer": {
     "project": "Otter",
-    "git_commit": "e8a32ed3d9d11b81a44d7a1015e7cfcd78416fb3",
-    "script_sha256": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+    "script_sha256": "387601d9c0062302b1ad08c730329a7d7e5dd655ad58493a33fd58b42aadaeda",
     "worktree_clean_at_generation": false,
-    "git_status_porcelain_sha256": "3dcf0cbfc300d82f2a042e7a6bc860e5fa878de866e5505e679503752ae7894b",
+    "git_status_porcelain_sha256": "32df82e2f463708354b2b053e208d9043b8ecb73cb7d88994348da3a63f5023b",
     "script_relative_path": "benchmarks/runners/regenerate_al_is_sc_comparison.py",
-    "script_sha256_current": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
-    "script_sha256_at_generation": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
-    "uncommitted_solver_changes_at_generation": true,
-    "source_inventory": "../validation_20260908.json"
+    "script_sha256_current": "387601d9c0062302b1ad08c730329a7d7e5dd655ad58493a33fd58b42aadaeda",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "sc_default_refresh",
+    "worktree_dirty": true,
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "script_sha256_at_generation": "387601d9c0062302b1ad08c730329a7d7e5dd655ad58493a33fd58b42aadaeda"
   },
   "state": {
     "element": "Al",
@@ -78,9 +82,9 @@
     "te_ev": 15.0,
     "ti_ev": 15.0,
     "data_file": "Al_rho8p1gcc_Te15eV_Ti15eV_qm_tf_is_sc.npz",
-    "data_sha256": "eb9588254ac21d43e6e12096c26d437c0228e2a534a57e8a5c4ddf024a7bd94f",
+    "data_sha256": "c11583194e8cc43f3397c02a8bfc91488ab4fa5459d6089a10afc5658a4f3ef7",
     "n_model_points": 2634,
-    "producer_git_commit": "e8a32ed3d9d11b81a44d7a1015e7cfcd78416fb3"
+    "producer_git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22"
   },
   "validation_scope": "fresh_sc_precision_validation",
   "validation_inventory": "../validation_20260908.json"

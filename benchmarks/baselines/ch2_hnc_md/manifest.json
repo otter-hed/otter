@@ -1,7 +1,7 @@
 {
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "ch2_hnc_md",
-  "title": "Polypropylene (PP/CH2) HNC versus same-potential molecular dynamics",
+  "title": "Polypropylene (PP/CH2): refreshed HNC and historical molecular dynamics",
   "status": "accepted",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
@@ -39,7 +39,14 @@
       }
     },
     "otter_hnc_recomputed_with_md_preserved": true,
-    "md_arrays_reused_without_modification": true
+    "md_arrays_reused_without_modification": true,
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "packaging_version": "3.0.0",
+    "version": "0.2.4",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+    "worktree_dirty": true
   },
   "method_publications": [
     {
@@ -77,8 +84,7 @@
     "electronic_reuse": "one converged electronic result per electron temperature",
     "ionic_closure": "ordinary multicomponent HNC",
     "bridge_model": "none",
-    "same_qoz_pair_potential_for_hnc_and_md": true,
-    "qoz_potential_max_abs_delta_within_each_te": 5.684341886080802e-14,
+    "same_qoz_pair_potential_for_hnc_and_md": false,
     "compact_baseline_transform": {
       "hnc_interpolation": "linear",
       "hnc_r_grid_bohr": [
@@ -123,10 +129,6 @@
           "timestep_ps": 1.3330154149423721e-05,
           "nvt_steps": 10000,
           "nve_steps": 100000,
-          "hnc_elapsed_s_range": [
-            0.5393386429932434,
-            1.1641979110136162
-          ],
           "md_plus_analysis_elapsed_s_range": [
             514.3252659979917,
             562.9698621330026
@@ -138,7 +140,6 @@
           "timestep_ps": 1.3315539853422648e-06,
           "nvt_steps": 100110,
           "nve_steps": 1001098,
-          "hnc_elapsed_s": 0.37809670498245396,
           "md_plus_analysis_elapsed_s": 10773.073195161996
         },
         {
@@ -147,7 +148,6 @@
           "timestep_ps": 9.415508525514881e-07,
           "nvt_steps": 141577,
           "nve_steps": 1415766,
-          "hnc_elapsed_s": 0.37649702597991563,
           "md_plus_analysis_elapsed_s": 13457.237488774
         }
       ],
@@ -175,26 +175,30 @@
         "analytic_core_end_bohr": 0.3,
         "blend_end_bohr": 0.5,
         "resolved_qoz_potential_refitted": false
-      }
+      },
+      "historical_protocol_only": true
     },
     "hnc_cpu_configuration": {
       "driver_processes": 1,
       "blas_threads": 1
-    }
+    },
+    "md_matches_current_otter_potential_verified": false,
+    "md_comparison_scope": "Historical MD on the earlier Otter potential; not a same-potential closure validation of the refreshed HNC curves.",
+    "electronic_recomputed_in_this_campaign": false
   },
   "acceptance": {
     "successful_states": 9,
     "two_temperature_states": 6,
     "equilibrium_controls": 3,
     "maximum_abs_nve_relative_energy_drift": 0.0006565607938387239,
-    "maximum_hnc_output_residual": 3.4817022048528483e-08,
+    "maximum_hnc_output_residual": 4.2701043976407545e-08,
     "pairwise_g_rmse_range": [
-      0.002807062844960556,
-      0.018255400143250246
+      0.0018253350675273999,
+      0.012300927166865613
     ],
     "pairwise_s_rmse_range": [
-      0.006318247655633024,
-      0.016940849315049574
+      0.006296583788480866,
+      0.016828617540942503
     ],
     "rdf_vs_density_mode_s_rmse_range": [
       0.006288608823856307,
@@ -207,20 +211,20 @@
       0.004483849999999956
     ],
     "hnc_elapsed_s_range": [
-      0.37649702597991563,
-      1.1641979110136162
+      0.35940855694934726,
+      0.5470714709954336
     ],
     "md_elapsed_s_range": [
       514.3252659979917,
       13457.237488774
     ],
-    "hnc_elapsed_s_sum": 6.742759518994717,
+    "hnc_elapsed_s_sum": 3.899362001917325,
     "md_elapsed_s_sum": 27944.785070653015
   },
   "baseline": {
     "path": "ch2_hnc_md.npz",
-    "sha256": "5d7d5a09ae0def42049d555dd954efa533c4f9eb06b77805ddddf7a8d7adbad7",
-    "same_potential_md": true
+    "sha256": "37a4e9d0f09993b36672aba7c1e346218eea33aa82a411b10d588eb3965a0a50",
+    "same_potential_md": false
   },
   "media": [
     {
@@ -264,6 +268,6 @@
       "role": "gallery-first rendering of the RDF-transform minus density-mode residuals"
     }
   ],
-  "validation_scope": "archived_matched_potential_comparison",
+  "validation_scope": "refreshed_otter_with_historical_md",
   "validation_inventory": "../validation_20260908.json"
 }

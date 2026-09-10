@@ -53,15 +53,12 @@ from otter.numerics.constants import KELVIN_TO_EV  # noqa: E402
 # within each state; individual AA energy integrals inherit one worker.
 DENSITIES_G_CC = (2.94, 5.0, 15.0)
 TEMPERATURES_KK = (20, 50, 100)
-MAX_STATE_WORKERS = 3
+MAX_STATE_WORKERS = 1
 SPECIES_PARALLEL_JOBS = 1
 
 MU_E_TOL_HA = 1.0e-4
-ROOT_MAXFEV = 32
-ROOT_BRENT_MAXITER = 24
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TRANSFORM_TOL = 1.0e-4
-HNC_MAX_ITER = 1000
 R_RETAIN_MAX_BOHR = 20.0
 
 COUNTS = (1.0, 1.36)
@@ -139,17 +136,6 @@ def _producer_metadata() -> dict[str, Any]:
     }
 
 
-def aa_overrides() -> dict[str, Any]:
-    """Return the documented IS-QM Appendix-B electronic controls."""
-    return {
-        "b3_tail_target": "full",
-        "b3_r_cut_mult": 3.0,
-        "b3_r_fit_max_mult": 4.0,
-        "full_b3_use_source_closure": False,
-        "ext_b3_use_source_closure": False,
-    }
-
-
 def configuration(state: State) -> PlasmaWorkflowConfig:
     """Build the strict public Otter workflow for one Figure 3 state."""
     return PlasmaWorkflowConfig(
@@ -158,13 +144,8 @@ def configuration(state: State) -> PlasmaWorkflowConfig:
         temperature_ev=state.temperature_ev,
         ion_temperature_ev=state.temperature_ev,
         rho_g_cc=state.rho_g_cc,
-        aa_overrides=aa_overrides(),
-        root_maxfev=ROOT_MAXFEV,
-        root_brent_maxiter=ROOT_BRENT_MAXITER,
         species_parallel_jobs=SPECIES_PARALLEL_JOBS,
         hnc_tol=HNC_TOL,
-        hnc_closure_transform_tol=HNC_CLOSURE_TRANSFORM_TOL,
-        hnc_max_iter=HNC_MAX_ITER,
     )
 
 
@@ -181,12 +162,12 @@ def signature(state: State) -> dict[str, Any]:
         "composition": {"elements": ["C", "H"], "counts": list(COUNTS)},
         "structure_model": "IS",
         "electronic_model": "qm",
-        "aa_overrides": aa_overrides(),
+        "aa_overrides": dict(resolved.aa_overrides),
         "root": {
             "mu_e_tol_ha": float(resolved.mu_e_tol),
             "root_tol": float(resolved.root_tol),
-            "root_maxfev": ROOT_MAXFEV,
-            "root_brent_maxiter": ROOT_BRENT_MAXITER,
+            "root_maxfev": int(resolved.root_maxfev),
+            "root_brent_maxiter": int(resolved.root_brent_maxiter),
             "allow_unconverged_root": False,
             "allow_unconverged_aa": False,
         },
@@ -203,8 +184,9 @@ def signature(state: State) -> dict[str, Any]:
         },
         "hnc": {
             "tol": HNC_TOL,
-            "closure_transform_tol": HNC_CLOSURE_TRANSFORM_TOL,
-            "max_iter": HNC_MAX_ITER,
+            "closure_transform_tol_requested": resolved.hnc_closure_transform_tol,
+            "closure_transform_audit_limit": HNC_CLOSURE_TRANSFORM_TOL,
+            "max_iter": int(resolved.hnc_max_iter),
             "require_converged": True,
             "s_projection_mode": "none",
         },

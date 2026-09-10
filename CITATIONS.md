@@ -7,7 +7,7 @@ examples, benchmark manifests, and generated HTML.
 ## For users
 
 If you use Otter in a scientific publication, please cite Chongbing Qu
-and Dominik Kraus, *Otter*, version 0.2.4, computer software (2026),
+and Dominik Kraus, *Otter*, version 3.0.0, computer software (2026),
 https://github.com/otter-hed/otter.
 
 Model references record scientific provenance; they are not additional
@@ -104,6 +104,10 @@ William Daughton, Michael S. Murillo, Lester Thode. Empirical bridge function fo
 ### `Dirac1930`
 
 P. A. M. Dirac. Note on Exchange Phenomena in the Thomas Atom. Mathematical Proceedings of the Cambridge Philosophical Society 26(3), 376–385 (1930). DOI: https://doi.org/10.1017/S0305004100016108.
+
+### `DoppnerEtAl2023`
+
+T. Döppner, M. Bethkenhagen, D. Kraus, P. Neumayer, D. A. Chapman, B. Bachmann, R. A. Baggott, M. P. Böhme, L. Divol, R. W. Falcone, L. B. Fletcher, O. L. Landen, M. J. MacDonald, A. M. Saunders, M. Schörner, P. A. Sterne, J. Vorberger, B. B. L. Witte, A. Yi, R. Redmer, S. H. Glenzer, D. O. Gericke. Observing the onset of pressure-driven K-shell delocalization. Nature 618, 270–275 (2023). DOI: https://doi.org/10.1038/s41586-023-05996-8.
 
 ### `Faussurier2004`
 

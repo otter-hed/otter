@@ -48,7 +48,7 @@ TI_EV = 15.0
 MODELS = ("qm", "tf")
 MODEL_DISPLAY_LABELS = ("KS-DFT", "Thomas--Fermi")
 STRUCTURES = ("is", "sc")
-MAX_MODEL_WORKERS = 2
+MAX_MODEL_WORKERS = 1
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -58,10 +58,7 @@ K_RETAIN_MAX_BOHR_INV = 20.0
 # tests.  No unconverged result is exported.
 SC_CONTROLS = SCFeedbackConfig(
     max_outer=16,
-    g_tol=5.0e-4,
-    v_corr_tol=5.0e-4,
     v_corr_mix=0.5,
-    require_converged=True,
 )
 
 OUTPUT_DIR = (
@@ -126,7 +123,6 @@ def configuration(model: str) -> PlasmaWorkflowConfig:
         rho_g_cc=RHO_G_CC,
         **model_override,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
-        hnc_max_iter=500,
     )
 
 

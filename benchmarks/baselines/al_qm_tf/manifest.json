@@ -3,22 +3,24 @@
   "benchmark_id": "al_qm_tf",
   "status": "accepted",
   "metrics_file": "metrics.csv",
-  "metrics_sha256": "3e378954d7da26ebfe54fc4e31d9695db0d4d023581bf1a2e654a9438e8a3b32",
+  "metrics_sha256": "34fd51bb8a2d974e853d7b1465d14fdbda1c16b741137feb1e7dc5aac2412668",
   "title": "Aluminium KS-DFT versus finite-temperature Thomas--Fermi at 8.1 g cm^-3",
   "producer": {
     "project": "Otter",
-    "git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "script_relative_path": "benchmarks/runners/regenerate_al_qm_tf.py",
-    "script_sha256": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
+    "script_sha256": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
     "worktree_clean_at_generation": false,
-    "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
+    "git_status_porcelain_sha256": "735aed4dd6543b1f3c57e19482cb230a2257d2f444d6ce8b0db0b9734ed135ff",
     "note": "The commit identifies HEAD only. If worktree_clean_at_generation is false, the script checksum and status hash document that uncommitted source was involved; the commit alone is not a reproducible producer snapshot.",
-    "script_sha256_current": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
-    "script_sha256_at_generation": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
-    "revision_identification": "Recovered from the immutable campaign source SHA-256 inventory; producer ran from a Git archive without .git.",
-    "git_reported_at_generation": "unknown",
-    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
-    "source_inventory": "../validation_20260908.json"
+    "script_sha256_current": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "worktree_dirty": true,
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "script_sha256_at_generation": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276"
   },
   "configuration": {
     "rho_g_cc": 8.1,
@@ -43,7 +45,7 @@
     "lfc_model": "chabrier1990",
     "hnc_tolerance": 1e-06,
     "hnc_transform_closure_tolerance": 0.001,
-    "hnc_max_iterations": 1000
+    "hnc_max_iterations": 160
   },
   "method_references": [
     {
@@ -77,29 +79,29 @@
       "rho_g_cc": 8.1,
       "temperature_ev": 1.0,
       "data_file": "Al_rho8p1gcc_T1eV_qm_tf.npz",
-      "data_sha256": "b62b55d8eb4e3a336c9a05203f662858b6ec9ccfda5eac372a7cceb50988afe2",
-      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
+      "data_sha256": "b7cbf554f7b0a08a4f71208601750a6963b1e79e0663927856713b0169cf5868",
+      "producer_git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22"
     },
     {
       "rho_g_cc": 8.1,
       "temperature_ev": 15.0,
       "data_file": "Al_rho8p1gcc_T15eV_qm_tf.npz",
-      "data_sha256": "c983892c01aa9152d9010b72078137ef6381dbd70667690bb83b5ab98b80475c",
-      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
+      "data_sha256": "9540719bc3af9d3ee2ca9d8d47305802b4fe43dcd331de8ca322189a873eedab",
+      "producer_git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22"
     },
     {
       "rho_g_cc": 8.1,
       "temperature_ev": 50.0,
       "data_file": "Al_rho8p1gcc_T50eV_qm_tf.npz",
-      "data_sha256": "abc6e8e4e0088e1817915cfbc7d3b1748289b00c19fb73ab2cdffa2543f19b75",
-      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
+      "data_sha256": "2ee160d29fc60e51f115a3157216e8ed62dd276db0eaf7cf509baad986b5da74",
+      "producer_git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22"
     },
     {
       "rho_g_cc": 8.1,
       "temperature_ev": 100.0,
       "data_file": "Al_rho8p1gcc_T100eV_qm_tf.npz",
-      "data_sha256": "4b1cb0caf1650f8c5c887eb7ffceca4f7efb6b8d4ac72f6c46726af08912f161",
-      "producer_git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d"
+      "data_sha256": "8edef9ceb21d1c26d88452e938275a4cb2902349663e97a8bc7ea5a96da49c64",
+      "producer_git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22"
     }
   ],
   "validation_scope": "completed_is_campaign",

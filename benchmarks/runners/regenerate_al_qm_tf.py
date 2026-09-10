@@ -37,7 +37,7 @@ from otter import PlasmaWorkflowConfig, solve_plasma_workflow  # noqa: E402
 TEMPERATURES_EV = (1.0, 15.0, 50.0, 100.0)
 RHO_G_CC = 8.1
 MODELS = ("qm", "tf")
-MAX_STATE_WORKERS = 4
+MAX_STATE_WORKERS = 1
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 R_RETAIN_MAX_BOHR = 20.0
@@ -116,7 +116,6 @@ def _configuration(temperature_ev: float, model: str) -> PlasmaWorkflowConfig:
         **model_override,
         hnc_tol=HNC_TOL,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
-        hnc_max_iter=1000,
     )
 
 
@@ -327,7 +326,7 @@ def _combined_payload(
         "lfc_model": "chabrier1990",
         "hnc_tolerance": HNC_TOL,
         "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
-        "hnc_max_iterations": 1000,
+        "hnc_max_iterations": _configuration(temperature_ev, "qm").hnc_max_iter,
     }
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray(SCHEMA),
@@ -487,7 +486,7 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
             "lfc_model": "chabrier1990",
             "hnc_tolerance": HNC_TOL,
             "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
-            "hnc_max_iterations": 1000,
+            "hnc_max_iterations": _configuration(TEMPERATURES_EV[0], "qm").hnc_max_iter,
         },
         "method_references": [
             {

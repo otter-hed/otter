@@ -1,0 +1,772 @@
+{
+  "schema_version": "otter_validation_inventory_v2",
+  "date": "2026-09-09",
+  "release_version": "3.0.0",
+  "calculation_version": "0.2.4",
+  "parent_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+  "source_sets": {
+    "conditioned_scf_campaign": {
+      "src/otter/__init__.py": "9e2eaaa69ed88741dc4843a4e91ffd23450c6a18a6b9d0d511e9557418e58336",
+      "src/otter/_version.py": "a2dd60d1fac5989c3e3b4a4d0700562a1042a2d04de37eb0743b02a502ce912e",
+      "src/otter/data/__init__.py": "8fb0cb1f79f47139f56c3cd09fc4820e9ee2a03ca5877e51dfc1e500695631f4",
+      "src/otter/data/elements.py": "112530503054f1eff6fb706010d8d919b03673f4f054ad59bb5911400b8120d3",
+      "src/otter/data/helpers.py": "69cdc6df153a6dcc644f0d36b391f8d321a79fc29e7cf45dd52379b5d2dc7faa",
+      "src/otter/electronic/__init__.py": "8ed43e87eb22b97800411062dc8ccafe56d17e13cb379d648da4ae3c187846e3",
+      "src/otter/electronic/continuum/__init__.py": "a45598c35ed91008eca16377f9be8e49f73c00adb9f3196cd451b1339925b9ac",
+      "src/otter/electronic/continuum/hybrid.py": "fb35c3352e327b2c5cc590742b955e3f8b5b6e5237cf0bf30fde5f739647a24e",
+      "src/otter/electronic/continuum/ideal.py": "d84fd6316ce5aa20bc0048a3fe4e08220f27a6a00775083640a5654b27932a59",
+      "src/otter/electronic/continuum/interface.py": "9187d211c25a3cbc8d33819e7ee094be8cfa9e58233c7ca7c2385724be1fb15a",
+      "src/otter/electronic/continuum/scattering.py": "1424c2c87458a86517db1d4425dcf822e33b7d355f5b7a4d1c49f17f1e9c653a",
+      "src/otter/electronic/continuum/tail.py": "a41dc1a59f78b2c1e654f28ad151c92bda7ca1ab6f15558d9152091e07e705a7",
+      "src/otter/electronic/densities.py": "c8598b27bed05ba1e342c48c14f590a7630b4d521d53b7a0eb19449cdd2758c5",
+      "src/otter/electronic/full_external.py": "3c0c7d7b15755955f8d1441d1c1ccc0fa6d70c64e10275b80a789967b2bb9eaf",
+      "src/otter/electronic/ks_dft.py": "b4197d789f98b01bd134d7cae52b6385a82a8ce26033e49919e6093601ad36b7",
+      "src/otter/electronic/mixture.py": "911bafe6abdacf73c3b4439a22c12e90188155554a871c16d5cedbd0b1d31a59",
+      "src/otter/electronic/potential.py": "0ce4cda790fa6140ee402f9623745a2e12c8ceaec29260bf4180c505440fc39d",
+      "src/otter/electronic/solvers/__init__.py": "e8e9d9c602aba1a09b0cc60d594ff23ba79d36864f080fa2a6ff96efc07579dd",
+      "src/otter/electronic/solvers/bound.py": "921ba3f5b92abc5b6f5328dea0696e9d7a1eb2043ac822814db3ad815d309b7d",
+      "src/otter/electronic/solvers/free.py": "dba50168ed9db4e5213a8fd482c1fd44ae60f82cd63fb2cfc9d84b9ea9b9ae3f",
+      "src/otter/electronic/thomas_fermi.py": "3ac8d2bfbb3976774633211a7154a48738789d11ba41616be0e583b2daf57539",
+      "src/otter/electronic/xc.py": "72c125e1310fd7e88a2c665c946dd67b09780812fd04bace38d7c955a8811afd",
+      "src/otter/experimental/__init__.py": "ee2809f82a17536c1c9fbfba0bf595239a996e124e9fe1312a0846d51366569f",
+      "src/otter/experimental/sc_feedback.py": "9bc85d2120b91f881050b86414cc027f5fdc24dcd2898f8dfb3eb43e072236f2",
+      "src/otter/io/__init__.py": "a3f6e5c8c5a4ba4549a3e794bbea9f0410645b9cf73989115155971fed70606f",
+      "src/otter/io/_npz.py": "d434b57e30e723aac67eef24f1ef11155a7b149a7470209696496d00af1240e0",
+      "src/otter/io/results.py": "f414f8ece1c84af26494d4c7724fc63f1239d0274ed3ac66a0bbc404121f1123",
+      "src/otter/io/state.py": "6d4ab21a6d685f0378a7f3ebd9c3767a37c76161019005394a99f813e4053a33",
+      "src/otter/ionic/__init__.py": "db69a9b1df5b4d49b1ddb15bf5143c3fbf94e0520af77e0c38903cb1edf6a8d4",
+      "src/otter/ionic/bridges.py": "d60e7a5eadb10c0a0fba45ad2405e98172972f2e620395dad20ee7416f10c981",
+      "src/otter/ionic/correlation.py": "774a31e726a042d42a8fc8260a88c5793e87662495b50e4f2c24a413f42c4a10",
+      "src/otter/ionic/lfc.py": "a099e009d075199f61b0e52794b620f38ba15c8a486aefe20bb1fac10c70c248",
+      "src/otter/ionic/qoz.py": "40e1d317405512c25205cd841d079654a75c6b12cdd10f24d0f00c0d4a904cf2",
+      "src/otter/ionic/response.py": "f00b56dd28ffffaedcc8139ce1c1b912d767cd62bdbb7901476f35ee2155fb3c",
+      "src/otter/literature.py": "ba40b3af4534d8d5931b4893afccce92ba276291bc537efdf47c343e98d96c6c",
+      "src/otter/numerics/__init__.py": "e14acab11b0f7ff11a4c0412cbb0ee751f16025ac9f02f78b88f2d7a3e0923ca",
+      "src/otter/numerics/constants.py": "c3f3ca0b826bed4f81f75444a37b880b1c236576c1b7a31018bc287a278295b9",
+      "src/otter/numerics/grids.py": "0dc670cfd92b2402aaa42452c9bcec28e798347fd5818f7b7c1f9e444c3941a8",
+      "src/otter/numerics/interpolation.py": "21265e5500fb447c818b7e1fd5b8c3b184440098f285ecc5096c9106ac0a8c0d",
+      "src/otter/numerics/mixing.py": "ff5badd23f69a2d665ef10a8f167cc757146c0dc668d12d2ae54ee3b39e269ec",
+      "src/otter/numerics/transforms.py": "c06be54429b934455f61f20fdedb05a0a9646a8db7c6bd24057ac8a6336464b9",
+      "src/otter/plotting.py": "df4745d3ac73dab67b6cd7a849bfb741363ac5bbdc39366b3639dd05ccdf2910",
+      "src/otter/workflows.py": "86d80f20c8c89a42e69b08fd66844a6d6299b59182572a9d079bf24e433641fb"
+    },
+    "sc_default_refresh": {
+      "src/otter/__init__.py": "9e2eaaa69ed88741dc4843a4e91ffd23450c6a18a6b9d0d511e9557418e58336",
+      "src/otter/_version.py": "a2dd60d1fac5989c3e3b4a4d0700562a1042a2d04de37eb0743b02a502ce912e",
+      "src/otter/data/__init__.py": "8fb0cb1f79f47139f56c3cd09fc4820e9ee2a03ca5877e51dfc1e500695631f4",
+      "src/otter/data/elements.py": "112530503054f1eff6fb706010d8d919b03673f4f054ad59bb5911400b8120d3",
+      "src/otter/data/helpers.py": "69cdc6df153a6dcc644f0d36b391f8d321a79fc29e7cf45dd52379b5d2dc7faa",
+      "src/otter/electronic/__init__.py": "8ed43e87eb22b97800411062dc8ccafe56d17e13cb379d648da4ae3c187846e3",
+      "src/otter/electronic/continuum/__init__.py": "a45598c35ed91008eca16377f9be8e49f73c00adb9f3196cd451b1339925b9ac",
+      "src/otter/electronic/continuum/hybrid.py": "fb35c3352e327b2c5cc590742b955e3f8b5b6e5237cf0bf30fde5f739647a24e",
+      "src/otter/electronic/continuum/ideal.py": "d84fd6316ce5aa20bc0048a3fe4e08220f27a6a00775083640a5654b27932a59",
+      "src/otter/electronic/continuum/interface.py": "9187d211c25a3cbc8d33819e7ee094be8cfa9e58233c7ca7c2385724be1fb15a",
+      "src/otter/electronic/continuum/scattering.py": "1424c2c87458a86517db1d4425dcf822e33b7d355f5b7a4d1c49f17f1e9c653a",
+      "src/otter/electronic/continuum/tail.py": "a41dc1a59f78b2c1e654f28ad151c92bda7ca1ab6f15558d9152091e07e705a7",
+      "src/otter/electronic/densities.py": "c8598b27bed05ba1e342c48c14f590a7630b4d521d53b7a0eb19449cdd2758c5",
+      "src/otter/electronic/full_external.py": "3c0c7d7b15755955f8d1441d1c1ccc0fa6d70c64e10275b80a789967b2bb9eaf",
+      "src/otter/electronic/ks_dft.py": "b4197d789f98b01bd134d7cae52b6385a82a8ce26033e49919e6093601ad36b7",
+      "src/otter/electronic/mixture.py": "911bafe6abdacf73c3b4439a22c12e90188155554a871c16d5cedbd0b1d31a59",
+      "src/otter/electronic/potential.py": "0ce4cda790fa6140ee402f9623745a2e12c8ceaec29260bf4180c505440fc39d",
+      "src/otter/electronic/solvers/__init__.py": "e8e9d9c602aba1a09b0cc60d594ff23ba79d36864f080fa2a6ff96efc07579dd",
+      "src/otter/electronic/solvers/bound.py": "921ba3f5b92abc5b6f5328dea0696e9d7a1eb2043ac822814db3ad815d309b7d",
+      "src/otter/electronic/solvers/free.py": "dba50168ed9db4e5213a8fd482c1fd44ae60f82cd63fb2cfc9d84b9ea9b9ae3f",
+      "src/otter/electronic/thomas_fermi.py": "3ac8d2bfbb3976774633211a7154a48738789d11ba41616be0e583b2daf57539",
+      "src/otter/electronic/xc.py": "72c125e1310fd7e88a2c665c946dd67b09780812fd04bace38d7c955a8811afd",
+      "src/otter/experimental/__init__.py": "ee2809f82a17536c1c9fbfba0bf595239a996e124e9fe1312a0846d51366569f",
+      "src/otter/experimental/sc_feedback.py": "e644aa11f6154efcc418fc1afdff543ac56bb11ebbfdd9514cf50657a202560d",
+      "src/otter/io/__init__.py": "a3f6e5c8c5a4ba4549a3e794bbea9f0410645b9cf73989115155971fed70606f",
+      "src/otter/io/_npz.py": "d434b57e30e723aac67eef24f1ef11155a7b149a7470209696496d00af1240e0",
+      "src/otter/io/results.py": "f414f8ece1c84af26494d4c7724fc63f1239d0274ed3ac66a0bbc404121f1123",
+      "src/otter/io/state.py": "6d4ab21a6d685f0378a7f3ebd9c3767a37c76161019005394a99f813e4053a33",
+      "src/otter/ionic/__init__.py": "db69a9b1df5b4d49b1ddb15bf5143c3fbf94e0520af77e0c38903cb1edf6a8d4",
+      "src/otter/ionic/bridges.py": "d60e7a5eadb10c0a0fba45ad2405e98172972f2e620395dad20ee7416f10c981",
+      "src/otter/ionic/correlation.py": "774a31e726a042d42a8fc8260a88c5793e87662495b50e4f2c24a413f42c4a10",
+      "src/otter/ionic/lfc.py": "a099e009d075199f61b0e52794b620f38ba15c8a486aefe20bb1fac10c70c248",
+      "src/otter/ionic/qoz.py": "40e1d317405512c25205cd841d079654a75c6b12cdd10f24d0f00c0d4a904cf2",
+      "src/otter/ionic/response.py": "f00b56dd28ffffaedcc8139ce1c1b912d767cd62bdbb7901476f35ee2155fb3c",
+      "src/otter/literature.py": "ba40b3af4534d8d5931b4893afccce92ba276291bc537efdf47c343e98d96c6c",
+      "src/otter/numerics/__init__.py": "e14acab11b0f7ff11a4c0412cbb0ee751f16025ac9f02f78b88f2d7a3e0923ca",
+      "src/otter/numerics/constants.py": "c3f3ca0b826bed4f81f75444a37b880b1c236576c1b7a31018bc287a278295b9",
+      "src/otter/numerics/grids.py": "0dc670cfd92b2402aaa42452c9bcec28e798347fd5818f7b7c1f9e444c3941a8",
+      "src/otter/numerics/interpolation.py": "21265e5500fb447c818b7e1fd5b8c3b184440098f285ecc5096c9106ac0a8c0d",
+      "src/otter/numerics/mixing.py": "ff5badd23f69a2d665ef10a8f167cc757146c0dc668d12d2ae54ee3b39e269ec",
+      "src/otter/numerics/transforms.py": "c06be54429b934455f61f20fdedb05a0a9646a8db7c6bd24057ac8a6336464b9",
+      "src/otter/plotting.py": "df4745d3ac73dab67b6cd7a849bfb741363ac5bbdc39366b3639dd05ccdf2910",
+      "src/otter/workflows.py": "86d80f20c8c89a42e69b08fd66844a6d6299b59182572a9d079bf24e433641fb"
+    }
+  },
+  "version_note": "Calculations preceded the version-only bump. Source hashes identify the actual solver; packaging is not a new scientific run.",
+  "md_rerun": false,
+  "packages": {
+    "doppner_2023_be_ionization": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "Be_ionization.npz": {
+          "sha256": "9d2fdfbdf51bcef10e96671a7bff31163e285d659c28a16b3777ca88395cd419",
+          "bytes": 15248
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "version": "0.2.4",
+        "source_sha256": {
+          "src/otter/__init__.py": "9e2eaaa69ed88741dc4843a4e91ffd23450c6a18a6b9d0d511e9557418e58336",
+          "src/otter/_version.py": "a2dd60d1fac5989c3e3b4a4d0700562a1042a2d04de37eb0743b02a502ce912e",
+          "src/otter/data/__init__.py": "8fb0cb1f79f47139f56c3cd09fc4820e9ee2a03ca5877e51dfc1e500695631f4",
+          "src/otter/data/elements.py": "112530503054f1eff6fb706010d8d919b03673f4f054ad59bb5911400b8120d3",
+          "src/otter/data/helpers.py": "69cdc6df153a6dcc644f0d36b391f8d321a79fc29e7cf45dd52379b5d2dc7faa",
+          "src/otter/electronic/__init__.py": "8ed43e87eb22b97800411062dc8ccafe56d17e13cb379d648da4ae3c187846e3",
+          "src/otter/electronic/continuum/__init__.py": "a45598c35ed91008eca16377f9be8e49f73c00adb9f3196cd451b1339925b9ac",
+          "src/otter/electronic/continuum/hybrid.py": "fb35c3352e327b2c5cc590742b955e3f8b5b6e5237cf0bf30fde5f739647a24e",
+          "src/otter/electronic/continuum/ideal.py": "d84fd6316ce5aa20bc0048a3fe4e08220f27a6a00775083640a5654b27932a59",
+          "src/otter/electronic/continuum/interface.py": "9187d211c25a3cbc8d33819e7ee094be8cfa9e58233c7ca7c2385724be1fb15a",
+          "src/otter/electronic/continuum/scattering.py": "1424c2c87458a86517db1d4425dcf822e33b7d355f5b7a4d1c49f17f1e9c653a",
+          "src/otter/electronic/continuum/tail.py": "a41dc1a59f78b2c1e654f28ad151c92bda7ca1ab6f15558d9152091e07e705a7",
+          "src/otter/electronic/densities.py": "c8598b27bed05ba1e342c48c14f590a7630b4d521d53b7a0eb19449cdd2758c5",
+          "src/otter/electronic/full_external.py": "48bc661f0d2f6fec9af72aecab7065ce341fa4bee67f61633c98f26ced631c68",
+          "src/otter/electronic/ks_dft.py": "a168a71f111a889dde2ce6f8366cff37329aa761aec3a198cc79f28419ff4c7e",
+          "src/otter/electronic/mixture.py": "911bafe6abdacf73c3b4439a22c12e90188155554a871c16d5cedbd0b1d31a59",
+          "src/otter/electronic/potential.py": "0ce4cda790fa6140ee402f9623745a2e12c8ceaec29260bf4180c505440fc39d",
+          "src/otter/electronic/solvers/__init__.py": "e8e9d9c602aba1a09b0cc60d594ff23ba79d36864f080fa2a6ff96efc07579dd",
+          "src/otter/electronic/solvers/bound.py": "921ba3f5b92abc5b6f5328dea0696e9d7a1eb2043ac822814db3ad815d309b7d",
+          "src/otter/electronic/solvers/free.py": "dba50168ed9db4e5213a8fd482c1fd44ae60f82cd63fb2cfc9d84b9ea9b9ae3f",
+          "src/otter/electronic/thomas_fermi.py": "3ac8d2bfbb3976774633211a7154a48738789d11ba41616be0e583b2daf57539",
+          "src/otter/electronic/xc.py": "72c125e1310fd7e88a2c665c946dd67b09780812fd04bace38d7c955a8811afd",
+          "src/otter/experimental/__init__.py": "ee2809f82a17536c1c9fbfba0bf595239a996e124e9fe1312a0846d51366569f",
+          "src/otter/experimental/sc_feedback.py": "9bc85d2120b91f881050b86414cc027f5fdc24dcd2898f8dfb3eb43e072236f2",
+          "src/otter/io/__init__.py": "a3f6e5c8c5a4ba4549a3e794bbea9f0410645b9cf73989115155971fed70606f",
+          "src/otter/io/_npz.py": "d434b57e30e723aac67eef24f1ef11155a7b149a7470209696496d00af1240e0",
+          "src/otter/io/results.py": "f414f8ece1c84af26494d4c7724fc63f1239d0274ed3ac66a0bbc404121f1123",
+          "src/otter/io/state.py": "6d4ab21a6d685f0378a7f3ebd9c3767a37c76161019005394a99f813e4053a33",
+          "src/otter/ionic/__init__.py": "db69a9b1df5b4d49b1ddb15bf5143c3fbf94e0520af77e0c38903cb1edf6a8d4",
+          "src/otter/ionic/bridges.py": "d60e7a5eadb10c0a0fba45ad2405e98172972f2e620395dad20ee7416f10c981",
+          "src/otter/ionic/correlation.py": "774a31e726a042d42a8fc8260a88c5793e87662495b50e4f2c24a413f42c4a10",
+          "src/otter/ionic/lfc.py": "a099e009d075199f61b0e52794b620f38ba15c8a486aefe20bb1fac10c70c248",
+          "src/otter/ionic/qoz.py": "40e1d317405512c25205cd841d079654a75c6b12cdd10f24d0f00c0d4a904cf2",
+          "src/otter/ionic/response.py": "f00b56dd28ffffaedcc8139ce1c1b912d767cd62bdbb7901476f35ee2155fb3c",
+          "src/otter/literature.py": "ba40b3af4534d8d5931b4893afccce92ba276291bc537efdf47c343e98d96c6c",
+          "src/otter/numerics/__init__.py": "e14acab11b0f7ff11a4c0412cbb0ee751f16025ac9f02f78b88f2d7a3e0923ca",
+          "src/otter/numerics/constants.py": "c3f3ca0b826bed4f81f75444a37b880b1c236576c1b7a31018bc287a278295b9",
+          "src/otter/numerics/grids.py": "0dc670cfd92b2402aaa42452c9bcec28e798347fd5818f7b7c1f9e444c3941a8",
+          "src/otter/numerics/interpolation.py": "21265e5500fb447c818b7e1fd5b8c3b184440098f285ecc5096c9106ac0a8c0d",
+          "src/otter/numerics/transforms.py": "c06be54429b934455f61f20fdedb05a0a9646a8db7c6bd24057ac8a6336464b9",
+          "src/otter/plotting.py": "df4745d3ac73dab67b6cd7a849bfb741363ac5bbdc39366b3639dd05ccdf2910",
+          "src/otter/workflows.py": "86d80f20c8c89a42e69b08fd66844a6d6299b59182572a9d079bf24e433641fb"
+        },
+        "fingerprint": "d641f4731a478a32cbd46e32fea64d16737696f856dcf155ea23cb854ead225e"
+      }
+    },
+    "al_full_workflow_1ev": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "Al_rho8p1gcc_Te1eV_Ti1eV.npz": {
+          "sha256": "4a23ae272ea890ca3471f2baa0cf512fc07965c196f528765c53853f88625a62",
+          "bytes": 317181
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "git_commit": "unknown",
+        "script_relative_path": "benchmarks/runners/regenerate_al_full_workflow.py",
+        "script_sha256": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
+        "shared_generator_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
+        "shared_generator_sha256": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
+        "worktree_clean_at_generation": false,
+        "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
+        "note": "git_commit is a reproducible producer snapshot only when worktree_clean_at_generation is true.",
+        "script_sha256_current": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
+        "script_sha256_at_generation": "a3faf3815913ab5f6251b3b7deea778a74acd5e7071212bc57a7ec00709a2c81",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "al_is_sc_comparison": {
+      "source_set": "sc_default_refresh",
+      "files": {
+        "Al_rho8p1gcc_Te15eV_Ti15eV_qm_tf_is_sc.npz": {
+          "sha256": "c11583194e8cc43f3397c02a8bfc91488ab4fa5459d6089a10afc5658a4f3ef7",
+          "bytes": 107564
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "git_commit": "e8a32ed3d9d11b81a44d7a1015e7cfcd78416fb3",
+        "script_sha256": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
+        "worktree_clean_at_generation": false,
+        "git_status_porcelain_sha256": "3dcf0cbfc300d82f2a042e7a6bc860e5fa878de866e5505e679503752ae7894b",
+        "script_relative_path": "benchmarks/runners/regenerate_al_is_sc_comparison.py",
+        "script_sha256_current": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
+        "script_sha256_at_generation": "c91202b523dfbe89be808a412083b441c4c93b4149826a963e65fa84315340df",
+        "uncommitted_solver_changes_at_generation": true,
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "al_qm_tf": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "Al_rho8p1gcc_T100eV_qm_tf.npz": {
+          "sha256": "8edef9ceb21d1c26d88452e938275a4cb2902349663e97a8bc7ea5a96da49c64",
+          "bytes": 230746
+        },
+        "Al_rho8p1gcc_T15eV_qm_tf.npz": {
+          "sha256": "9540719bc3af9d3ee2ca9d8d47305802b4fe43dcd331de8ca322189a873eedab",
+          "bytes": 226568
+        },
+        "Al_rho8p1gcc_T1eV_qm_tf.npz": {
+          "sha256": "b7cbf554f7b0a08a4f71208601750a6963b1e79e0663927856713b0169cf5868",
+          "bytes": 233385
+        },
+        "Al_rho8p1gcc_T50eV_qm_tf.npz": {
+          "sha256": "2ee160d29fc60e51f115a3157216e8ed62dd276db0eaf7cf509baad986b5da74",
+          "bytes": 228699
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "script_relative_path": "benchmarks/runners/regenerate_al_qm_tf.py",
+        "script_sha256": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
+        "worktree_clean_at_generation": false,
+        "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
+        "note": "The commit identifies HEAD only. If worktree_clean_at_generation is false, the script checksum and status hash document that uncommitted source was involved; the commit alone is not a reproducible producer snapshot.",
+        "script_sha256_current": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
+        "script_sha256_at_generation": "61c23862cd63c4eb5c4ae739a05a3120b393544b4a98ad5e76545289f4e03b02",
+        "revision_identification": "Recovered from the immutable campaign source SHA-256 inventory; producer ran from a Git archive without .git.",
+        "git_reported_at_generation": "unknown",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "al_rayleigh_weight_10ev": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "Al_Te10eV_rayleigh.npz": {
+          "sha256": "04da4bc23848dca7b9cb72b4b40fc788db20ead79e203dca39020365a9befc88",
+          "bytes": 44926
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "script_relative_path": "docs/examples/plot_al_rayleigh_weight.py",
+        "script_sha256_current": "9421bf4879698ecaf6870e9c170f270cb059c0aaa4b3db47d696f1e95b58564b",
+        "note": "All three states were freshly calculated by the standalone Otter example.",
+        "script_sha256_at_generation": "4041d47f02d27053abe8eef2e3eb1974bf1371dceb33242fde1e3d48d9d5b215",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "argha_roy_carbon_sii": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "c_rho3p51538_te020_ti020.npz": {
+          "sha256": "c7023dc4758c12e3ad74bdc51d9299d9be5e87e8bc21acb19ee2f4830131de83",
+          "bytes": 14194
+        },
+        "c_rho3p51538_te030_ti030.npz": {
+          "sha256": "812a49b30df0fd3b57cdcfa8b278f2186b2c066c800b447a2cd771b56afb2c13",
+          "bytes": 14191
+        },
+        "c_rho3p51538_te040_ti040.npz": {
+          "sha256": "c9b5f32f71a184d0e4688ae8cc5b9924ec571e9340d19e2508194a9f7a59b40c",
+          "bytes": 14158
+        },
+        "c_rho3p51538_te050_ti050.npz": {
+          "sha256": "6fceab1746767598587c34c56ad51d66c67a43d372a9f8e7cc449c33c0e66ae2",
+          "bytes": 14155
+        },
+        "c_rho3p51538_te100_ti100.npz": {
+          "sha256": "44c6fab7e77b0b131879a747c3adca11f8532404a27be145c8af64c30130ad02",
+          "bytes": 14140
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "script_relative_path": "benchmarks/examples/plot_argha_roy_carbon_sii.py",
+        "git_commit": "f47610cb802699e108248fa7fc138e7cbede282e",
+        "worktree_dirty": true,
+        "script_sha256_at_calculation": "54d58decedd1fbed436638a7ba50a0cb3389167b6c0eafc802e57582679756bf",
+        "current_controller_sha256": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
+        "note": "All five displayed PA-HNC curves were computed with Otter and passed the AA stage-2, external-AA, threshold-state, HNC fixed-point, and transform-closure gates.",
+        "script_sha256_current": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
+        "script_sha256_at_generation": "abb6727ce214e1e860c58c59928f6dd49fc76564086d57c30a8d55f732c36fc1",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "carbon_ionization_levels": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "C_Te100eV_density_scan.npz": {
+          "sha256": "a63ac1822856aa1774f7c59a5e9c199ac57a2e5fc34e222d93582b8fc71d4435",
+          "bytes": 17818
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "script_relative_path": "docs/examples/plot_carbon_ionization_levels.py",
+        "script_sha256_at_generation": "84ca0dbcc6fe93a71bd610c9698884b50e6ea6a4558bfcc82f40fc82f43f35ef",
+        "script_sha256_current": "2a16074b70834050063be8a894dc05f7a5b66c5c668bc51db636c46c5c56e520",
+        "worktree_clean_at_generation": false,
+        "provenance_limitation": "All 84 states were freshly solved in the September 8 campaign (zero reused seed rows). The configured continuum edge is E=0; bound_energy_cut_value is inactive in zero mode. There are 82 resolved and two marginal threshold diagnostics, at rho=4.6 and 300 g/cm^3. No unresolved rows are present. Data and producing-source checksums identify the calculation state.",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "carbon_lfc_sensitivity": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "C_rho5gcc_T100eV_lfc.npz": {
+          "sha256": "ac9f460d349abcef07a959f9b35cf36242f0851e13dc40dce9dea9efa2fc4c2d",
+          "bytes": 269889
+        },
+        "C_rho5gcc_T2eV_lfc.npz": {
+          "sha256": "adad528ecc454d581f9bcfc67cd8531c759d4b2522ff86dd465f02cc4524021d",
+          "bytes": 285343
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "script_relative_path": "benchmarks/runners/regenerate_carbon_lfc_sensitivity.py",
+        "script_sha256": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
+        "script_sha256_at_generation": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
+        "script_sha256_current": "6133ba321d150d9de6ba8b0af050b80d11a1cade7ba0c4d52e4d181e01de584b",
+        "worktree_clean_at_generation": false,
+        "git_status_porcelain_sha256": "3cb7dcfc07aefdc17fa66e4bee08ab61322fdc07e9f4e7aec4c2b6e522b229d5",
+        "note": "git_commit identifies HEAD only. When worktree_clean_at_generation is false, script_sha256 and the status hash disclose that uncommitted source participated.",
+        "revision_identification": "Recovered from the immutable campaign source SHA-256 inventory; producer ran from a Git archive without .git.",
+        "git_reported_at_generation": "unknown",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "ch136_mixture_workflow_100kk": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "CH1p36_5gcc_100kK.npz": {
+          "sha256": "d307eeeb351e5fbec504b872bdc06d3b7c20b896339c46e57c76f5384a6fc6d6",
+          "bytes": 794897
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "ch2_hnc_md": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "ch2_hnc_md.npz": {
+          "sha256": "37a4e9d0f09993b36672aba7c1e346218eea33aa82a411b10d588eb3965a0a50",
+          "bytes": 1150363
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "project_version": "0.2.4",
+        "source_driver": "applications/ch2_xrts_dataset/compare_hnc_md.py",
+        "source_driver_sha256_at_packaging": "093ab8ed561f4a8ae894bb28c3c7cced471f07e3a0318baa2e7b9b96d8640737",
+        "gallery_script": "benchmarks/examples/plot_ch2_hnc_md.py",
+        "gallery_script_sha256": "a4d08e95c062ec5bdab0addebc672b7d8490e23e41672eb45d628b908f8c561d",
+        "git_commit_at_packaging": "78c51ad5d4f671f89428a62053538da8b11423db",
+        "worktree_dirty_at_packaging": true,
+        "md_driver_sha256_by_state": {
+          "first_seven_states": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
+          "te99_ti49p5_and_ti99": "45f0c687ca9364811e7af35446687fc2d293f3ce478f7c34902a630c68513b39"
+        },
+        "rdf_structure_factor_derivation": {
+          "source_script": "applications/ch2_xrts_dataset/plot_existing_hnc_md.py",
+          "source_script_sha256_at_packaging": "417262ec81bb2c81c0ca2ccdc0ba2510d4a57415043c450b46d196acc034e3c3",
+          "worktree_dirty_at_packaging": true,
+          "source_rdf_sha256_by_state": {
+            "ch2_te9_ti1.8": "89c47fa60f9bf29e4a1259dd012ccfa09b1f8b46fbbea89b048787fb1867ba74",
+            "ch2_te9_ti4.5": "3aad8b9a6402dc9e299f7c150aa701251f7ba7d6e54fd864dace84b8dcebc98a",
+            "ch2_te9_ti9": "ffd2cc9b8a0100be5d287c0f27b54b61dc4ca92da0a2272fdc8985f1db98d5e1",
+            "ch2_te29_ti5.8": "81b77368db1c707833f5a33b9e313c5ab8f10976c2838ad9f0a080b974622ec1",
+            "ch2_te29_ti14.5": "e4ac8224e361086995c1a29cd1ded26dee223382ecbe67964a6ddae83da8e64f",
+            "ch2_te29_ti29": "ccd3d0b6f2719a0234f0e9aa0a572424e028308c4b3b39feebd4c24b7ec4bd56",
+            "ch2_te99_ti19.8": "f0847e1abb87c65d11653e8727a83cc0cb335027af648db3658be96ff32b0d40",
+            "ch2_te99_ti49.5": "125508cf1d7348f9d7dc193520eae8e2d9e95a36479247afb6dc02eea155b0be",
+            "ch2_te99_ti99": "ce612d741227745800fea3013a75db51080bb9eaa4d832f249525e2ca08eea59"
+          }
+        },
+        "otter_hnc_recomputed_with_md_preserved": true,
+        "md_arrays_reused_without_modification": true,
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "ion_structure_library": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "al_clerouin_rho8p1_te10_ti10.npz": {
+          "sha256": "5d8bd56c1824cef2731f3c7a60adf4cd4adf2f0eb6f2cb29afbff2db2a848b78",
+          "bytes": 48182
+        },
+        "al_clerouin_rho8p1_te10_ti10_tf.npz": {
+          "sha256": "bd2ebb6749988669d31b7951f5ab444d87e6f3f66da4ce7f629724aa91d3da4b",
+          "bytes": 48157
+        },
+        "al_clerouin_rho8p1_te10_ti2.npz": {
+          "sha256": "7d715f02db4aaaea6032e967dc724e637f57535134b9703faa0c7b6a3b5368aa",
+          "bytes": 49601
+        },
+        "al_clerouin_rho8p1_te10_ti2_tf.npz": {
+          "sha256": "17c00c5de2318e52fc2052c6823929715dcff4a8d0f7ceb7ca75453d3880aa94",
+          "bytes": 49391
+        },
+        "al_gill_rho2p7_te5_ti5.npz": {
+          "sha256": "eecde0546ac153746071196ed6dc334c27931875814fff21b5cd1b8fd4a631eb",
+          "bytes": 40880
+        },
+        "be_wunsch_rho5p544_te13_ti13.npz": {
+          "sha256": "4d2e5c55b5831c7f8103822440c0fd545157fe8cbb4f3781d18714b97581787b",
+          "bytes": 95734
+        },
+        "c_starrett_rho20_te50_ti50.npz": {
+          "sha256": "63d82dcba9ea2a737ea32a0f17ff2050f4d60f57c3fa586d668bd85cdfbc5529",
+          "bytes": 63661
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "git_commit": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "git_commit_originally_recorded": "unknown",
+        "git_commit_recovery_evidence": "provenance_recovery.json",
+        "git_commit_recovery_method": "Frozen source SHA-256 and Git blob verification, plus exact equality of all original numeric fields; original NPZ revision strings remain unchanged.",
+        "script_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
+        "script_sha256": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
+        "script_sha256_at_generation": "8145a2c22c3fb9ca5b365f9a2341a3c7caa9d89cbed271ff49df0de7ad1fd8b1",
+        "script_sha256_current": "8713bf909c5876e741adc8954436b54fcf907ce6367836174a8cb519b3259f8e",
+        "lammps_tool_relative_path": "tools/otter_lammps_md.py",
+        "lammps_tool_sha256_current": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
+        "note": "The original HNC states retain their recorded producer revision. The W\u00fcnsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
+        "worktree_clean": false,
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json",
+        "state_provenance_note": "Six states retain the recovered frozen-campaign revision. Carbon was radially refined separately; its state record and NPZ metadata identify the source and settings."
+      }
+    },
+    "johnson_et_al_2025_two_temperature_al": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "al_rho2p7_te10_ti1.npz": {
+          "sha256": "fa4213ed2c9bed376eff9eb359a95f0ad8228f4a5df5c8a3aef40ff5ed84fe11",
+          "bytes": 58625
+        },
+        "al_rho2p7_te1_ti1.npz": {
+          "sha256": "f872df8086fa23385c3964e592d50a728980f8f2f24defc4ab394706acbc08bc",
+          "bytes": 58487
+        },
+        "al_rho2p7_te30_ti1.npz": {
+          "sha256": "4c780127b53a7c5afdffdac13a65d8edce2ddf4145c7c4f9a6e5c7318d7fb75d",
+          "bytes": 58629
+        },
+        "al_rho2p7_te3_ti1.npz": {
+          "sha256": "95339cb0642c9489c2b33a98cd5ceb591716d4a4c8a1d709c5c596554720e9ac",
+          "bytes": 58489
+        }
+      },
+      "producer_before_reconciliation": {
+        "script_relative_path": "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py",
+        "script_sha256": "c25c3d92aff6a910c39cc2c2b092e5c5cb04980fc7aedd52bcbadad06f5cbaf5",
+        "git_commit": null,
+        "worktree_dirty": null,
+        "script_sha256_current": "c25c3d92aff6a910c39cc2c2b092e5c5cb04980fc7aedd52bcbadad06f5cbaf5",
+        "script_sha256_at_generation": "a315a65103402d53641167440cc856c9440cf7c2b717b0fa0a393b72a53437ee",
+        "current_controller_sha256": "c25c3d92aff6a910c39cc2c2b092e5c5cb04980fc7aedd52bcbadad06f5cbaf5",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "schorner_et_al_2022_al_sii": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "al_rho4p712_te1_ti1_lda.npz": {
+          "sha256": "d4ed7b14ab04310b4c1d70ae33ddecc2f3409a32b6b0bd412f3b5646379d21d3",
+          "bytes": 26557
+        },
+        "al_rho4p712_te1_ti1_pbe.npz": {
+          "sha256": "1ef3a38ef1a26005897a37becc914d22b9a0fe9a5648a4fc76cf3a4f9a484b62",
+          "bytes": 26459
+        },
+        "al_rho8p1_te5_ti5_lda.npz": {
+          "sha256": "67d4b9cc4eed38de62aecb48150780444a9a8debb6d6ae3f3a3cf723ef9deffd",
+          "bytes": 24845
+        },
+        "al_rho8p1_te5_ti5_pbe.npz": {
+          "sha256": "d4426038fb8a2142eee4015e3415a3d78b09061f9683b35e1c3414558e4d251a",
+          "bytes": 24732
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "project_version": "0.2.2",
+        "script_relative_path": "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py",
+        "script_sha256": "bbc512814e49142e3bb05dd8e3bddcb8989c2f5e1fe493b895ea510ff9cc91ca",
+        "script_sha256_current": "bbc512814e49142e3bb05dd8e3bddcb8989c2f5e1fe493b895ea510ff9cc91ca",
+        "script_sha256_at_generation": "c5e80756ee51541acd440b61bef8deaa5c5b351621d9312b7e0d694e9fc91ef0",
+        "current_controller_sha256": "bbc512814e49142e3bb05dd8e3bddcb8989c2f5e1fe493b895ea510ff9cc91ca",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "starrett_et_al_2014_mixtures_fig3": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "CH1p36_rho15p00gcc_T100kK_baseline.npz": {
+          "sha256": "67b304b3da1e569cf2256cf47c77b79c3dba04d0734de00a87482f859e5bfd53",
+          "bytes": 104906
+        },
+        "CH1p36_rho15p00gcc_T20kK_baseline.npz": {
+          "sha256": "6d3ce7dc581ae1e678baa26be65eb8f6a40273a507368c5b4df60bad8e2cb84f",
+          "bytes": 112305
+        },
+        "CH1p36_rho15p00gcc_T50kK_baseline.npz": {
+          "sha256": "10d7dc48ce20d24e1c9920f6cfae2efc4b918c3f127cca94a524c219371018c8",
+          "bytes": 107818
+        },
+        "CH1p36_rho2p94gcc_T100kK_baseline.npz": {
+          "sha256": "ce72589b887f47fee23beec9c45f8db69680364f2072b459d269bab43f8c6f4e",
+          "bytes": 67579
+        },
+        "CH1p36_rho2p94gcc_T20kK_baseline.npz": {
+          "sha256": "dd6051491d4436a0e751706cb9be4e553ae6365290531647d9d33883648c3a40",
+          "bytes": 71085
+        },
+        "CH1p36_rho2p94gcc_T50kK_baseline.npz": {
+          "sha256": "c555261cc521fd2e3432525e51d7f471a5aac8e5d057ecc030084b46333aef61",
+          "bytes": 67893
+        },
+        "CH1p36_rho5p00gcc_T100kK_baseline.npz": {
+          "sha256": "80d244c2689a4d331b1db89279905edba00ff56ec6124e9bdf00f8514a3e5ba4",
+          "bytes": 76971
+        },
+        "CH1p36_rho5p00gcc_T20kK_baseline.npz": {
+          "sha256": "7dc6b497bf9f43a75bbf3d8c99470d53dc93eeb788885a9d0e2c53d72fdd16f8",
+          "bytes": 82611
+        },
+        "CH1p36_rho5p00gcc_T50kK_baseline.npz": {
+          "sha256": "8a41a9354ab4343b3742619a69cfb33bcbfe5a36ca3e319dedae7cf1e5917105",
+          "bytes": 78628
+        }
+      },
+      "producer_before_reconciliation": {
+        "project": "Otter",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "starrett_saumon_2013_electronic": {
+      "source_set": "sc_default_refresh",
+      "files": {
+        "electronic_states.npz": {
+          "sha256": "21aac5d810364022669587f39df31761e991f9dee6fa73bd1f049a0287f7e994",
+          "bytes": 8955
+        }
+      },
+      "producer_before_reconciliation": {
+        "git_commit": "e8a32ed3d9d11b81a44d7a1015e7cfcd78416fb3",
+        "script_relative_path": "benchmarks/examples/plot_starrett_saumon_2013_electronic.py",
+        "script_sha256_current": "b333c8aa33ff43f33c8d44c095c4304bec9283e3c749e8e2965053e2023a1efb",
+        "script_sha256_at_generation": "5ff31bdfa6c7f233b02a539c93a6f05c308dbb75a32787ff1870539d61e1c1a3",
+        "current_controller_sha256": "b333c8aa33ff43f33c8d44c095c4304bec9283e3c749e8e2965053e2023a1efb",
+        "uncommitted_solver_changes_at_generation": true,
+        "source_inventory": "../validation_20260908.json"
+      }
+    },
+    "starrett_single_species_2013_2014": {
+      "source_set": "conditioned_scf_campaign",
+      "files": {
+        "c_64p64_qm.npz": {
+          "sha256": "0ebff94afadbaddeb6820387545d666881b0616eee2c794bf1452f4d7065fa46",
+          "bytes": 50842
+        },
+        "c_64p64_tf.npz": {
+          "sha256": "e0d2e96a697a142b30b608bd656b5c9a5eecb9691845f1f36b01eb13b2935fde",
+          "bytes": 52334
+        },
+        "fe_10_qm.npz": {
+          "sha256": "a821fbdbfaee548bf627185e952fa0ffef2c096620cac11e6f5e62bdb3f61e37",
+          "bytes": 44560
+        },
+        "fe_10_tf.npz": {
+          "sha256": "a5167ad2330a54417e13f2199f2fc6f383ec2a5b4b2974c2d78a20102689a450",
+          "bytes": 44724
+        },
+        "h_172_qm.npz": {
+          "sha256": "30982b94325c1db4e980b61bfe3006717f3c9939bf6794e0a4e4b8c39cb3a5a3",
+          "bytes": 65486
+        },
+        "h_172_tf.npz": {
+          "sha256": "b251c48c1fd4e72feb5d871a9a1d46d91030a0f83710361df61664c29a5e9891",
+          "bytes": 89593
+        },
+        "h_5_qm.npz": {
+          "sha256": "0a6843b9f01deb4f15762ae09b35780e473c953621b78b1b33f7f87c6fabcc4e",
+          "bytes": 73032
+        },
+        "h_5_tf.npz": {
+          "sha256": "2b376bb00cd113d865317e3764ada26b43b98102a80de7ec5fdc7f4a7e66a354",
+          "bytes": 98247
+        },
+        "w_10_qm.npz": {
+          "sha256": "86c49b6c10a41eecb1be8815b81f022f00548b45ba115604facf463363830831",
+          "bytes": 39481
+        },
+        "w_10_tf.npz": {
+          "sha256": "c9eff35eb928416a955cc6a4a0e3989784bc586eda606ae55f475195d03423a4",
+          "bytes": 39515
+        },
+        "w_60_qm.npz": {
+          "sha256": "f4a51890b5f031f19bbd8c5390426b0ba9cf6ad87d74538765c20b28b76ad9a6",
+          "bytes": 39159
+        },
+        "w_60_tf.npz": {
+          "sha256": "8622c90560770156fe1596fc965c9ce58af4ab040a935ba54df3c00b429fdc48",
+          "bytes": 39229
+        }
+      },
+      "producer_before_reconciliation": {
+        "script_relative_path": "benchmarks/examples/plot_starrett_single_species_2013_2014.py",
+        "script_sha256": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
+        "git_commit": null,
+        "worktree_dirty": null,
+        "script_sha256_current": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
+        "script_sha256_at_generation": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
+        "current_controller_sha256": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
+        "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
+        "source_inventory": "../validation_20260908.json"
+      }
+    }
+  },
+  "gallery_groups": [
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 28.015578218037263,
+      "candidate_issues": [],
+      "group": "al_full_workflow"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 109.84968005097471,
+      "candidate_issues": [],
+      "group": "al_is_sc"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 346.14184052695055,
+      "candidate_issues": [],
+      "group": "doppner_be_ionization"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 98.46206787996925,
+      "candidate_issues": [],
+      "group": "al_qm_tf"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 67.62621056800708,
+      "candidate_issues": [],
+      "group": "al_rayleigh"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 160.16869842098095,
+      "candidate_issues": [],
+      "group": "argha_carbon_sii"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 2866.0948982599657,
+      "candidate_issues": [],
+      "group": "carbon_ionization_levels"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 175.54520694399253,
+      "candidate_issues": [],
+      "group": "carbon_lfc"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 43.18203137605451,
+      "candidate_issues": [],
+      "group": "ch136_workflow"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 78.26945173204876,
+      "candidate_issues": [],
+      "group": "ion_structure_library"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 153.65200288104825,
+      "candidate_issues": [],
+      "group": "johnson_al"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 124.18989470996894,
+      "candidate_issues": [],
+      "group": "schorner_al_sii"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 904.6335644680075,
+      "candidate_issues": [],
+      "group": "starrett_fig3"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 3504.339114061906,
+      "candidate_issues": [],
+      "group": "starrett_saumon_electronic"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 206.2628524720203,
+      "candidate_issues": [],
+      "group": "starrett_single_species"
+    },
+    {
+      "status": "finished_unreviewed",
+      "exit_code": 0,
+      "elapsed_s": 342.5747462499421,
+      "candidate_issues": [],
+      "group": "ch2_hnc_md"
+    }
+  ],
+  "sc_refresh": [
+    {
+      "name": "al_is_sc_comparison",
+      "elapsed_s": 111.43583638698328,
+      "status": "finished_unreviewed"
+    },
+    {
+      "name": "starrett_saumon_2013_electronic",
+      "elapsed_s": 800.4953668770613,
+      "status": "finished_unreviewed"
+    }
+  ],
+  "historical_md_fields_verified_unchanged": 169
+}

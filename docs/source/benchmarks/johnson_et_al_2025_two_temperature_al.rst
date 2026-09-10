@@ -1,5 +1,10 @@
 :orphan:
 
+.. note::
+
+   HNC and VMHNC use the September 2026 recalculation. MD retains the earlier
+   potential and is labelled historical. See :doc:`validation_20260908`.
+
 Johnson et al. 2025 two-temperature aluminium
 ===============================================
 
@@ -18,9 +23,10 @@ ion--ion potential.  VMHNC uses the bridge-universality ansatz of
 :cite:t:`RosenfeldAshcroft1979`, the exact Percus--Yevick hard-sphere
 reference of :cite:t:`Wertheim1963,Thiele1963`, and the variational packing-
 fraction condition of :cite:t:`Faussurier2004`.  Its packing fraction is not
-fitted to the DFT-MD curves.  A same-potential classical MD calculation with
-LAMMPS :cite:p:`ThompsonEtAl2022` is included in every panel to separate error
-in the integral-equation closure from error in the IS-QOZ pair potential.
+fitted to the DFT-MD curves. Historical classical MD from LAMMPS
+:cite:p:`ThompsonEtAl2022` is included in every panel. Matching of its earlier
+potential to the current one has not been verified, so the refreshed overlay
+does not separate closure error from changes to the electronic potential.
 
 Bridge and plasma-model terminology
 -----------------------------------
@@ -62,8 +68,8 @@ curve with Otter's VMHNC implementation, so the benchmark keeps the labels
 separate.  Their Figure 2 also contains an OCP curve and their own pair-
 potential MD (PPMD).  The current digitized reference package contains only
 2TTCP HNC+bridge, DFT-MD, and YOCP HNC+bridge; it does not relabel the YOCP
-data as OCP.  The MD curve added here is newly calculated with Otter's pair
-potential and is not Johnson's PPMD data.
+data as OCP. The historical MD curve was calculated with an earlier Otter
+pair potential and is not Johnson's PPMD data.
 
 The previous panel-(d) diagnostic used a long-wavelength Yukawa fit to map
 Otter's non-Yukawa QOZ potential onto an effective IEMHNC state.  That result
@@ -96,35 +102,16 @@ not repeat that label or rescale the data.
 Reproduce the comparison
 ------------------------
 
-The standalone script
-``benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py`` contains
-the thermodynamic inputs, Otter workflow calls, convergence checks, checksum
-validation, and plotting.  Set
+Run the downloadable source from :doc:`gen_benchmarks/plot_johnson_et_al_2025_two_temperature_al`::
 
-.. code-block:: python
+    poetry run python benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py
 
-   USE_PRECOMPUTED_DATA = True
+The default calculates the electronic and ionic states, writes local results
+under ``benchmarks/outputs``, and exports PNG and PDF figures. No precomputed
+Otter NPZ is needed. Literature reference data remain separate inputs.
 
-to load checksummed results, or set it to ``False`` to run all four IS
-electronic calculations and then evaluate both ionic closures.  New files are
-written under
-``benchmarks/outputs/johnson_et_al_2025_two_temperature_al/gallery_recomputed``
-and do not overwrite accepted results.  Potential-strength continuation with
-the Newton--Krylov HNC backend is used when needed.  HNC residuals, transform-
-closure diagnostics, and the VMHNC variational residual are recorded in the
-manifest.  With ``RUN_SAME_POTENTIAL_MD = True``, the same script also runs
-2048-ion LAMMPS calculations using
-:math:`\Delta t=0.005\omega_p^{-1}`, :math:`50\omega_p^{-1}` NVT
-equilibration, and :math:`500\omega_p^{-1}` NVE production, following the
-dimensionless protocol reported by Johnson *et al.*  LAMMPS and an MPI
-launcher must be available for this optional recomputation path.
-
-Set ``USE_RECOMPUTED_CANDIDATES = True`` only to review a complete candidate
-set from that output directory.  Candidate file hashes are checked, but this
-mode does not label or promote the results as accepted benchmark baselines.
-
-The rendered comparison is available at
-:ref:`sphx_glr_benchmarks_gen_benchmarks_plot_johnson_et_al_2025_two_temperature_al.py`.
+The MD curves are also recalculated and require LAMMPS and MPI. Particle
+counts, timesteps, sampling intervals and CPU counts are in the input block.
 
 Reference-data notice
 ---------------------

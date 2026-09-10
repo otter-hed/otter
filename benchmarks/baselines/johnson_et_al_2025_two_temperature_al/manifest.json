@@ -71,17 +71,22 @@
   ],
   "producer": {
     "script_relative_path": "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py",
-    "script_sha256": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0",
-    "git_commit": "d734f28cb5d58977b911866b53faf557dd81edb9",
+    "script_sha256": "6c217bd0d5ce7d639612a7e934d143be5145b0c6312a81e11f170040c22f82ab",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "worktree_dirty": true,
-    "script_sha256_at_generation": "a000b2d6e3d98c89f0a11d88eeb81c527bc7dd11145a07c96562398e7707ce34",
-    "current_controller_sha256": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0",
-    "script_sha256_current": "b126f98ec610c9d9c970a29cd3ffc334b742e146386d06234c969f84acf746b0"
+    "script_sha256_current": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+    "current_controller_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "script_sha256_at_generation": "6c217bd0d5ce7d639612a7e934d143be5145b0c6312a81e11f170040c22f82ab"
   },
   "configuration": {
     "aa_n_points": 4096,
     "qoz_n_points_before_padding": 4096,
-    "continuum_workers_per_state": 6,
+    "continuum_workers_per_state": 1,
     "lfc_model": "chabrier1990",
     "hnc_tolerance": 0.0001,
     "hnc_transform_closure_tolerance": 0.0025,
@@ -106,7 +111,7 @@
       0.05,
       0.49
     ],
-    "vmhnc_eta_tolerance": 1e-06,
+    "vmhnc_eta_tolerance": 0.0001,
     "same_potential_md": {
       "engine": "LAMMPS (7 Feb 2024 - Update 1)",
       "atoms": 2048,
@@ -115,8 +120,11 @@
       "equilibration_omega_p_inv": 50.0,
       "production_omega_p_inv": 500.0,
       "rdf_bins": 500,
-      "rdf_blocks": 20
-    }
+      "rdf_blocks": 20,
+      "historical_protocol_only": true
+    },
+    "md_matches_current_otter_potential_verified": false,
+    "md_comparison_scope": "Historical MD on the earlier Otter potential; not a same-potential closure validation of the refreshed HNC curves."
   },
   "units": {
     "radius": "Bohr",
@@ -135,25 +143,27 @@
       "paper_panel": "Fig. 2(a)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te1_ti1.npz",
-      "baseline_sha256": "ba97371088bcb5930fa050103df3d8c9235758d0f017fa49a6daf441d54be3a6",
+      "baseline_sha256": "f872df8086fa23385c3964e592d50a728980f8f2f24defc4ab394706acbc08bc",
       "structure_model": "IS",
-      "zbar_partition": 3.0004785063680224,
+      "zbar_partition": 3.0004780103532322,
       "hnc_solver_path": "direct_anderson",
       "hnc_best_residual": 1.4959752306696474e-05,
       "hnc_min_s_k": 0.08161857482752377,
-      "hnc_closure_mismatch": 0.00013057878390321243,
+      "hnc_closure_mismatch": 0.0001854429370914401,
       "vmhnc_solver_path": "vmhnc_newton_krylov",
       "vmhnc_best_residual": 6.086100773689668e-11,
       "vmhnc_min_s_k": 0.06558927881859045,
       "vmhnc_closure_mismatch": 1.7459145240650287e-11,
-      "vmhnc_eta": 0.31804317474365235,
+      "vmhnc_eta": 0.3187221145629882,
       "vmhnc_sigma_bohr": 4.082053578109621,
-      "vmhnc_variational_residual": -9.447333849221806e-06,
+      "vmhnc_variational_residual": 5.656538457299298e-06,
       "md_nve_relative_energy_drift": 1.6278429985603756e-06,
-      "hnc_vs_same_potential_md_rmse": 0.03257079657972685,
-      "vmhnc_vs_same_potential_md_rmse": 0.008527748353877507,
       "n_model_points": 1826,
-      "same_potential_md": true
+      "same_potential_md": false,
+      "ionic_closures": [
+        "HNC",
+        "Rosenfeld--Ashcroft VMHNC"
+      ]
     },
     {
       "state_id": "al_rho2p7_te3_ti1",
@@ -164,25 +174,27 @@
       "paper_panel": "Fig. 2(b)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te3_ti1.npz",
-      "baseline_sha256": "0cf396fb1435b9dc7930ff9b9c8f67e71114fa3c3acf5eb58d7d305b73fe4f4b",
+      "baseline_sha256": "95339cb0642c9489c2b33a98cd5ceb591716d4a4c8a1d709c5c596554720e9ac",
       "structure_model": "IS",
-      "zbar_partition": 3.000480415414515,
+      "zbar_partition": 3.000479265109732,
       "hnc_solver_path": "direct_anderson",
       "hnc_best_residual": 4.668494049203033e-05,
       "hnc_min_s_k": 0.05456911791613894,
-      "hnc_closure_mismatch": 0.0012619521587889926,
+      "hnc_closure_mismatch": 0.0015996364361844373,
       "vmhnc_solver_path": "vmhnc_newton_krylov",
       "vmhnc_best_residual": 7.652478704723495e-11,
       "vmhnc_min_s_k": 0.04530066818359213,
       "vmhnc_closure_mismatch": 1.9344525981068728e-11,
-      "vmhnc_eta": 0.33116962432861335,
+      "vmhnc_eta": 0.33152965545654295,
       "vmhnc_sigma_bohr": 4.1374571195648855,
-      "vmhnc_variational_residual": -9.73636717782611e-06,
+      "vmhnc_variational_residual": -1.0473132605937074e-05,
       "md_nve_relative_energy_drift": -1.8728957987472975e-06,
-      "hnc_vs_same_potential_md_rmse": 0.040447161609408526,
-      "vmhnc_vs_same_potential_md_rmse": 0.008711096144807697,
       "n_model_points": 1826,
-      "same_potential_md": true
+      "same_potential_md": false,
+      "ionic_closures": [
+        "HNC",
+        "Rosenfeld--Ashcroft VMHNC"
+      ]
     },
     {
       "state_id": "al_rho2p7_te10_ti1",
@@ -193,25 +205,27 @@
       "paper_panel": "Fig. 2(c)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te10_ti1.npz",
-      "baseline_sha256": "cc583ecbdb6cf271d7641efa5712e7411f967aaddd288b16925a3b2683b6740d",
+      "baseline_sha256": "fa4213ed2c9bed376eff9eb359a95f0ad8228f4a5df5c8a3aef40ff5ed84fe11",
       "structure_model": "IS",
-      "zbar_partition": 3.026669348039084,
+      "zbar_partition": 3.0266833951944125,
       "hnc_solver_path": "direct_anderson",
       "hnc_best_residual": 2.6552240915489983e-06,
       "hnc_min_s_k": 0.022180027744863384,
-      "hnc_closure_mismatch": 0.00043091680920714914,
+      "hnc_closure_mismatch": 0.0005986274894524968,
       "vmhnc_solver_path": "vmhnc_newton_krylov",
       "vmhnc_best_residual": 4.2480674883601355e-11,
       "vmhnc_min_s_k": 0.019604898755437916,
       "vmhnc_closure_mismatch": 3.345645982477663e-11,
-      "vmhnc_eta": 0.3603413772583008,
+      "vmhnc_eta": 0.3606393051147461,
       "vmhnc_sigma_bohr": 4.255540408371748,
-      "vmhnc_variational_residual": -2.074177786526299e-06,
+      "vmhnc_variational_residual": -1.0947545785566781e-05,
       "md_nve_relative_energy_drift": 7.939229672006248e-07,
-      "hnc_vs_same_potential_md_rmse": 0.0464534509876449,
-      "vmhnc_vs_same_potential_md_rmse": 0.008571697227312906,
       "n_model_points": 1826,
-      "same_potential_md": true
+      "same_potential_md": false,
+      "ionic_closures": [
+        "HNC",
+        "Rosenfeld--Ashcroft VMHNC"
+      ]
     },
     {
       "state_id": "al_rho2p7_te30_ti1",
@@ -222,27 +236,29 @@
       "paper_panel": "Fig. 2(d)",
       "status": "accepted",
       "baseline_file": "al_rho2p7_te30_ti1.npz",
-      "baseline_sha256": "6b06c0867e52b547ec6c620ad3609638bdb5fb057659beb7d332745610bd5c72",
+      "baseline_sha256": "4c780127b53a7c5afdffdac13a65d8edce2ddf4145c7c4f9a6e5c7318d7fb75d",
       "structure_model": "IS",
-      "zbar_partition": 4.480388184562944,
+      "zbar_partition": 4.479401162058892,
       "hnc_solver_path": "direct_anderson->continuation_newton_krylov",
       "hnc_best_residual": 6.368214512138727e-11,
       "hnc_min_s_k": 0.005958622990626106,
-      "hnc_closure_mismatch": 1.8933862810932567e-08,
+      "hnc_closure_mismatch": 4.950262422198648e-12,
       "vmhnc_solver_path": "vmhnc_newton_krylov",
       "vmhnc_best_residual": 2.486715857706233e-11,
       "vmhnc_min_s_k": 0.005381774232095182,
       "vmhnc_closure_mismatch": 1.2092815637743115e-10,
-      "vmhnc_eta": 0.4453422927856446,
+      "vmhnc_eta": 0.44562679290771484,
       "vmhnc_sigma_bohr": 4.566827990565369,
-      "vmhnc_variational_residual": -2.1202375079187874e-05,
+      "vmhnc_variational_residual": -8.297550579960955e-07,
       "md_nve_relative_energy_drift": -2.5920293541134466e-07,
-      "hnc_vs_same_potential_md_rmse": 0.08496803192533574,
-      "vmhnc_vs_same_potential_md_rmse": 0.01624246758793603,
       "n_model_points": 1826,
-      "same_potential_md": true
+      "same_potential_md": false,
+      "ionic_closures": [
+        "HNC",
+        "Rosenfeld--Ashcroft VMHNC"
+      ]
     }
   ],
-  "validation_scope": "archived_matched_potential_comparison",
+  "validation_scope": "refreshed_otter_with_historical_md",
   "validation_inventory": "../validation_20260908.json"
 }

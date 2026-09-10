@@ -77,10 +77,10 @@ The source contains one user-facing switch:
 
 .. code-block:: python
 
-   RECOMPUTE_WITH_OTTER = False
+   RECOMPUTE_WITH_OTTER = True
 
-``False`` verifies and loads checksummed Otter results.  ``True`` runs the
-shared electronic calculation and all five LFC/QOZ/HNC branches, then writes
+The default runs the shared electronic calculation and all five LFC/QOZ/HNC
+branches without bundled NPZ, then writes
 new files under
 ``benchmarks/outputs/carbon_lfc_sensitivity/gallery_recomputed``.  Existing
 accepted results are not overwritten.

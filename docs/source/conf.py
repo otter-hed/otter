@@ -13,15 +13,15 @@ PACKAGE_ROOT = SOURCE_ROOT / "otter"
 
 # Always document this checkout, even when another editable Otter install is
 # active in the Sphinx environment.
-sys.path.insert(0, str(SOURCE_ROOT))
-
-from otter import __version__ as otter_version  # noqa: E402
+sys.path[:0] = [str(SOURCE_ROOT), str(PROJECT_ROOT)]
 
 project = "Otter"
 author = "Chongbing Qu and Dominik Kraus"
 copyright = "2026, Chongbing Qu"
 
-release = otter_version
+from otter import __version__
+
+release = __version__
 version = release
 
 extensions = [
@@ -70,9 +70,10 @@ sphinx_gallery_conf = {
     "backreferences_dir": "gen_modules/backreferences",
     "doc_module": ("otter",),
     "remove_config_comments": True,
-    # Examples load checksummed reference results during documentation builds.
-    # Scientific calculation times, where relevant, are reported explicitly
-    # by the example rather than as Sphinx-Gallery file-execution overhead.
+    # Downloaded scripts calculate from physical inputs by default. Building
+    # documentation must not launch AA/MD jobs or require numerical archives.
+    # Reviewed figures and terminal output are presentation-only RST assets.
+    "plot_gallery": False,
     "min_reported_time": float("inf"),
 }
 
@@ -90,3 +91,9 @@ html_theme_options = {
     "navigation_depth": 4,
     "sticky_navigation": True,
 }
+
+
+def setup(app):
+    from tools.gallery_notebooks import prepare_downloads
+    # Run after gallery/download generation, without executing any example.
+    app.connect("build-finished", prepare_downloads, priority=900)

@@ -14,3 +14,4 @@ examples and the detailed API reference.
    carbon_lfc_sensitivity
    state_exports
    lammps_md
+   reproducing_galleries

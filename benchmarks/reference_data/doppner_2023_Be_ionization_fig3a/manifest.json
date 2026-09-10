@@ -1,0 +1,26 @@
+{
+  "schema_version": "otter_reference_manifest_v1",
+  "benchmark_id": "doppner_2023_be_ionization",
+  "citation_key": "DoppnerEtAl2023",
+  "title": "Observing the onset of pressure-driven K-shell delocalization",
+  "doi": "10.1038/s41586-023-05996-8",
+  "source_url": "https://www.nature.com/articles/s41586-023-05996-8",
+  "source_figure": "3(a)",
+  "origin": "maintainer_supplied_digitization",
+  "license": "NOASSERTION",
+  "file": "doppner_2023_Be_ionization_fig3a.csv",
+  "sha256": "0b1c19fc07d2b5706df4f51390dc17e7d21f1080a13bcbfc8ab3f59529a22ad0",
+  "units": {"rho": "g/cm^3", "Zbar": "electrons per Be"},
+  "transformations": ["Drop empty trailing pairs independently for each series; no ordinate correction."],
+  "series": [
+    {"header": "dft-md_Te_150ev", "method": "DFT-MD", "temperature_ev": 150, "columns": [0, 1], "points": 7},
+    {"header": "SP_Te_160ev", "method": "Stewart-Pyatt", "temperature_ev": 160, "columns": [2, 3], "points": 40},
+    {"header": "OPAL_Te_160ev", "method": "OPAL", "temperature_ev": 160, "columns": [4, 5], "points": 40},
+    {"header": "dft-md_Te_100ev", "method": "DFT-MD", "temperature_ev": 100, "columns": [6, 7], "points": 9},
+    {"header": "SP_Te_100ev", "method": "Stewart-Pyatt", "temperature_ev": 100, "columns": [8, 9], "points": 40},
+    {"header": "OPAL_Te_100ev", "method": "OPAL", "temperature_ev": 100, "columns": [10, 11], "points": 40},
+    {"header": "dft-md_Te_50ev", "method": "DFT-MD", "temperature_ev": 50, "columns": [12, 13], "points": 9},
+    {"header": "SP_Te_50ev", "method": "Stewart-Pyatt", "temperature_ev": 50, "columns": [14, 15], "points": 40},
+    {"header": "OPAL_Te_50ev", "method": "OPAL", "temperature_ev": 50, "columns": [16, 17], "points": 40}
+  ]
+}

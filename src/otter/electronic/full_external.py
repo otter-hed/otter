@@ -45,6 +45,7 @@ from otter.electronic.continuum.ideal import ideal_unbound_density
 from otter.electronic.continuum.tail import apply_tail_match, tail_parameters
 from otter.electronic.continuum.scattering import fermi_dirac
 from otter.numerics.grids import create_sqrt_grid
+from otter.numerics.mixing import regularized_secant_weights as _regularized_scf_weights
 from otter.numerics.constants import EV_TO_HA
 from otter.data.elements import element as element_info
 from otter.data.helpers import (
@@ -57,6 +58,7 @@ from otter.ionic.correlation import IonSphereStepModel, ion_sphere_radius_from_d
 from otter.electronic.potential import spherical_hartree_potential
 from otter.electronic.potential import (
     _ion_sphere_cavity_hartree,
+    _require_sharp_ion_sphere_profile,
     effective_potential_external,
     effective_potential_full,
 )
@@ -1160,7 +1162,7 @@ class FullExternalConfig(CitationMixin):
     scf_mixing_m: int = 5
     # Eyert history size M.
     scf_mixing_w0: float = 5e-4
-    # Eyert regularization weight.
+    # Dimensionless Eyert ridge after radial history normalization.
     ph_kappa: float = 0.0
     # Poisson-Helmholtz preconditioner [Bohr^-1]. A positive value screens
     # the Hartree source only during the first ``ph_kappa_iters`` updates of
@@ -1205,7 +1207,7 @@ class FullExternalConfig(CitationMixin):
     ext_mixing_m: int = 5
     # External Eyert history size M.
     ext_mixing_w0: float = 5e-4
-    # External Eyert regularization.
+    # Dimensionless external Eyert ridge after radial history normalization.
 
     # ----- Bound partition controls -----
     bound_energy_cut_mode: str = "zero"
@@ -3468,8 +3470,11 @@ def _external_fixed_mu_scf(
 
     continuum = _select_continuum_model("scattering")
     r_ws = float(ext_params.get("r_ws", 0.0))
-    default_ion_sphere_background = (
-        g_ii is None and bool(ext_params.get("analytic_ion_sphere_background", False))
+    # The full workflow passes its sampled g_ii even for the default IS.
+    # Preserve its explicit electrostatic policy: array presence must not
+    # switch only the external branch to a different background quadrature.
+    default_ion_sphere_background = bool(
+        ext_params.get("analytic_ion_sphere_background", False)
     )
     if g_ii is None:
         g_ii_use = IonSphereStepModel(r_ws=r_ws).g_ii(r)
@@ -3477,6 +3482,8 @@ def _external_fixed_mu_scf(
         g_ii_use = np.asarray(g_ii, dtype=float)
         if g_ii_use.shape != np.asarray(r, dtype=float).shape:
             raise ValueError("external g_ii must match the radial grid.")
+    if default_ion_sphere_background:
+        _require_sharp_ion_sphere_profile(r, g_ii_use, r_ws)
     n_bound_zero = np.zeros_like(r, dtype=float)
     use_source_closure_base = bool(ext_params.get("source_closure", False))
 
@@ -3743,24 +3750,10 @@ def _external_fixed_mu_scf(
                 df_hist.append(f_now - f_prev)
 
             if dx_hist:
-                hist_len = len(dx_hist)
-                a_mat = np.zeros((hist_len, hist_len), dtype=float)
-                b_vec = np.zeros(hist_len, dtype=float)
-                for i in range(hist_len):
-                    for j in range(hist_len):
-                        a_mat[i, j] = trapz_integral(
-                            df_hist[i] * df_hist[j], r
-                        )
-                        if i == j:
-                            a_mat[i, j] += w0**2
-                    b_vec[i] = trapz_integral(df_hist[i] * f_now, r)
-                try:
-                    w_vec = np.linalg.solve(a_mat, b_vec)
-                except np.linalg.LinAlgError:
-                    w_vec = None
+                w_vec, _ = _regularized_scf_weights(df_hist, f_now, r, w0)
                 if w_vec is not None:
                     corr = np.zeros_like(x_in)
-                    for i in range(hist_len):
+                    for i in range(len(dx_hist)):
                         corr += w_vec[i] * (dx_hist[i] + current_mix * df_hist[i])
                     x_next = x_in + current_mix * f_now - corr
                 else:

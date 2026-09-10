@@ -1,0 +1,2 @@
+# Source archives exclude arrays; public commits must separately untrack them.
+*.npz export-ignore

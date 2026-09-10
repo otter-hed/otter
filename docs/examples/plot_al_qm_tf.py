@@ -1,4 +1,4 @@
-"""
+r"""
 Aluminium KS-DFT and Thomas--Fermi comparison
 ==============================================
 
@@ -8,18 +8,35 @@ finite-temperature Thomas--Fermi (TF) average atoms for aluminium at
 ``rho=8.1 g/cc`` and ``T=1, 15, 50, 100 eV``.  Both electronic models feed
 the same ion-sphere pseudoatom, QOZ/HNC, and Chabrier-1990 LFC construction.
 
-Set ``RECOMPUTE_WITH_OTTER = True`` to make this file construct
-:class:`otter.PlasmaWorkflowConfig` objects, call
-:func:`otter.solve_plasma_workflow`, save new NPZ files under
-``benchmarks/outputs/al_qm_tf/gallery_recomputed``, and plot them.  The
-default verifies and loads checksummed NPZ results.
-
 The model follows :cite:t:`StarrettSaumon2014` and the finite-temperature
 jellium LFC follows :cite:t:`Chabrier1990`.  See :doc:`the model-comparison
 notes </user_guide/al_qm_tf>` for convergence criteria, units, and
 interpretation.
 The two figures are exported as matching PNG and vector PDF files under
 ``benchmarks/outputs/al_qm_tf/figures`` for documentation and slides.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python docs/examples/plot_al_qm_tf.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_al_qm_tf/results.rst
+
 """
 
 from __future__ import annotations
@@ -42,7 +59,7 @@ from otter.plotting import grid_figsize, save_figure, style_context
 # =============================================================================
 # User input
 # =============================================================================
-RECOMPUTE_WITH_OTTER = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_RECOMPUTE_AL_QM_TF", "0") == "1":
     RECOMPUTE_WITH_OTTER = True
 USE_PRECOMPUTED_DATA = not RECOMPUTE_WITH_OTTER
@@ -51,8 +68,8 @@ RHO_G_CC = 8.1
 TEMPERATURES_EV = (1.0, 15.0, 50.0, 100.0)
 ELECTRONIC_MODELS = ("qm", "tf")
 
-# Four independent state workers; each AA uses the single-worker default.
-MAX_STATE_WORKERS = 4
+# Independent states run serially; each AA keeps its one-worker default.
+MAX_STATE_WORKERS = 1
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
 R_RETAIN_MAX_BOHR = 20.0
@@ -61,22 +78,15 @@ K_RETAIN_MAX_BOHR_INV = 20.0
 
 
 def repository_root() -> Path:
-    """Locate this source checkout when run directly or by Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate
-            / "benchmarks"
-            / "baselines"
-            / "al_qm_tf"
-            / "manifest.json"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -138,7 +148,6 @@ def workflow_config(temperature_ev: float, model: str) -> PlasmaWorkflowConfig:
         **model_override,
         hnc_tol=float(HNC_TOL),
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
-        hnc_max_iter=1000,
     )
 
 
@@ -267,180 +276,188 @@ def solve_all_states() -> list[dict[str, np.ndarray]]:
     return states
 
 
-states = (
-    load_precomputed_states()
-    if USE_PRECOMPUTED_DATA
-    else solve_all_states()
-    if RECOMPUTE_WITH_OTTER
-    else []
-)
-
-print(
-    "Using "
-    + (
-        "checksummed, precomputed Otter results."
+def main() -> None:
+    states = (
+        load_precomputed_states()
         if USE_PRECOMPUTED_DATA
-        else "new results calculated directly by this gallery script."
+        else solve_all_states()
+        if RECOMPUTE_WITH_OTTER
+        else []
     )
-)
-print(f"{'rho':>6s} {'T[eV]':>7s} {'dZ(TF-KS)':>11s} {'RMSE(g)':>11s} {'RMSE(S)':>11s}")
-for state in states:
-    dz = float(np.diff(np.asarray(state["zbar_partition"], dtype=float))[0])
-    dg = np.diff(np.asarray(state["gii_r"], dtype=float), axis=0)[0]
-    ds = np.diff(np.asarray(state["sii_k"], dtype=float), axis=0)[0]
-    r_metric = np.asarray(state["r_ion_bohr"], dtype=float) <= 12.0
-    k_metric = np.asarray(state["k_bohr_inv"], dtype=float) <= 6.0
+
     print(
-        f"{float(state['rho_g_cc']):6.2f} "
-        f"{float(state['temperature_ev']):7.1f} "
-        f"{dz:11.5f} "
-        f"{np.sqrt(np.mean(dg[r_metric]**2)):11.5f} "
-        f"{np.sqrt(np.mean(ds[k_metric]**2)):11.5f}"
+        "Using "
+        + (
+            "checksummed, precomputed Otter results."
+            if USE_PRECOMPUTED_DATA
+            else "new results calculated directly by this gallery script."
+        )
     )
+    print(f"{'rho':>6s} {'T[eV]':>7s} {'dZ(TF-KS)':>11s} {'RMSE(g)':>11s} {'RMSE(S)':>11s}")
+    for state in states:
+        dz = float(np.diff(np.asarray(state["zbar_partition"], dtype=float))[0])
+        dg = np.diff(np.asarray(state["gii_r"], dtype=float), axis=0)[0]
+        ds = np.diff(np.asarray(state["sii_k"], dtype=float), axis=0)[0]
+        r_metric = np.asarray(state["r_ion_bohr"], dtype=float) <= 12.0
+        k_metric = np.asarray(state["k_bohr_inv"], dtype=float) <= 6.0
+        print(
+            f"{float(state['rho_g_cc']):6.2f} "
+            f"{float(state['temperature_ev']):7.1f} "
+            f"{dz:11.5f} "
+            f"{np.sqrt(np.mean(dg[r_metric]**2)):11.5f} "
+            f"{np.sqrt(np.mean(ds[k_metric]**2)):11.5f}"
+        )
 
 
-# %%
-# The density panels use radial shell densities, :math:`4\pi r^2 n(r)`, so
-# their signed outer-shell structure remains visible beside the ionic
-# observables.  Solid lines are KS-DFT and dashed lines are TF.
+    # %%
+    # The density panels use radial shell densities, :math:`4\pi r^2 n(r)`, so
+    # their signed outer-shell structure remains visible beside the ionic
+    # observables.  Solid lines are KS-DFT and dashed lines are TF.
 
-models = ELECTRONIC_MODELS
-labels = {"qm": "KS-DFT", "tf": "Thomas–Fermi"}
+    models = ELECTRONIC_MODELS
+    labels = {"qm": "KS-DFT", "tf": "Thomas–Fermi"}
 
-plot_style = ExitStack()
-plot_style.enter_context(style_context("thesis", palette="bing"))
-colors = dict(
-    zip(models, plt.rcParams["axes.prop_cycle"].by_key()["color"])
-)
-styles = {"qm": "-", "tf": "--"}
-fig_density, density_axes = plt.subplots(
-    len(states),
-    2,
-    figsize=grid_figsize(len(states), 2),
-    squeeze=False,
-)
-for row, state in enumerate(states):
-    for model_index, model in enumerate(models):
-        r_e = np.asarray(state[f"r_{model}_bohr"], dtype=float)
-        shell_weight = 4.0 * np.pi * r_e**2
-        n0 = float(np.asarray(state["n0_bohr3"])[model_index])
-        density_mask = r_e <= 8.0
-        screening_mask = r_e <= 12.0
-        density_axes[row, 0].plot(
-            r_e[density_mask],
-            (
-                shell_weight
-                * (
-                    np.asarray(
-                        state[f"n_full_{model}_bohr3"],
-                        dtype=float,
+    plot_style = ExitStack()
+    plot_style.enter_context(style_context("thesis", palette="bing"))
+    colors = dict(
+        zip(models, plt.rcParams["axes.prop_cycle"].by_key()["color"])
+    )
+    styles = {"qm": "-", "tf": "--"}
+    fig_density, density_axes = plt.subplots(
+        len(states),
+        2,
+        figsize=grid_figsize(len(states), 2),
+        squeeze=False,
+    )
+    for row, state in enumerate(states):
+        for model_index, model in enumerate(models):
+            r_e = np.asarray(state[f"r_{model}_bohr"], dtype=float)
+            shell_weight = 4.0 * np.pi * r_e**2
+            n0 = float(np.asarray(state["n0_bohr3"])[model_index])
+            density_mask = r_e <= 8.0
+            screening_mask = r_e <= 12.0
+            density_axes[row, 0].plot(
+                r_e[density_mask],
+                (
+                    shell_weight
+                    * (
+                        np.asarray(
+                            state[f"n_full_{model}_bohr3"],
+                            dtype=float,
+                        )
+                        - n0
                     )
-                    - n0
-                )
-            )[density_mask],
-            styles[model],
-            color=colors[model],
-            label=f"{labels[model]}: full-$n_0$",
-        )
-        density_axes[row, 1].plot(
-            r_e[screening_mask],
-            (
-                shell_weight
-                * np.asarray(state[f"n_scr_{model}_bohr3"], dtype=float)
-            )[screening_mask],
-            styles[model],
-            color=colors[model],
-            label=labels[model],
-        )
+                )[density_mask],
+                styles[model],
+                color=colors[model],
+                label=f"{labels[model]}: full-$n_0$",
+            )
+            density_axes[row, 1].plot(
+                r_e[screening_mask],
+                (
+                    shell_weight
+                    * np.asarray(state[f"n_scr_{model}_bohr3"], dtype=float)
+                )[screening_mask],
+                styles[model],
+                color=colors[model],
+                label=labels[model],
+            )
 
-    rho = float(state["rho_g_cc"])
-    temperature = float(state["temperature_ev"])
-    density_axes[row, 0].set_ylabel(
-        rf"{rho:g} g cm$^{{-3}}$, {temperature:g} eV"
-        + "\n"
-        + r"$4\pi r^2 n(r)$ [Bohr$^{-1}$]"
+        rho = float(state["rho_g_cc"])
+        temperature = float(state["temperature_ev"])
+        density_axes[row, 0].set_ylabel(
+            rf"{rho:g} g cm$^{{-3}}$, {temperature:g} eV"
+            + "\n"
+            + r"$4\pi r^2 n(r)$ [Bohr$^{-1}$]"
+        )
+        density_axes[row, 0].set_xlim(-0.2, 4.0)
+        density_axes[row, 1].set_xlim(-0.5, 12.0)
+
+    density_titles = (r"$n_{\rm full}-n_0$", "screening density")
+    for axis, title in zip(density_axes[0], density_titles, strict=True):
+        axis.set_title(title)
+        axis.legend(frameon=False)
+    for axis in density_axes[-1]:
+        axis.set_xlabel(r"$r$ [Bohr]")
+    density_axes[0, 1].set_ylabel(
+        r"$4\pi r^2 n_{\rm scr}$ [Bohr$^{-1}$]"
     )
-    density_axes[row, 0].set_xlim(-0.2, 4.0)
-    density_axes[row, 1].set_xlim(-0.5, 12.0)
-
-density_titles = (r"$n_{\rm full}-n_0$", "screening density")
-for axis, title in zip(density_axes[0], density_titles, strict=True):
-    axis.set_title(title)
-    axis.legend(frameon=False)
-for axis in density_axes[-1]:
-    axis.set_xlabel(r"$r$ [Bohr]")
-density_axes[0, 1].set_ylabel(
-    r"$4\pi r^2 n_{\rm scr}$ [Bohr$^{-1}$]"
-)
-fig_density.suptitle(
-    "Aluminium electronic structure: KS-DFT versus Thomas–Fermi",
-    y=0.985,
-)
-fig_density.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
-
-
-# %%
-# The same electronic outputs are then propagated through the common
-# pseudoatom/QOZ/HNC construction.
-
-fig_ionic, ionic_axes = plt.subplots(
-    len(states),
-    2,
-    figsize=grid_figsize(len(states), 2),
-    squeeze=False,
-)
-for row, state in enumerate(states):
-    r_ion = np.asarray(state["r_ion_bohr"], dtype=float)
-    k = np.asarray(state["k_bohr_inv"], dtype=float)
-    for model_index, model in enumerate(models):
-        ionic_axes[row, 0].plot(
-            r_ion,
-            np.asarray(state["gii_r"], dtype=float)[model_index],
-            styles[model],
-            color=colors[model],
-            label=labels[model],
-        )
-        ionic_axes[row, 1].plot(
-            k,
-            np.asarray(state["sii_k"], dtype=float)[model_index],
-            styles[model],
-            color=colors[model],
-            label=labels[model],
-        )
-    rho = float(state["rho_g_cc"])
-    temperature = float(state["temperature_ev"])
-    ionic_axes[row, 0].set_ylabel(
-        rf"{rho:g} g cm$^{{-3}}$, {temperature:g} eV"
-        + "\n"
-        + r"$g_{ii}(r)$"
+    fig_density.suptitle(
+        "Aluminium electronic structure: KS-DFT versus Thomas–Fermi",
+        y=0.985,
     )
-    ionic_axes[row, 0].set_xlim(-0.5, 12.0)
-    ionic_axes[row, 1].set_xlim(0.0, 6.0)
-    ionic_axes[row, 1].axhline(1.0, color="0.45", lw=0.8, ls=":")
-ionic_axes[0, 0].set_title(r"$g_{ii}(r)$")
-ionic_axes[0, 1].set_title(r"$S_{ii}(k)$")
-ionic_axes[0, 0].legend(frameon=False)
-ionic_axes[0, 1].legend(frameon=False)
-ionic_axes[-1, 0].set_xlabel(r"$r$ [Bohr]")
-ionic_axes[-1, 1].set_xlabel(r"$k$ [Bohr$^{-1}$]")
-ionic_axes[0, 1].set_ylabel(r"$S_{ii}$")
-fig_ionic.suptitle(
-    "Aluminium ionic structure: KS-DFT versus Thomas–Fermi",
-    y=0.985,
-)
-fig_ionic.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
+    fig_density.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
 
-save_figure(
-    fig_density,
-    FIGURE_DIR / "al_qm_tf_electronic_structure",
-    close=False,
-)
-save_figure(
-    fig_ionic,
-    FIGURE_DIR / "al_qm_tf_ionic_structure",
-    close=False,
-)
-plot_style.close()
 
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+    # %%
+    # The same electronic outputs are then propagated through the common
+    # pseudoatom/QOZ/HNC construction.
+
+    fig_ionic, ionic_axes = plt.subplots(
+        len(states),
+        2,
+        figsize=grid_figsize(len(states), 2),
+        squeeze=False,
+    )
+    for row, state in enumerate(states):
+        r_ion = np.asarray(state["r_ion_bohr"], dtype=float)
+        k = np.asarray(state["k_bohr_inv"], dtype=float)
+        for model_index, model in enumerate(models):
+            ionic_axes[row, 0].plot(
+                r_ion,
+                np.asarray(state["gii_r"], dtype=float)[model_index],
+                styles[model],
+                color=colors[model],
+                label=labels[model],
+            )
+            ionic_axes[row, 1].plot(
+                k,
+                np.asarray(state["sii_k"], dtype=float)[model_index],
+                styles[model],
+                color=colors[model],
+                label=labels[model],
+            )
+        rho = float(state["rho_g_cc"])
+        temperature = float(state["temperature_ev"])
+        ionic_axes[row, 0].set_ylabel(
+            rf"{rho:g} g cm$^{{-3}}$, {temperature:g} eV"
+            + "\n"
+            + r"$g_{ii}(r)$"
+        )
+        ionic_axes[row, 0].set_xlim(-0.5, 12.0)
+        ionic_axes[row, 1].set_xlim(0.0, 6.0)
+        ionic_axes[row, 1].axhline(1.0, color="0.45", lw=0.8, ls=":")
+    ionic_axes[0, 0].set_title(r"$g_{ii}(r)$")
+    ionic_axes[0, 1].set_title(r"$S_{ii}(k)$")
+    ionic_axes[0, 0].legend(frameon=False)
+    ionic_axes[0, 1].legend(frameon=False)
+    ionic_axes[-1, 0].set_xlabel(r"$r$ [Bohr]")
+    ionic_axes[-1, 1].set_xlabel(r"$k$ [Bohr$^{-1}$]")
+    ionic_axes[0, 1].set_ylabel(r"$S_{ii}$")
+    fig_ionic.suptitle(
+        "Aluminium ionic structure: KS-DFT versus Thomas–Fermi",
+        y=0.985,
+    )
+    fig_ionic.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
+
+    save_figure(
+        fig_density,
+        FIGURE_DIR / "al_qm_tf_electronic_structure",
+        close=False,
+    )
+    save_figure(
+        fig_ionic,
+        FIGURE_DIR / "al_qm_tf_ionic_structure",
+        close=False,
+    )
+    plot_style.close()
+
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
+
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_al_qm_tf/thumbnail.png"

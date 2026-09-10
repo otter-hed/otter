@@ -7,24 +7,22 @@ not third-party benchmark data.
 The v3 archive stores one 4096-point full-AA density scan for carbon at
 \(T_e=100\) eV: \(\bar Z=Z-Q_{\rm ion}(R_{\rm WS})\),
 \(Z^*=n_e^0/n_i\), the chemical potential, and the 1s/2s/2p/3s/3p/3d energies relative
-to the configured numerical edge
-\(E_{\rm cut}=V_{\rm eff}(0.70R_{\rm max})\).  These two mean-ionization
+to the asymptotic continuum edge \(E_{\rm cut}=0\). These two mean-ionization
 definitions are diagnostics rather than unique observables; their distinct
 pressure-ionization behaviour is discussed by Starrett *et al.* (2019),
-Sec. 4.2.  All 80 AA states from 0.1 through 450 g/cc converged with the
-current production `bound_occ_mode="fd"` state sum.  The archive also stores
+Sec. 4.2. The September 2026 scan independently recomputed all 84 AA states
+from 0.1 through 450 g/cc with `bound_occ_mode="fd"`. All passed the full-SCF
+check: 82 are threshold-resolved, while 4.6 and 300 g/cc are marginal; none
+is unresolved. SCF convergence is not the same as threshold reliability.
+The archive also stores
 each displayed shell's direct contribution to \(Q_{\rm ion}(R_{\rm WS})\),
 including the Starrett--Saumon pressure-ionization and radial-cutoff weights.
-Ten additional states at 1--3 g/cc resolve the pressure-ionization interval.
-Eight log-distributed states between 100 and 400 g/cc resolve the high-density
-rise in mean ionization and chemical potential.
-The 3s branch is stored through 0.60 g/cc and is absent at 0.65 g/cc; this
-brackets a numerical threshold
-interval rather than defining an exact pressure-ionization density.  The
-3p branch is found at 0.10, 0.20, 0.25, and 0.35 g/cc; the low-density 3d
-branch is displayed where present with reduced opacity.  Shallow-level values
+The 3s branch is stored through 0.45 g/cc and absent at 0.50 g/cc. This
+brackets the sampled branch endpoint rather than defining an exact physical
+pressure-ionization density. The 3p and 3d branches are displayed only where
+the stored level mask permits them. Shallow-level values
 are omitted when their numerical threshold classification is marginal or
-unresolved; these classifications are recorded in the manifest, not drawn
+unresolved; these classifications are stored per state in the NPZ, not drawn
 as plot annotations.
 
 When the requested grid matches this archive, the gallery loads it directly.
@@ -44,6 +42,36 @@ independent calculation of the full grid.  Each completed density point is
 checkpointed under
 `benchmarks/outputs/carbon_ionization_levels/point_cache`, so an interrupted
 scan can resume without changing this accepted archive.
+
+## Independent reproduction (no baseline or cache reuse)
+
+For verification, use the following instead of the incremental command above.
+Run from the checkout with Otter's dependencies installed:
+
+```bash
+export PYTHONPATH=src MPLBACKEND=Agg
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+export NUMBA_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+python -u tools/recompute_all_data.py --only carbon_ionization_levels --fresh
+```
+
+This runs all 84 full-AA inputs serially, bypassing baseline seeds and old
+point caches. `--fresh` deletes the old candidate directory
+`benchmarks/outputs/carbon_ionization_levels/`, including its figures and
+checkpoints; back up any candidate you want to keep. The accepted NPZ here
+is never overwritten. Omit `--fresh` to resume matching point checkpoints.
+
+The new NPZ, checksum manifest and generated ionization/level figures are
+written under `benchmarks/outputs/carbon_ionization_levels/`. The Bethkenhagen
+benchmark uses that same new NPZ when run with:
+
+```bash
+OTTER_USE_CANDIDATE_CARBON_IONIZATION=1 python benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py
+```
+
+The complete calculation is in `docs/examples/plot_carbon_ionization_levels.py`;
+no separate private producer is required.
+Its gallery page includes the calculation source and reproduction command.
 
 Method context:
 

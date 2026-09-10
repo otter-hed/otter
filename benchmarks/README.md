@@ -1,100 +1,52 @@
 # Otter benchmarks
 
-This directory separates immutable literature data, precomputed numerical
-reference results, and lightweight plotting programs:
-
-```text
-reference_data/   Digitized or tabulated results from cited publications
-baselines/        Pure-numeric Otter plotting baselines
-examples/         Sphinx-Gallery benchmark and validation pages
-runners/          Offline programs that read those files and regenerate plots
-```
-
-The plotting runners do not perform average-atom or QOZ/HNC calculations.
-This keeps documentation builds and ordinary continuous integration fast and
-deterministic. Full recomputation belongs in a separately marked release
-benchmark and must never silently overwrite an accepted reference result.
-
-Every reference-result dataset must:
-
-- load with `numpy.load(..., allow_pickle=False)`;
-- use array names that include physical units where appropriate;
-- contain no absolute workstation paths;
-- provide convergence metadata and a result-affecting configuration;
-- be listed in a manifest with SHA-256 checksums and publication provenance.
-
-Baseline NPZ files use benchmark-specific schemas because a single archive
-may contain several densities, temperatures, or model variants.  They are
-read by the corresponding gallery/runner, not by ``otter.load_plasma_state``.
-For a complete single-workflow archive and its stable public API, use
-``otter.save_plasma_state`` and the ``otter_state_v4`` schema documented in
-``docs/source/user_guide/state_exports.rst``.
-
-Literature-derived and author-provided data are not covered by Otter's
-source-code license unless their manifest explicitly says otherwise.  The
-bundled reference sets are published by maintainer decision with detailed
-source attribution and license status `NOASSERTION`; this is not an assertion
-of a publisher- or provider-supplied open-data license.  Consult the
-[reference-data notice](reference_data/README.md), dataset README, and
-manifest before reuse.  The release checker rejects any future manifest with
-an unresolved `public_release_gate`.
-
-Curated packages currently included are:
-
-- `baselines/al_qm_tf`: project-generated QM/TF applicability comparison;
-- `baselines/carbon_lfc_sensitivity`: project-generated finite-temperature
-  LFC sensitivity comparison;
-- `baselines/starrett_et_al_2014_mixtures_fig3`: project-generated CH1.36
-  precursor results paired with separately gated, digitized literature curves.
-- `baselines/ion_structure_library`: Otter Al/Be/C states paired with
-  the provenance-audited portion of the local reference library, including
-  HNC, VMHNC, and same-potential MD for the Wünsch Be state;
-- `baselines/starrett_single_species_2013_2014`: strict native Otter C and H
-  results, plus explicit rejected/not-calculated Fe and W records, paired
-  with a panel-by-panel audited Starrett--Saumon reference collection;
-- `baselines/starrett_saumon_2013_electronic`: Al-QM and Fe-TF production IS
-  and experimental SC-feedback level, pressure-ionization, and ionization
-  diagnostics compared with Tables I--III of Starrett and Saumon (2013);
-- `baselines/johnson_et_al_2025_two_temperature_al`: Otter aluminium
-  calculations paired with the two-temperature Figure 2 curves of Johnson,
-  Shaffer, and Murillo (2025);
-- `baselines/argha_roy_carbon_sii`: accepted Otter carbon states paired with
-  DFT-MD data provided by Dr. Argha Roy (private communication; unpublished);
-- `baselines/schorner_et_al_2022_al_sii`: equilibrium aluminium LDA/PBE HNC,
-  VMHNC, and same-potential MD paired with the corrected Figure 2 DFT-MD
-  curves of Schörner et al. (2022);
-- `baselines/ch2_hnc_md`: nine equilibrium and two-temperature CH2 states
-  comparing multicomponent HNC with same-QOZ-potential LAMMPS MD; and
-- `baselines/al_full_workflow_1ev`: the complete Otter Al
-  electronic-to-QOZ/HNC gallery state.
-
-Expensive producer programs are named ``regenerate_*.py``.  They write to
-``benchmarks/outputs/**/recomputed`` and do not modify accepted reference
-results.
-
-Same-potential MD producers use ``tools/otter_lammps_md.py``.  This shared
-driver accepts all unordered pair potentials for one or many species and
-preserves runnable LAMMPS inputs, total/partial RDF and structure factors,
-sampling uncertainties, logs, trajectories, and checksummed metadata.
-
-To recalculate every public Otter dataset without reusing old candidates or
-the accepted carbon-ionization states, run:
+Run a gallery's Python script from an installed Otter source checkout to
+calculate its states and export figures. No precomputed Otter NPZ is needed.
+For example:
 
 ```bash
-poetry run python tools/recompute_all_data.py --fresh
+python benchmarks/examples/plot_doppner_2023_be_ionization.py
+python benchmarks/examples/plot_ch2_hnc_md.py
 ```
 
-Use ``--list`` to show dataset identifiers and repeated ``--only NAME``
-options for a subset.  The command deletes only selected candidate data below
-``benchmarks/outputs``.  It never changes ``benchmarks/reference_data`` or
-``benchmarks/baselines``.  Replace an accepted baseline only after all new
-states pass the convergence gates, manifest checks, tests, and documentation
-build; this prevents a failed calculation from leaving a mixed old/new
-package.
+The second command includes LAMMPS MD and can take hours. LAMMPS and MPI must
+be installed; the Schörner LDA/PBE comparison also needs the Libxc extra.
+Each script's input block describes physical states and numerical controls.
+AA calculations retain the one-continuum-worker default.
 
-Public gallery programs are complete, directly executable scripts.  Their
-``USE_PRECOMPUTED_DATA`` switch selects checksum-verified Otter arrays or a
-fresh calculation performed in that same file.  Figures use
-``otter.plotting`` and write both a high-resolution PNG and a vector PDF
-under ``benchmarks/outputs/<benchmark>/figures``; the PDF is intended for
-papers and presentation slides.
+## Directory layout
+
+- `reference_data/`: cited literature coordinates and attribution manifests.
+- `examples/`: runnable calculation-and-plotting gallery scripts.
+- `runners/`: shared producers and local review utilities used by those scripts.
+- `outputs/`: locally generated numerical results, logs and figures (not public).
+- `baselines/`: private accepted numerical archives and provenance for development.
+
+The public source export excludes **all NPZ**, not just ionization scans.
+`tools/export_public_review.py` creates a separate review snapshot without
+altering local results or Git history. `tools/check_public_release.py --root
+<snapshot> --no-npz` checks that snapshot. Removing files from a new public
+commit does not erase them from earlier Git history.
+
+Documentation uses recorded figures, tables and terminal text under
+`docs/source/_static/gallery_results/`. Their manifest records capture hashes.
+These are display assets, never solver inputs; Sphinx does not launch AA/MD.
+After a new scientific campaign, review the outputs before refreshing these
+assets. A plotting/build pass is not a new scientific validation run.
+
+Local NPZ saves still use explicit units, selective fields, physical inputs,
+configuration and convergence metadata. No failed calculation falls back to
+an older accepted curve. Optional cache-review modes require user-provided
+local data and are disabled by default.
+
+MD producers use `tools/otter_lammps_md.py`, supporting single and multiple
+species, all pair potentials, runnable LAMMPS input, trajectories, RDF,
+density-mode structure factors, uncertainty and timing records. CH2's public
+driver is `tools/reproduce_ch2_hnc_md.py`.
+
+Literature-derived data are not covered by Otter's software license unless
+their manifest explicitly says otherwise. Check `reference_data/README.md`
+and each dataset's attribution/reuse notice.
+
+Solver profiling and exploratory diagnostics belong in `tools/diagnostics/`,
+not the scientific benchmark gallery.

@@ -51,6 +51,7 @@ from numba import njit
 
 from otter.numerics.grids import create_sqrt_grid
 from otter.numerics.interpolation import interp_to_grid
+from otter.numerics.mixing import regularized_secant_weights as _regularized_scf_weights
 from otter.electronic.continuum.scattering import (
     fermi_dirac,
     QuantumContinuumScattering,
@@ -59,6 +60,7 @@ from otter.electronic.continuum.scattering import (
     gamma_from_phase_shift_cache,
     _prepare_phase_shift_transport_spectrum,
     _gamma_from_transport_spectrum,
+    _select_match_window,
 )
 from otter.electronic.continuum.ideal import IdealContinuum, ideal_unbound_density
 from otter.electronic.continuum.hybrid import QuantumContinuumHybrid
@@ -395,7 +397,7 @@ class KSDTFConfig(CitationMixin):
     - bound_occ_mode controls whether M(e) weights apply to n_bound.
     - mixing_scheme selects the SCF mixer ("linear" or "eyert").
     - mixing_m sets the history size M for Eyert mixing.
-    - mixing_w0 is the Eyert stabilizer (w0^2 in Eq. 63).
+    - mixing_w0 sets a dimensionless ridge on normalized Eyert history.
     - n_jobs is kept as a backward-compatible bound-solver argument, but bound
       states are now always solved serially.
     - neutrality_mode selects the mu neutrality constraint:
@@ -473,12 +475,13 @@ class KSDTFConfig(CitationMixin):
     # SCF mixer (linear or Eyert)
     # - mixing_scheme selects the SCF mixer ("eyert" or "linear").
     # - mixing_m sets the Eyert history size M (typical 4–8; smaller is safer).
-    # - mixing_w0 is the Eyert stabilizer w0 (Eq. 63). Larger => more damping.
-    #   Typical range: 1e-5–1e-3. If oscillatory, increase w0; if slow, decrease.
+    # - mixing_w0 regularizes normalized history, independently of residual
+    #   amplitude. Larger values suppress extrapolation more strongly.
     mix: float = 0.2
     mixing_scheme: str = "eyert"
     mixing_m: int = 5
     mixing_w0: float = 1e-4
+    # Dimensionless ridge after normalizing the radial secant history.
     max_iter: int = 40
     tol: float = 1e-4
     mu_mode: str = "fixed"
@@ -762,6 +765,70 @@ def _require_density_domain_tail(params, full_tail_meta, cont_tail_meta):
             "raw A3 outside density_rmax is not converged in partial waves. "
             "Retry with cont_b3_density_domain=False to diagnose the B3 failure."
         )
+
+
+def _continuum_matching_window_valid(r, potential, params):
+    """Check the potential criterion on the actual A3 propagation domain.
+
+    The low-kr preference is relaxable; the potential-window criterion is
+    not. Reuse the scattering selector so SCF and quadrature make identical
+    decisions. Explicit non-free fallback policies retain their own semantics.
+    This checks window availability, not energy/angular quadrature accuracy.
+    """
+    if str(params.get("match_fallback", "free")).lower() != "free":
+        return True
+    end = _continuum_prefix_length(r, params.get("solve_rmax"))
+    _, meta = _select_match_window(
+        r[:end], potential[:end], 1.0, 0,
+        params.get("match_slice"), float(params.get("match_fraction", 0.2)),
+        params.get("match_r_cut"), params.get("match_width"),
+        str(params.get("match_fraction_mode", "r")), None,
+        params.get("match_v_tol", 1e-4), int(params.get("match_min_points", 12)),
+    )
+    return not meta["fallback"]
+
+
+def _guard_continuum_potential_mix(r, previous, unmixed, proposed, mix, params):
+    """Backtrack a step that would discard a valid interacting continuum.
+
+    Window failure selects a free-wave substitute, not a solution of the
+    interacting radial equation in Appendix A of StarrettSaumon2014. Do not
+    cross that algorithmic discontinuity from a valid SCF iterate. Start with
+    the configured linear step, halve it at most twelve times, and retain the
+    old potential if no valid step exists. A blocked step cannot bypass the
+    unchanged fixed-point residual test. Invalid cold starts remain available
+    for initialization but cannot pass the final matching audit below.
+
+    This is an Otter numerical safeguard, not a modification of the potential,
+    density, occupations, energy zero, or matching tolerance.
+    """
+    if (_continuum_matching_window_valid(r, proposed, params)
+            or not _continuum_matching_window_valid(r, previous, params)):
+        return proposed, 0
+    for backtracks in range(13):
+        fraction = float(mix) * 2.0**(-backtracks)
+        candidate = previous + fraction * (unmixed - previous)
+        if _continuum_matching_window_valid(r, candidate, params):
+            return candidate, backtracks + 1
+    return previous.copy(), 14
+
+
+def _audit_continuum_matching(result, config, continuum):
+    """Never certify a converged AA whose scattering window used free fallback."""
+    if not isinstance(continuum, QuantumContinuumScattering):
+        return
+    params, ext_params = _split_continuum_params_for_full_ext(config.continuum_params)
+    last = result.get("history", [{}])[-1] if result.get("history") else {}
+    for kind, settings in (("full", params), ("ext", ext_params)):
+        if kind == "ext" and not config.compute_external:
+            continue
+        key = f"continuum_matching_window_{kind}_valid"
+        valid = (_continuum_matching_window_valid(result["r"], result[f"v_{kind}"], settings)
+                 and last.get(key, True))
+        result[key] = bool(valid)
+        if not valid:
+            result["converged"] = False
+            result["scf_stop_reason"] = "continuum_matching_window"
 
 
 def _rebuild_continuum_on_full_grid(
@@ -3931,6 +3998,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
             t_stage = time.perf_counter()
 
         # (17) SCF mixing (linear or Eyert) on V_eff.
+        v_full_input, v_ext_input = v_full, v_ext
         if mixing_scheme == "linear":
             v_full = mix * v_full_new + (1.0 - mix) * v_full
         else:
@@ -3944,24 +4012,10 @@ def _scf_fixed_mu(config: KSDTFConfig,
                 df_hist.append(f_now - f_prev)
 
             if dx_hist:
-                hist_len = len(dx_hist)
-                a_mat = np.zeros((hist_len, hist_len), dtype=float)
-                b_vec = np.zeros(hist_len, dtype=float)
-                for i in range(hist_len):
-                    for j in range(hist_len):
-                        prod = dx_hist[i] * 0.0
-                        prod = df_hist[i] * df_hist[j]
-                        a_mat[i, j] = _trapz(prod, r_cont)
-                        if i == j:
-                            a_mat[i, j] += mixing_w0 ** 2
-                    b_vec[i] = _trapz(df_hist[i] * f_now, r_cont)
-                try:
-                    w_vec = np.linalg.solve(a_mat, b_vec)
-                except np.linalg.LinAlgError:
-                    w_vec = None
+                w_vec, _ = _regularized_scf_weights(df_hist, f_now, r_cont, mixing_w0)
                 if w_vec is not None:
                     corr = np.zeros_like(x_in)
-                    for i in range(hist_len):
+                    for i in range(len(dx_hist)):
                         corr = corr + w_vec[i] * (dx_hist[i] + mix * df_hist[i])
                     x_next = x_in + mix * f_now - corr
                 else:
@@ -3988,6 +4042,23 @@ def _scf_fixed_mu(config: KSDTFConfig,
                     config.v_tail_fraction,
                     config.v_tail_mode,
                 )
+        matching_full_valid = matching_ext_valid = True
+        matching_backtracks = 0
+        if isinstance(continuum, QuantumContinuumScattering):
+            matching_full_valid = _continuum_matching_window_valid(r_cont, v_full_input, cont_params)
+            v_full, matching_backtracks = _guard_continuum_potential_mix(
+                r_cont, v_full_input, v_full_new, v_full, mix, cont_params)
+            # A guarded step does not invalidate secants between actual inputs.
+            # A residual evaluated without an interacting matching window does.
+            if not matching_full_valid:
+                dx_hist.clear()
+                df_hist.clear()
+                x_prev = f_prev = None
+            if compute_external:
+                matching_ext_valid = _continuum_matching_window_valid(r_cont, v_ext_input, cont_params_ext)
+                v_ext, ext_backtracks = _guard_continuum_potential_mix(
+                    r_cont, v_ext_input, v_ext_new, v_ext, mix, cont_params_ext)
+                matching_backtracks += ext_backtracks
         if perf_on:
             perf["mix"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
@@ -4035,6 +4106,9 @@ def _scf_fixed_mu(config: KSDTFConfig,
         history.append({
             "iter": it,
             "err": float(err),
+            "continuum_matching_window_full_valid": bool(matching_full_valid),
+            "continuum_matching_window_ext_valid": bool(matching_ext_valid),
+            "continuum_mix_backtracks": int(matching_backtracks),
             "ph_kappa": float(kappa_eff),
             "ph_mixer_reset": bool(ph_mixer_reset),
             "b3_charge_constraint_requested": bool(
@@ -4288,6 +4362,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
         result["debug_ion_gamma"] = float(ion_gamma)
     if scf_snapshots is not None:
         result["scf_snapshots"] = list(scf_snapshots)
+    _audit_continuum_matching(result, config, continuum)
     return result
 
 def _scf_neutral_inner(config: KSDTFConfig,
@@ -6010,6 +6085,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
             t_stage = time.perf_counter()
 
         # (15) Mix V_eff (linear or Eyert) to stabilize SCF.
+        v_full_input, v_ext_input = v_full, v_ext
         if mixing_scheme == "linear":
             v_full = mix * v_full_new + (1.0 - mix) * v_full
         else:
@@ -6023,23 +6099,10 @@ def _scf_neutral_inner(config: KSDTFConfig,
                 df_hist.append(f_now - f_prev)
 
             if dx_hist:
-                hist_len = len(dx_hist)
-                a_mat = np.zeros((hist_len, hist_len), dtype=float)
-                b_vec = np.zeros(hist_len, dtype=float)
-                for i in range(hist_len):
-                    for j in range(hist_len):
-                        prod = df_hist[i] * df_hist[j]
-                        a_mat[i, j] = _trapz(prod, r_cont)
-                        if i == j:
-                            a_mat[i, j] += mixing_w0 ** 2
-                    b_vec[i] = _trapz(df_hist[i] * f_now, r_cont)
-                try:
-                    w_vec = np.linalg.solve(a_mat, b_vec)
-                except np.linalg.LinAlgError:
-                    w_vec = None
+                w_vec, _ = _regularized_scf_weights(df_hist, f_now, r_cont, mixing_w0)
                 if w_vec is not None:
                     corr = np.zeros_like(x_in)
-                    for i in range(hist_len):
+                    for i in range(len(dx_hist)):
                         corr = corr + w_vec[i] * (dx_hist[i] + mix * df_hist[i])
                     x_next = x_in + mix * f_now - corr
                 else:
@@ -6066,6 +6129,22 @@ def _scf_neutral_inner(config: KSDTFConfig,
                     config.v_tail_fraction,
                     config.v_tail_mode,
                 )
+        matching_full_valid = matching_ext_valid = True
+        matching_backtracks = 0
+        if isinstance(continuum, QuantumContinuumScattering):
+            matching_full_valid = _continuum_matching_window_valid(r_cont, v_full_input, cont_params)
+            v_full, matching_backtracks = _guard_continuum_potential_mix(
+                r_cont, v_full_input, v_full_new, v_full, mix, cont_params)
+            # Preserve valid actual-input secants across safeguarded updates.
+            if not matching_full_valid:
+                dx_hist.clear()
+                df_hist.clear()
+                x_prev = f_prev = None
+            if compute_external:
+                matching_ext_valid = _continuum_matching_window_valid(r_cont, v_ext_input, cont_params_ext)
+                v_ext, ext_backtracks = _guard_continuum_potential_mix(
+                    r_cont, v_ext_input, v_ext_new, v_ext, mix, cont_params_ext)
+                matching_backtracks += ext_backtracks
         if perf_on:
             perf["mix"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
@@ -6229,6 +6308,9 @@ def _scf_neutral_inner(config: KSDTFConfig,
         # (19) Store SCF history snapshot.
         history.append({
             "iter": int(it),
+            "continuum_matching_window_full_valid": bool(matching_full_valid),
+            "continuum_matching_window_ext_valid": bool(matching_ext_valid),
+            "continuum_mix_backtracks": int(matching_backtracks),
             "mu": float(mu),
             "ph_kappa": float(kappa_eff),
             "ph_mixer_reset": bool(ph_mixer_reset),
@@ -6599,6 +6681,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
         result["debug_ion_gamma"] = float(final_state["debug_ion_gamma"])
     if scf_snapshots is not None:
         result["scf_snapshots"] = list(scf_snapshots)
+    _audit_continuum_matching(result, config, continuum)
     return result
 
 def solve_ks_dft_is(config: KSDTFConfig) -> Dict[str, Any]:

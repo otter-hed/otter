@@ -1,5 +1,10 @@
 :orphan:
 
+.. note::
+
+   HNC and VMHNC use the September 2026 recalculation. MD is historical,
+   using the earlier potentials; see :doc:`validation_20260908`.
+
 Schörner et al. (2022) aluminium structure factors
 ===================================================
 
@@ -12,10 +17,9 @@ two aluminium curves digitized from Figure 2 of :cite:t:`SchornerEtAl2022`:
   :math:`\rho=8.1\,\mathrm{g\,cm^{-3}}`.
 
 For each state, LDA-PW92 and PBE electronic calculations produce separate
-IS-QOZ ion--ion potentials.  Ordinary HNC, Rosenfeld--Ashcroft VMHNC, and a
-2048-ion classical MD calculation are then evaluated with each potential.
-HNC and VMHNC reuse exactly the same electronic result and pair potential, and
-MD uses that same potential, so their differences isolate the ionic treatment.
+IS-QOZ ion--ion potentials. Ordinary HNC and Rosenfeld--Ashcroft VMHNC reuse
+the same current electronic result and potential. The retained 2048-ion MD
+used earlier potentials, so comparison with it no longer isolates closure error.
 
 Models and terminology
 ----------------------
@@ -49,7 +53,7 @@ unchanged and applies exactly
 to ``Al_T_1p0_rho_4p712gcc`` while loading it.  No correction is applied to
 the 5 eV curve.  The reference manifest records and tests this operation.
 
-Same-potential molecular dynamics
+Historical molecular dynamics
 ---------------------------------
 
 The MD curves use LAMMPS :cite:p:`ThompsonEtAl2022`, 2048 ions, a shifted-
@@ -79,44 +83,12 @@ relative NVE energy drifts are below :math:`2.5\times10^{-6}`.
 Quantitative comparison
 -----------------------
 
-Interpolating each calculation onto the corrected DFT-MD points gives the
-following RMSE values:
-
-.. list-table::
-   :header-rows: 1
-
-   * - State
-     - XC
-     - HNC
-     - VMHNC
-     - same-potential MD
-   * - 1 eV, 4.712 g cm\ :sup:`-3`
-     - LDA-PW92
-     - 0.0502
-     - 0.0455
-     - 0.0474
-   * - 1 eV, 4.712 g cm\ :sup:`-3`
-     - PBE
-     - 0.0465
-     - 0.0515
-     - 0.0504
-   * - 5 eV, 8.1 g cm\ :sup:`-3`
-     - LDA-PW92
-     - 0.0253
-     - 0.0103
-     - 0.0143
-   * - 5 eV, 8.1 g cm\ :sup:`-3`
-     - PBE
-     - 0.0241
-     - 0.0112
-     - 0.0194
-
-The independent real-space comparison with same-potential MD is a more direct
-closure audit.  The four HNC--MD :math:`g(r)` RMSE values are
-``0.0192--0.0560``; VMHNC reduces them to ``0.0055--0.0143``.  Thus VMHNC
-tracks the classical equilibrium structure of the Otter potential better in
-all four cases.  At 5 eV it also substantially improves agreement with
-DFT-MD around the first :math:`S_{ii}(k)` peak.
+The :doc:`runnable gallery <gen_benchmarks/plot_schorner_et_al_2022_al_sii>`
+interpolates each current curve onto the corrected DFT-MD points and prints
+RMSE, mean absolute error and maximum error directly from the loaded NPZ.
+Those generated values are authoritative; a separate hand-copied table is
+not maintained here. The historical MD data are unchanged. They cannot certify
+the current closure at a fixed potential without a matching new MD run.
 
 At 1 eV, however, the spherical pseudoatom construction cannot represent
 directional chemical bonding or transient molecular structure.  A bridge

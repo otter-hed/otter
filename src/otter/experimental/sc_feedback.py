@@ -373,6 +373,10 @@ def solve_sc_feedback_workflow(
     Starrett--Saumon (2014), Sec. 2.4 coupling: Eqs. (19)--(20) construct
     ``V_Ie^C``, the QOZ/HNC ``g_II`` replaces the ion-sphere step in Eqs.
     (4)/(7), and the IS chemical potential remains fixed.
+
+    Orbital SC steps default to zero-tail matching of shallow bound states.
+    Explicit AA/species overrides take precedence; ordinary IS and TF defaults
+    are unchanged. Matching retains the existing threshold acceptance checks.
     """
     controls = SCFeedbackConfig() if feedback_cfg is None else feedback_cfg
     if is_workflow.get("ion", None) is None:
@@ -442,6 +446,11 @@ def solve_sc_feedback_workflow(
             overrides = dict(workflow_cfg.aa_overrides)
             overrides.update(dict(workflow_cfg.species_overrides.get(symbol, {})))
             electronic_model = str(workflow_cfg.electronic_model).strip().lower()
+            if electronic_model != "tf":
+                # Feedback can move an orbital through E=0 between updates.
+                # Match its exterior before a finite-wall normalization jump
+                # stalls the inner SCF. Preserve explicit per-user/species policy.
+                overrides.setdefault("bound_zero_tail_refine", True)
             if (
                 electronic_model != "tf"
                 and str(overrides.get("bound_occ_mode", "fd")).strip().lower()

@@ -21,15 +21,15 @@ the 1s, 2s, 2p, and 3s energies, \(M(E)\), and the scattering-derived
 \(\gamma\), separately for IS and SC.
 
 At 15 eV the IS state contains no negative-energy 3s level.  SC feedback
-produces a resolved 3s state at -0.00846 Ha with \(\gamma=0.171\) Ha and
-\(M=0.0928\), compared with the published -0.0125 Ha, 0.174 Ha, and 0.134.
-The all-space threshold matcher is enabled over the documented 0.03-Ha window
-so this shallow state is not classified from a finite-box eigenvalue alone.
+produces a resolved 3s state at -0.00835 Ha with \(\gamma=0.171\) Ha and
+\(M=0.0916\), compared with the published -0.0125 Ha, 0.174 Ha, and 0.134.
+QM SC uses the default zero-tail refinement policy; this benchmark no longer
+forces an enlarged 0.03-Ha matching window.
 The published values live in the adjacent `reference_data` package and are
 not embedded in this project-generated NPZ.
 
 The September 2026 refresh uses adaptive QM full-AA precision within SC and
 checks the current unmixed correlation-potential residual. Its eight SC
-iteration counts are 9, 8, 7, 8 (Al) and 10, 10, 13, 13 (Fe). The archive
+iteration counts are 9, 7, 8, 8 (Al) and 10, 10, 13, 13 (Fe). The archive
 records the actual final residuals and precision-refinement flags; these
 values are not inferred from the inner SCF convergence flag.

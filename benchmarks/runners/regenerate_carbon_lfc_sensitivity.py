@@ -33,7 +33,6 @@ from otter import (  # noqa: E402
     continue_plasma_workflow_from_electronic_result,
     solve_plasma_workflow,
 )
-from otter.electronic import FullExternalConfig  # noqa: E402
 
 
 RHO_G_CC = 5.0
@@ -46,8 +45,7 @@ LFC_MODELS = (
     "gregori2007",
 )
 REFERENCE_LFC = "chabrier1990"
-MAX_STATE_WORKERS = 2
-QOZ_N_POINTS = 8192
+MAX_STATE_WORKERS = 1
 HNC_TOL = 1.0e-5
 HNC_CLOSURE_TRANSFORM_TOL = 1.0e-4
 R_RETAIN_MAX_BOHR = 20.0
@@ -138,17 +136,8 @@ def _configuration(
             None if ion_temperature_ev is None else float(ion_temperature_ev)
         ),
         rho_g_cc=float(RHO_G_CC),
-        aa_overrides={
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_max_binding_ha": 1.0e-2,
-            "bound_zero_tail_scan_points": 48,
-            "bound_zero_tail_edge_rel_tol": 0.1,
-        },
-        qoz_linear_n_points=int(QOZ_N_POINTS),
         qoz_response_lfc_model=str(lfc_model),
         hnc_tol=HNC_TOL,
-        hnc_closure_transform_tol=HNC_CLOSURE_TRANSFORM_TOL,
-        hnc_max_iter=1000,
     )
 
 
@@ -197,6 +186,7 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         )
 
     ion_results: list[dict[str, Any]] = []
+    ionic_configurations: list[dict[str, Any]] = []
     ion_elapsed_s: list[float] = []
     for model in LFC_MODELS:
         started = time.perf_counter()
@@ -210,6 +200,7 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
             electronic_result=electronic,
         )
         ion_elapsed_s.append(time.perf_counter() - started)
+        ionic_configurations.append(workflow["configuration"])
         ion = dict(workflow["ion"])
         if float(ion["hnc_output_residual"]) > HNC_TOL:
             raise RuntimeError(
@@ -275,20 +266,8 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         "structure_model": "IS",
         "lfc_models": list(LFC_MODELS),
         "reference_lfc": REFERENCE_LFC,
-        "aa_n_points": int(FullExternalConfig.n_points),
-        "continuum_workers_per_state": FullExternalConfig.cont_n_jobs,
-        "bound_occ_mode": "fd",
-        "bound_rmax_mult": None,
-        "bound_zero_tail_refine": True,
-        "bound_zero_tail_max_binding_ha": 1.0e-2,
-        "bound_zero_tail_scan_points": 48,
-        "bound_zero_tail_edge_rel_tol": 0.1,
-        "b3_tail_model": "full",
-        "qoz_n_points_before_padding": QOZ_N_POINTS,
-        "chi0_model": "lindhard_fd",
-        "hnc_tolerance": HNC_TOL,
-        "hnc_transform_closure_tolerance": HNC_CLOSURE_TRANSFORM_TOL,
-        "hnc_max_iterations": 1000,
+        "electronic_configuration": electronic_workflow["configuration"],
+        "ionic_configurations": ionic_configurations,
         "threshold_reliability_edge": (
             "same bound/continuum energy_cut used by n_bound"
         ),
@@ -446,6 +425,7 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
                 "temperature_ev": float(temperature_ev),
                 "data_file": path.name,
                 "data_sha256": _sha256(path),
+                "configuration": json.loads(str(payloads[temperature_ev]["producer_signature_json"].item())),
             }
         )
         print(f"[saved] {path.relative_to(ROOT)}", flush=True)
@@ -517,33 +497,12 @@ def regenerate(*, output_dir: Path = OUTPUT_DIR) -> list[Path]:
             "models": list(LFC_MODELS),
             "reference_model": REFERENCE_LFC,
             "structure_model": "IS",
-            "aa_n_points": int(FullExternalConfig.n_points),
-            "bound_occ_mode": "fd",
-            "bound_rmax_mult": None,
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_matching_mode": "direct_physical_boundary",
-            "bound_zero_tail_max_binding_ha": 1.0e-2,
-            "bound_zero_tail_scan_points": 48,
-            "bound_zero_tail_edge_rel_tol": 0.1,
-            "b3_tail_model": "full",
-            "qoz_n_points_before_padding": QOZ_N_POINTS,
-            "chi0_model": "lindhard_fd",
             "hnc_tolerance": HNC_TOL,
             "hnc_transform_closure_tolerance": (
                 HNC_CLOSURE_TRANSFORM_TOL
             ),
             "strict_electronic_convergence_required": True,
             "allow_unconverged_aa": False,
-            "resolution_rationale": (
-                "4096 radial points follow Starrett--Saumon (2014), Appendix "
-                "B, after a 1024/2048/4096 threshold audit at 100 eV. A "
-                "near-threshold state is checked by matching to a "
-                "zero-potential exterior at the common outer SCF boundary; "
-                "this numerical refinement is motivated by Starrett et al. "
-                "(2019), but is not asserted to reproduce their ion-sphere "
-                "boundary implementation. No separate bound-only radial "
-                "extension is used."
-            ),
         },
         "states": state_records,
     }

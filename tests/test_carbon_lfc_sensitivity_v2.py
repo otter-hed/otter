@@ -19,7 +19,9 @@ def _load(relative_path: str, module_name: str) -> ModuleType:
     return module
 
 
-def test_carbon_lfc_v2_producer_uses_reviewed_strict_resolution() -> None:
+def test_carbon_lfc_producer_uses_default_grids_and_strict_acceptance() -> None:
+    from otter import PlasmaWorkflowConfig
+
     producer = _load(
         "benchmarks/runners/regenerate_carbon_lfc_sensitivity.py",
         "otter_carbon_lfc_v2_producer",
@@ -31,18 +33,16 @@ def test_carbon_lfc_v2_producer_uses_reviewed_strict_resolution() -> None:
     )
 
     assert producer.RHO_G_CC == 5.0
-    assert producer.QOZ_N_POINTS == 8192
+    defaults = PlasmaWorkflowConfig(elements=["C"], temperature_ev=100.0, rho_g_cc=5.0)
+    assert config.qoz_linear_n_points == defaults.qoz_linear_n_points
+    assert config.qoz_pad_factor == defaults.qoz_pad_factor
     assert producer.REFERENCE_LFC == "chabrier1990"
-    assert config.aa_overrides.get("n_points", 4096) == 4096
-    assert config.aa_overrides.get("bound_occ_mode", "fd") == "fd"
-    assert config.aa_overrides.get("b3_tail_model", "full") == "full"
-    assert config.aa_overrides["bound_zero_tail_refine"] is True
-    assert "bound_rmax_mult" not in config.aa_overrides
+    assert config.aa_overrides == {}
     assert config.hnc_require_converged is True
     assert config.hnc_tol == producer.HNC_TOL
     assert (
         config.hnc_closure_transform_tol
-        == producer.HNC_CLOSURE_TRANSFORM_TOL
+        == defaults.hnc_closure_transform_tol
     )
     assert getattr(config, "allow_unconverged_aa", False) is False
 

@@ -5,8 +5,10 @@ This package contains reviewed Otter calculations for the 1, 3, 10, and
 the ion-sphere (IS) pseudoatom construction.  Ordinary HNC and
 Rosenfeld--Ashcroft VMHNC reuse the same accepted electronic result and the
 same effective ion--ion potential, so their difference isolates the ionic
-closure.  Each archive also contains a 2048-ion LAMMPS calculation using that
-same pair potential, with NVT equilibration followed by NVE production.
+closure. HNC/VMHNC were refreshed from the September 2026 campaign. Each
+archive also retains a historical 2048-ion LAMMPS calculation on the earlier
+potential, with NVT equilibration followed by NVE production. The explicit
+`md_is_historical` flag prevents treating this as a matched-potential audit.
 
 Both closures passed the raw OZ residual, positive-structure-factor, and
 transform-closure gates.  VMHNC also passed the variational packing-fraction
@@ -38,10 +40,10 @@ expected model limitation rather than, by itself, a failed bridge test.
 The ordinary HNC solve at 30 eV required potential-strength continuation and
 the Newton--Krylov fallback; all other accepted ordinary-HNC states converged
 with direct Anderson iteration.  The VMHNC inner equations converged to raw
-residuals below `8e-11` for all four states.  Against same-potential MD, the
-four VMHNC RDF RMSE values are `0.0085--0.0163`; ordinary HNC gives
-`0.0326--0.0850`.  This tests the closure for the Otter pair potential and
-does not validate the pseudoatom potential against DFT-MD.
+residuals below `8e-11` for all four states. Current comparison errors are
+calculated from the NPZ by the gallery, not copied from the earlier data.
+The current HNC/VMHNC curves and historical MD do not establish a fixed-
+potential closure test or validate the pseudoatom approximation against DFT-MD.
 
 The self-contained gallery program
 `benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py` has three

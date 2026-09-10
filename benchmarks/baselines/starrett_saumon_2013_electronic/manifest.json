@@ -22,11 +22,39 @@
     }
   },
   "configuration": {
+    "aa_input_overrides_by_state": {
+      "al_rho2p7_te10_qm": {},
+      "al_rho2p7_te15_qm": {},
+      "al_rho2p7_te2_qm": {},
+      "al_rho2p7_te6_qm": {},
+      "fe_rho22.5_te10_tf": {
+        "mu_bounds": [
+          -2000.0,
+          200.0
+        ]
+      },
+      "fe_rho34.37_te5000_tf": {
+        "mu_bounds": [
+          -2000.0,
+          200.0
+        ]
+      },
+      "fe_rho34.5_te100_tf": {
+        "mu_bounds": [
+          -2000.0,
+          200.0
+        ]
+      },
+      "fe_rho39.65_te1000_tf": {
+        "mu_bounds": [
+          -2000.0,
+          200.0
+        ]
+      }
+    },
     "aa_n_points": 4096,
     "al_electronic_model": "qm",
     "bound_energy_cut_mode": "zero",
-    "bound_zero_tail_max_binding_ha": 0.03,
-    "bound_zero_tail_refine": true,
     "external_average_atom": true,
     "fe_electronic_model": "tf",
     "fe_mu_bounds_ha": [
@@ -58,8 +86,8 @@
     "sc_feedback_converged": true,
     "sc_outer_iterations": [
       9,
-      8,
       7,
+      8,
       8,
       10,
       10,
@@ -68,27 +96,31 @@
     ],
     "al_15ev_is_3s_status": "no_negative_energy_level",
     "al_15ev_sc_3s_status": "resolved",
-    "al_15ev_sc_3s_energy_ha": -0.00845937158046833,
-    "al_15ev_sc_3s_m": 0.09279342324607061,
-    "al_15ev_is_gamma_ha": 0.11083092973853821,
-    "al_15ev_sc_gamma_ha": 0.1708976657526546,
-    "al_15ev_is_zbar_partition": 3.2398545392198432,
-    "al_15ev_sc_zbar_partition": 3.193409040204033,
+    "al_15ev_sc_3s_energy_ha": -0.008350204406156081,
+    "al_15ev_sc_3s_m": 0.09164632998547648,
+    "al_15ev_is_gamma_ha": 0.11060859154673908,
+    "al_15ev_sc_gamma_ha": 0.1708132209037222,
+    "al_15ev_is_zbar_partition": 3.239774805986956,
+    "al_15ev_sc_zbar_partition": 3.193734163159288,
     "fe_10ev_is_zbar_partition": 8.807816686124877,
     "fe_10ev_sc_zbar_partition": 8.739492424486414
   },
   "producer": {
-    "git_commit": "e8a32ed3d9d11b81a44d7a1015e7cfcd78416fb3",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "script_relative_path": "benchmarks/examples/plot_starrett_saumon_2013_electronic.py",
-    "script_sha256_current": "b333c8aa33ff43f33c8d44c095c4304bec9283e3c749e8e2965053e2023a1efb",
-    "script_sha256_at_generation": "5ff31bdfa6c7f233b02a539c93a6f05c308dbb75a32787ff1870539d61e1c1a3",
-    "current_controller_sha256": "b333c8aa33ff43f33c8d44c095c4304bec9283e3c749e8e2965053e2023a1efb",
-    "uncommitted_solver_changes_at_generation": true,
-    "source_inventory": "../validation_20260908.json"
+    "script_sha256_current": "02c5fa82118a0d76e171bc34503c62e9e187cc6e6a4a1c482e59eb5be8fb999c",
+    "current_controller_sha256": "02c5fa82118a0d76e171bc34503c62e9e187cc6e6a4a1c482e59eb5be8fb999c",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "sc_default_refresh",
+    "worktree_dirty": true,
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "script_sha256_at_generation": "d21b3320176d2022cb61274656cc7d2938c26af2b862e6e45c103ad4c3a853cf"
   },
   "state": {
     "data_file": "electronic_states.npz",
-    "data_sha256": "03a8eab2e9179efbb407e4ee63b1744eeca0ce36d1578d52ec391c7c58bc6406",
+    "data_sha256": "21aac5d810364022669587f39df31761e991f9dee6fa73bd1f049a0287f7e994",
     "count": 8,
     "schema_version": "otter_starrett_saumon_2013_electronic_v2"
   },

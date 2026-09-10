@@ -7,9 +7,8 @@ finite-temperature average atom.  The same full-AA solutions provide
 
 * :math:`\bar{Z}=Z-Q_{\mathrm{ion}}(R_{\mathrm{WS}})`;
 * :math:`Z^*=n_e^0/n_i`; and
-* the carbon 1s, 2s, 2p, 3s, 3p, and 3d energies when localized, relative
-  to Otter's local numerical
-  continuum edge.
+* the carbon 1s, 2s, 2p, 3s, 3p, and 3d energies when localized, with
+  the bound/free edge at the asymptotic potential zero, :math:`E=0`.
 
 The right-hand axis in each level panel shows how many electrons from that
 shell are assigned to the ionic density inside :math:`R_{\mathrm{WS}}`:
@@ -42,25 +41,38 @@ disappearance density from such points.  The bound/continuum construction
 and ionic-density partition follow :cite:t:`StarrettSaumon2014`; the
 negative-energy exterior matching used for shallow states follows the
 boundary-matching construction discussed by :cite:t:`StarrettEtAl2019`.
-New calculations use Otter's default :math:`E_{\mathrm{cut}}=0`.
-Historical accepted archives retain their recorded continuum convention;
-they are not reused as seeds after changes to the numerical setup or source.
-Energies shown in the plot are :math:`E_{nl}-E_{\mathrm{cut}}`, using the edge
-actually returned by each AA calculation.
+The accepted September 2026 scan uses :math:`E_{\mathrm{cut}}=0` throughout.
+The plotted :math:`E_{nl}-E_{\mathrm{cut}}` is therefore simply :math:`E_{nl}`.
+Old calculations are not reused as seeds after changes to the numerical setup
+or solver source. SCF convergence and threshold-state reliability are separate
+checks; the terminal summary reports both, including any marginal states.
 
 For context, the ionization figure overlays the model-dependent
 :math:`Z^{\mathrm{free}}` curves digitized from Fig. 3(a) of
 :cite:t:`BethkenhagenEtAl2020`.  They use different electron partitions and
 are not equivalent to either Otter :math:`\bar{Z}` or :math:`Z^*`.
 
-The default verifies and loads a checksummed 4096-point Otter scan.  If the
-requested density grid contains new points, Otter reuses the accepted states
-and calculates only the missing densities.  New files are staged under
-``benchmarks/outputs`` and do not overwrite accepted data.  States that fail
-the SCF check are recorded as failures. Unresolved threshold states retain
-diagnostic ionization data but not shallow level energies; they prevent the
-recomputation queue from accepting the candidate. Both figures are exported
-as PNG and PDF.
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python docs/examples/plot_carbon_ionization_levels.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_carbon_ionization_levels/results.rst
 
 """
 from __future__ import annotations
@@ -89,7 +101,7 @@ from otter.plotting import PALETTES, grid_figsize, save_figure, style_context
 # Set this one switch in the script, then run the file directly.  Incremental
 # reuse below ensures that only densities absent from the accepted scan/cache
 # are calculated.
-RECOMPUTE_WITH_OTTER = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_RECOMPUTE_CARBON_IONIZATION", "0") == "1":
     RECOMPUTE_WITH_OTTER = True
 RETRY_NONCONVERGED_POINTS = (
@@ -192,13 +204,12 @@ DENSITIES_G_CC = np.asarray(
     dtype=float,
 )
 
-# Two independent states run concurrently; each AA uses the default worker.
-MAX_STATE_WORKERS = 2
-# Incremental extension is the normal workflow: reuse every requested point
-# already present in the checksummed accepted scan, then calculate only new
-# densities.  Set this to False only to force an independent full scan.
+# Serial by default to limit memory; each AA keeps its default one worker.
+MAX_STATE_WORKERS = 1
+RESUME_LOCAL_RESULTS = False
+# Accepted archives are not an input to the default calculation.
 REUSE_ACCEPTED_POINTS_WHEN_RECOMPUTING = (
-    os.environ.get("OTTER_REUSE_ACCEPTED_CARBON_IONIZATION", "1") == "1"
+    os.environ.get("OTTER_REUSE_ACCEPTED_CARBON_IONIZATION", "0") == "1"
 )
 AA_N_POINTS = FullExternalConfig.__dataclass_fields__["n_points"].default
 BOUND_ENERGY_CUT_MODE = FullExternalConfig.__dataclass_fields__["bound_energy_cut_mode"].default
@@ -220,18 +231,15 @@ DISPLAYED_SHELLS = ("1s", "2s", "2p", "3s", "3p", "3d")
 
 
 def _repository_root() -> Path:
-    """Locate the source tree from either the gallery source or generated copy."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (candidate / "src" / "otter").is_dir() and (
-            candidate / "pyproject.toml"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter repository root.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = _repository_root()
@@ -301,19 +309,6 @@ def _configuration(rho_g_cc: float) -> FullExternalConfig:
         temperature_ev=float(TEMPERATURE_EV),
         rho_g_cc=float(rho_g_cc),
         run_mode="full",
-        # Retain headroom on the steep high-density ionization branch.  The
-        # convergence criterion itself is unchanged.
-        stage2_max_iter=180,
-        # Match a shallow negative-energy orbital at the common outer SCF
-        # boundary, with no separate enlarged bound-only box.  This optional
-        # numerical refinement is motivated by the exterior matching in
-        # Starrett et al. (2019), Eqs. (21)-(22), but is not identical to the
-        # ion-sphere-boundary implementation in that work.
-        bound_zero_tail_refine=True,
-        bound_zero_tail_max_binding_ha=1.0e-2,
-        bound_zero_tail_scan_points=64,
-        bound_zero_tail_l_max=1,
-        bound_zero_tail_edge_rel_tol=0.1,
     )
 
 
@@ -707,12 +702,12 @@ def _compute_scan() -> dict[str, np.ndarray]:
         if float(rho) in seeded_rho:
             print(f"[accepted baseline] C, rho={float(rho):g} g/cc")
             continue
-        cached = _load_point_cache(float(rho))
+        cached = _load_point_cache(float(rho)) if RESUME_LOCAL_RESULTS else None
         if cached is not None:
             rows.append(cached)
             print(f"[cached] C, rho={float(rho):g} g/cc")
             continue
-        failed = _load_point_failure(float(rho))
+        failed = _load_point_failure(float(rho)) if RESUME_LOCAL_RESULTS else None
         if failed is not None:
             failures.append(failed)
             print(f"[cached nonconverged] C, rho={float(rho):g} g/cc")
@@ -849,7 +844,7 @@ def _compute_scan() -> dict[str, np.ndarray]:
         ),
         "bound_occ_mode": np.asarray("fd"),
         "bound_rmax_mult": np.asarray("none"),
-        "bound_zero_tail_refine": np.asarray(True),
+        "bound_zero_tail_refine": np.asarray(_configuration(1.0).bound_zero_tail_refine),
         "bound_energy_cut_mode": np.asarray(BOUND_ENERGY_CUT_MODE),
         "bound_energy_cut_value": np.asarray(BOUND_ENERGY_CUT_VALUE),
         "b3_tail_model": np.asarray("full"),
@@ -1106,7 +1101,7 @@ def _save_candidate(state: dict[str, np.ndarray]) -> Path:
             ),
             "bound_occ_mode": "fd",
             "bound_rmax_mult": None,
-            "bound_zero_tail_refine": True,
+            "bound_zero_tail_refine": _configuration(1.0).bound_zero_tail_refine,
             "bound_energy_cut_mode": BOUND_ENERGY_CUT_MODE,
             "bound_energy_cut_value": BOUND_ENERGY_CUT_VALUE,
             "b3_tail_model": "full",
@@ -1209,11 +1204,15 @@ def _load_precomputed() -> dict[str, np.ndarray]:
 
 def _print_state_table(state: dict[str, np.ndarray]) -> None:
     print("\nC full-AA density scan at Te=100 eV")
+    statuses = np.asarray(state.get("threshold_status", []), dtype=str)
+    print("Threshold summary: " + ", ".join(
+        f"{label}={np.count_nonzero(statuses == label)}"
+        for label in ("resolved", "marginal", "unresolved")
+    ))
     print(
         f"{'rho [g/cc]':>12} {'Zbar':>10} {'Zstar':>10} "
         f"{'mu [Ha]':>12} {'threshold':>12}"
     )
-    statuses = np.asarray(state.get("threshold_status", []), dtype=str)
     for index, rho in enumerate(np.asarray(state["rho_g_cc"], dtype=float)):
         status = statuses[index] if statuses.size else "not recorded"
         print(
@@ -1490,11 +1489,13 @@ def _compute_and_stage() -> dict[str, np.ndarray]:
     added_count = int(point_source.size - accepted_count)
     failed_count = int(np.asarray(state["failed_rho_g_cc"]).size)
     print(
-        f"Using incrementally assembled Otter data staged at {path}: "
+        f"Otter calculation staged at {path}: "
         f"reused {accepted_count} accepted states; added {added_count} "
         f"cached or newly calculated states; retained {failed_count} "
         "nonconverged audit record(s)."
     )
+    if failed_count:
+        raise RuntimeError(f"Carbon scan has {failed_count} failed states; diagnostics retained at {path}")
     return state
 
 
@@ -1518,3 +1519,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_carbon_ionization_levels/thumbnail.png"

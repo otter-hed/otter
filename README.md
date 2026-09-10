@@ -11,7 +11,7 @@ Otter is based primarily on the pseudoatom model of
 
 ## Capabilities
 
-- finite-temperature quantum(KS-DFT, QM) and Thomas–Fermi (TF) electronic structure; the
+- finite-temperature quantum (KS-DFT, QM) and Thomas–Fermi (TF) electronic structure; the
   QM model provides orbital levels, occupations, and density components;
 - pseudoatom densities `n_pa(r)` and screening densities `n_scr(r)`, with form factors
   `f(k)=n_ion(k)` and `q(k)=n_scr(k)`;
@@ -70,15 +70,6 @@ requires CMake and a C compiler. See the
 poetry run python -c "import otter; print(otter.__version__)"
 ```
 
-Run the included single-species aluminium example from the repository root:
-
-```bash
-poetry run python examples/single_species_workflow.py
-```
-
-The calculation prints its convergence progress and saves its state and
-figures under `outputs/`.
-
 ## Quick start
 
 Run an introductory calculation in Google Colab:
@@ -126,14 +117,34 @@ electronic result for subsequent QOZ/HNC calculations.
 
 ## Validation and documentation
 
-Build the documentation and cached benchmark gallery with:
+Browse the [documentation](https://otter-hed.github.io/otter/),
+[example gallery](https://otter-hed.github.io/otter/gen_examples/index.html), and
+[scientific benchmarks](https://otter-hed.github.io/otter/benchmarks/index.html).
+
+Examples and benchmarks calculate from their input parameters. From the
+repository root, for example:
+
+```bash
+poetry run python docs/examples/plot_al_full_workflow.py
+poetry run python benchmarks/examples/plot_doppner_2023_be_ionization.py
+```
+
+The current source tree does not include precomputed Otter NPZ files. Scripts
+write new results locally; literature reference data and recorded website
+figures, tables, and terminal output remain included. MD comparisons require
+LAMMPS/MPI and first calculate the Otter pair potentials. See the
+[reproduction guide](https://otter-hed.github.io/otter/user_guide/reproducing_galleries.html)
+for each page's commands, optional dependencies, and download formats.
+
+Build the documentation, including its recorded example and benchmark results:
 
 ```bash
 poetry install
 poetry run make -C docs strict
 ```
 
-Open `docs/build/html/index.html` after the build. Start with:
+This build does not run AA or MD calculations. Open
+`docs/build/html/index.html` after the build. Start with:
 
 - [documentation source](docs/source/index.rst);
 - [capability example gallery](docs/examples/README.rst);
@@ -148,7 +159,7 @@ license unless a dataset explicitly says otherwise.  The current bundled
 reference sets are published by maintainer decision with source attribution
 and license status `NOASSERTION`.  Read the
 [reference-data notice](benchmarks/reference_data/README.md) before reuse.
-The executable gate `python tools/check_public_release.py` rejects any future
+The executable gate `poetry run python tools/check_public_release.py` rejects any future
 manifest that reintroduces an unresolved public-release action.
 
 ## Development
@@ -169,7 +180,7 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu and Dominik Kraus, *Otter*, version 0.2.4, computer software (2026),
+> Chongbing Qu and Dominik Kraus, *Otter*, version 3.0.0, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
@@ -177,7 +188,7 @@ If you use Otter in a scientific publication, please cite:
   author  = {Qu, Chongbing and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
-  note    = {Computer software, version 0.2.4},
+  note    = {Computer software, version 3.0.0},
   url     = {https://github.com/otter-hed/otter}
 }
 ```

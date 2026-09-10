@@ -55,13 +55,12 @@ physical-model references remain cited beside the implementation in
 Benchmark workflow
 ------------------
 
-Heavy quantum calculations are opt-in.  New scientific-gallery benchmark
-files must be complete, directly executable programs: an input switch chooses
-checksum-verified accepted arrays or calls Otter's public workflow in that same
-file.  Fresh calculations write review candidates under
-``benchmarks/outputs`` and never overwrite accepted, non-pickled arrays.
-Every accepted package records model choices, convergence gates, controller
-hashes, and data provenance in a manifest.
+Scientific-gallery files must be directly executable: running the source
+calculates from physical inputs and exports figures without requiring an old
+NPZ. Shared producers may live in ``benchmarks/runners`` or ``tools`` but not
+in private application directories. Fresh outputs go under ``benchmarks/outputs``.
+Sphinx does not execute the scientific calculations; it displays reviewed
+presentation assets with recorded provenance. See :doc:`/benchmarks/validation_policy`.
 
 All maintained scientific plots—not only the Sphinx galleries—must use
 :mod:`otter.plotting` for the shared serif/STIX typography, font sizes,

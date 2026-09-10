@@ -7,22 +7,39 @@ workflow:
 
 .. math::
 
-   \mathrm{mixture\ AA}
-   \rightarrow \{q_{\rm C}(k),q_{\rm H}(k)\}
+   \mathrm{AA}
+   \rightarrow \{n_{\rm C}^{\rm scr}(k),n_{\rm H}^{\rm scr}(k)\}
    \rightarrow V_{ab}(k)
-   \rightarrow \mathrm{mixture\ OZ/HNC}
+   \rightarrow \mathrm{QOZ/HNC}
    \rightarrow \{g_{ab}(r),S_{ab}(k)\}.
-
-The state is ``CH1.36``, ``rho=5 g/cc`` and
-``Te=Ti=100 kK``.  Set ``RECOMPUTE_WITH_OTTER=True`` below to run this
-calculation in the present file.  The default verifies and loads a reviewed
-result produced by the same current-Otter calculation so documentation builds
-remain quick.  No digitized or third-party numerical curve is used here.
 
 The full/external pseudoatom and QOZ construction follow
 :cite:t:`StarrettSaumon2014`; the multicomponent equations follow
 :cite:t:`StarrettEtAl2014`; and the finite-temperature jellium local-field
 correction follows :cite:t:`Chabrier1990`.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python docs/examples/plot_ch136_mixture_workflow.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_ch136_mixture_workflow/results.rst
+
 """
 from __future__ import annotations
 
@@ -44,7 +61,7 @@ from otter.plotting import PAIR_COLORS, grid_figsize, save_figure, style_context
 # =============================================================================
 # User input
 # =============================================================================
-RECOMPUTE_WITH_OTTER = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_RECOMPUTE_CH136_EXAMPLE", "0") == "1":
     RECOMPUTE_WITH_OTTER = True
 
@@ -66,22 +83,15 @@ PAIR_ORDER = (("CC", 0, 0), ("CH", 0, 1), ("HH", 1, 1))
 
 
 def repository_root() -> Path:
-    """Locate the Otter checkout when run directly or by Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate
-            / "benchmarks"
-            / "baselines"
-            / "ch136_mixture_workflow_100kk"
-            / "manifest.json"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter repository root.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -112,18 +122,7 @@ def workflow_config() -> PlasmaWorkflowConfig:
         temperature_ev=TE_EV,
         ion_temperature_ev=TI_EV,
         rho_g_cc=RHO_G_CC,
-        aa_overrides={
-            "b3_tail_target": "full",
-            "b3_r_cut_mult": 3.0,
-            "b3_r_fit_max_mult": 4.0,
-            "full_b3_use_source_closure": False,
-            "ext_b3_use_source_closure": False,
-        },
-        root_maxfev=32,
-        root_brent_maxiter=24,
         hnc_tol=HNC_TOL,
-        hnc_closure_transform_tol=HNC_CLOSURE_TOL,
-        hnc_max_iter=1000,
         show_mu_progress=True,
     )
 
@@ -260,123 +259,131 @@ def load_reviewed_result() -> dict[str, np.ndarray]:
     return arrays
 
 
-result = (
-    calculate_with_otter() if RECOMPUTE_WITH_OTTER else load_reviewed_result()
-)
+def main() -> None:
+    result = (
+        calculate_with_otter() if RECOMPUTE_WITH_OTTER else load_reviewed_result()
+    )
 
-symbols = tuple(str(value) for value in result["species_symbols"])
-mu = np.asarray(result["mu_species_ha"], dtype=float)
-zbar_partition = np.asarray(result["zbar_partition"], dtype=float)
-zbar_qoz = np.asarray(result["zbar_qoz"], dtype=float)
-zbar_aa = np.asarray(result["zbar_aa_ws"], dtype=float)
-q_native = np.asarray(result["q_scr_native_raw"], dtype=float)
-q_dst_raw = np.asarray(result["q_scr_dst_raw"], dtype=float)
-q_dst_used = np.asarray(result["q_scr_dst_used"], dtype=float)
-q_scale = np.asarray(result["q_scr_scale_factor"], dtype=float)
+    symbols = tuple(str(value) for value in result["species_symbols"])
+    mu = np.asarray(result["mu_species_ha"], dtype=float)
+    zbar_partition = np.asarray(result["zbar_partition"], dtype=float)
+    zbar_qoz = np.asarray(result["zbar_qoz"], dtype=float)
+    zbar_aa = np.asarray(result["zbar_aa_ws"], dtype=float)
+    q_native = np.asarray(result["q_scr_native_raw"], dtype=float)
+    q_dst_raw = np.asarray(result["q_scr_dst_raw"], dtype=float)
+    q_dst_used = np.asarray(result["q_scr_dst_used"], dtype=float)
+    q_scale = np.asarray(result["q_scr_scale_factor"], dtype=float)
 
-print(
-    "CH1.36  rho=5 g/cc  Te=Ti=100 kK "
-    f"({float(result['temperature_ev']):.8f} eV)"
-)
-print(
-    f"common mu = {float(result['mu_common_ha']):.8f} Ha; "
-    f"max|Delta mu| = {float(result['root_residual_final_ha']):.3e} Ha"
-)
-print(
-    f"HNC residual = {float(result['hnc_output_residual']):.3e}; "
-    f"g/S closure = {float(result['hnc_closure_mismatch']):.3e}; "
-    f"min eig(S) = {float(result['hnc_s_min']):.6f}"
-)
-print(
-    f"{'sp':>3s} {'mu[Ha]':>12s} {'Zbar(AA)':>11s} "
-    f"{'Zbar(part)':>12s} {'Zbar(QOZ)':>11s} "
-    f"{'Qnative':>11s} {'Qdst raw':>11s} {'Qdst used':>11s} {'scale':>10s}"
-)
-for index, symbol in enumerate(symbols):
     print(
-        f"{symbol:>3s} {mu[index]:12.8f} {zbar_aa[index]:11.7f} "
-        f"{zbar_partition[index]:12.7f} {zbar_qoz[index]:11.7f} "
-        f"{q_native[index]:11.7f} {q_dst_raw[index]:11.7f} "
-        f"{q_dst_used[index]:11.7f} {q_scale[index]:10.7f}"
+        "CH1.36  rho=5 g/cc  Te=Ti=100 kK "
+        f"({float(result['temperature_ev']):.8f} eV)"
     )
-print(f"reviewed producer wall time = {float(result['producer_elapsed_s']):.2f} s")
-
-
-# %%
-# Pair structure and pseudoatom inputs
-# ------------------------------------
-#
-# The three pair channels use one stable colour assignment throughout.  The
-# Ashcroft--Langreth convention used for ``S_ab`` is recorded by the public
-# workflow.  The charge table above distinguishes the native pseudoatom
-# integral from the DST-lattice charge actually used by QOZ.
-
-r = np.asarray(result["r_bohr"], dtype=float)
-k = np.asarray(result["k_bohr_inv"], dtype=float)
-gij = np.asarray(result["gij_r"], dtype=float)
-sij = np.asarray(result["sij_k"], dtype=float)
-q_k = np.asarray(result["q_k"], dtype=float)
-vij_k = np.asarray(result["vij_k"], dtype=float)
-
-with style_context("thesis", palette="bing"):
-    fig, axes = plt.subplots(2, 2, figsize=grid_figsize(2, 2))
-    for label, i, j in PAIR_ORDER:
-        axes[0, 0].plot(
-            r, gij[i, j], color=PAIR_COLORS[label], label=label
+    print(
+        f"common mu = {float(result['mu_common_ha']):.8f} Ha; "
+        f"max|Delta mu| = {float(result['root_residual_final_ha']):.3e} Ha"
+    )
+    print(
+        f"HNC residual = {float(result['hnc_output_residual']):.3e}; "
+        f"g/S closure = {float(result['hnc_closure_mismatch']):.3e}; "
+        f"min eig(S) = {float(result['hnc_s_min']):.6f}"
+    )
+    print(
+        f"{'sp':>3s} {'mu[Ha]':>12s} {'Zbar(AA)':>11s} "
+        f"{'Zbar(part)':>12s} {'Zbar(QOZ)':>11s} "
+        f"{'Qnative':>11s} {'Qdst raw':>11s} {'Qdst used':>11s} {'scale':>10s}"
+    )
+    for index, symbol in enumerate(symbols):
+        print(
+            f"{symbol:>3s} {mu[index]:12.8f} {zbar_aa[index]:11.7f} "
+            f"{zbar_partition[index]:12.7f} {zbar_qoz[index]:11.7f} "
+            f"{q_native[index]:11.7f} {q_dst_raw[index]:11.7f} "
+            f"{q_dst_used[index]:11.7f} {q_scale[index]:10.7f}"
         )
-        axes[0, 1].plot(
-            k, sij[i, j], color=PAIR_COLORS[label], label=label
+    print(f"reviewed producer wall time = {float(result['producer_elapsed_s']):.2f} s")
+
+
+    # %%
+    # Pair structure and pseudoatom inputs
+    # ------------------------------------
+    #
+    # The three pair channels use one stable colour assignment throughout.  The
+    # Ashcroft--Langreth convention used for ``S_ab`` is recorded by the public
+    # workflow.  The charge table above distinguishes the native pseudoatom
+    # integral from the DST-lattice charge actually used by QOZ.
+
+    r = np.asarray(result["r_bohr"], dtype=float)
+    k = np.asarray(result["k_bohr_inv"], dtype=float)
+    gij = np.asarray(result["gij_r"], dtype=float)
+    sij = np.asarray(result["sij_k"], dtype=float)
+    q_k = np.asarray(result["q_k"], dtype=float)
+    vij_k = np.asarray(result["vij_k"], dtype=float)
+
+    with style_context("thesis", palette="bing"):
+        fig, axes = plt.subplots(2, 2, figsize=grid_figsize(2, 2))
+        for label, i, j in PAIR_ORDER:
+            axes[0, 0].plot(
+                r, gij[i, j], color=PAIR_COLORS[label], label=label
+            )
+            axes[0, 1].plot(
+                k, sij[i, j], color=PAIR_COLORS[label], label=label
+            )
+            axes[1, 1].plot(
+                k, vij_k[i, j], color=PAIR_COLORS[label], label=label
+            )
+
+        axes[1, 0].plot(
+            k, q_k[0], color=PAIR_COLORS["CC"], label=r"$n_{\rm C}^{\rm scr}(k)$"
         )
-        axes[1, 1].plot(
-            k, vij_k[i, j], color=PAIR_COLORS[label], label=label
+        axes[1, 0].plot(
+            k, q_k[1], color=PAIR_COLORS["HH"], label=r"$n_{\rm H}^{\rm scr}(k)$"
         )
 
-    axes[1, 0].plot(
-        k, q_k[0], color=PAIR_COLORS["CC"], label=r"$q_{\rm C}(k)$"
-    )
-    axes[1, 0].plot(
-        k, q_k[1], color=PAIR_COLORS["HH"], label=r"$q_{\rm H}(k)$"
-    )
+        axes[0, 0].set(
+            title=r"$g_{ab}(r)$",
+            xlabel=r"$r$ [Bohr]",
+            ylabel=r"$g_{ab}(r)$",
+            xlim=(-0.5, 8.0),
+            ylim=(-0.05, None),
+        )
+        axes[0, 1].set(
+            title=r"$S_{ab}(k)$",
+            xlabel=r"$k$ [Bohr$^{-1}$]",
+            ylabel=r"$S_{ab}(k)$",
+            xlim=(0.0, 8.0),
+        )
+        axes[1, 0].set(
+            title="Screening clouds",
+            xlabel=r"$k$ [Bohr$^{-1}$]",
+            ylabel=r"$n_a^{\rm scr}(k)$",
+            xlim=(0.0, 8.0),
+        )
+        axes[1, 1].set(
+            title=r"$V_{ab}(k)$",
+            xlabel=r"$k$ [Bohr$^{-1}$]",
+            ylabel=r"$V_{ab}(k)$ [Ha]",
+            xlim=(0.0, 8.0),
+        )
+        for axis in axes.flat:
+            axis.legend(frameon=False)
 
-    axes[0, 0].set(
-        title=r"$g_{ab}(r)$",
-        xlabel=r"$r$ [Bohr]",
-        ylabel=r"$g_{ab}(r)$",
-        xlim=(-0.5, 8.0),
-        ylim=(-0.05, None),
-    )
-    axes[0, 1].set(
-        title=r"$S_{ab}(k)$",
-        xlabel=r"$k$ [Bohr$^{-1}$]",
-        ylabel=r"$S_{ab}(k)$",
-        xlim=(0.0, 8.0),
-    )
-    axes[1, 0].set(
-        title="Screening clouds",
-        xlabel=r"$k$ [Bohr$^{-1}$]",
-        ylabel=r"$q_a(k)$",
-        xlim=(0.0, 8.0),
-    )
-    axes[1, 1].set(
-        title=r"$V_{ab}(k)$",
-        xlabel=r"$k$ [Bohr$^{-1}$]",
-        ylabel=r"$V_{ab}(k)$ [Ha]",
-        xlim=(0.0, 8.0),
-    )
-    for axis in axes.flat:
-        axis.legend(frameon=False)
+        fig.suptitle(
+            r"CH$_{1.36}$: $\rho=5$ g cm$^{-3}$, "
+            r"$T_e=T_i=100$ kK",
+            y=0.985,
+        )
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.955))
+        save_figure(
+            fig,
+            FIGURE_DIR / "ch136_mixture_full_workflow",
+            close=False,
+        )
 
-    fig.suptitle(
-        r"CH$_{1.36}$: $\rho=5$ g cm$^{-3}$, "
-        r"$T_e=T_i=100$ kK",
-        y=0.985,
-    )
-    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.955))
-    save_figure(
-        fig,
-        FIGURE_DIR / "ch136_mixture_full_workflow",
-        close=False,
-    )
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
 
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_ch136_mixture_workflow/thumbnail.png"

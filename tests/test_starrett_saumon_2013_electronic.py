@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,6 +95,7 @@ def test_reference_tables_are_exact_attributed_and_checksummed() -> None:
     assert np.array_equal(fe["gamma_tcp"], (14.3, 4.85, 3.32, 1.35))
 
 
+@pytest.mark.private_baseline
 def test_baseline_is_sc_pairs_and_pressure_weights_reproduce_eq_81() -> None:
     manifest = load_json(BASELINE_DIR / "manifest.json")
     data_path = BASELINE_DIR / str(manifest["state"]["data_file"])
@@ -104,8 +106,10 @@ def test_baseline_is_sc_pairs_and_pressure_weights_reproduce_eq_81() -> None:
     assert manifest["configuration"]["external_average_atom"] is True
     assert manifest["configuration"]["qoz_hnc"] is True
     assert manifest["configuration"]["bound_energy_cut_mode"] == "zero"
-    assert manifest["configuration"]["bound_zero_tail_refine"] is True
-    assert manifest["configuration"]["bound_zero_tail_max_binding_ha"] == 0.03
+    overrides = manifest["configuration"]["aa_input_overrides_by_state"]
+    assert all(value == {} for key, value in overrides.items() if key.startswith("al_"))
+    assert all(value == {"mu_bounds": [-2000.0, 200.0]}
+               for key, value in overrides.items() if key.startswith("fe_"))
     assert manifest["configuration"]["sc_controls"]["fixed_is_mu"] is True
     # Baseline provenance identifies the historical producer; editing a
     # runner must not rewrite that checksum to pretend it produced old data.
@@ -175,14 +179,14 @@ def test_baseline_is_sc_pairs_and_pressure_weights_reproduce_eq_81() -> None:
 def test_gallery_is_standalone_is_sc_and_uses_direct_tables() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
     ast.parse(source, filename=str(SCRIPT))
-    assert "USE_PRECOMPUTED_DATA = True" in source
+    assert "USE_PRECOMPUTED_DATA = False" in source
     assert "PlasmaWorkflowConfig" in source
     assert "solve_plasma_workflow(" in source
     assert "SCFeedbackConfig" in source
     assert "solve_sc_feedback_workflow(" in source
     assert "converged IS chemical potential" in source
     assert "Appendix B" in source and "initial guess" in source
-    assert 'bound_zero_tail_max_binding_ha": 3.0e-2' in source
+    assert 'aa_input_overrides_by_state' in source
     assert "binding energy" not in source
     assert "matplotlib" not in source
     assert "save_figure(" not in source
@@ -202,6 +206,7 @@ def test_gallery_is_standalone_is_sc_and_uses_direct_tables() -> None:
     assert "QOZ" in source and "HNC" in source
 
 
+@pytest.mark.private_baseline
 def test_html_table_values_match_accepted_data() -> None:
     """A successful producer must not leave stale hand-written HTML cells."""
     doc = ast.get_docstring(ast.parse(SCRIPT.read_text()))

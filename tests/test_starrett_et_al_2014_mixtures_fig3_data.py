@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,6 +117,7 @@ def test_manifest_has_complete_unique_state_grid_and_relative_paths() -> None:
         assert not Path(state["baseline_file"]).is_absolute()
 
 
+@pytest.mark.private_baseline
 def test_reference_baseline_and_metrics_checksums() -> None:
     manifest = _manifest()
     for state in manifest["states"]:
@@ -129,6 +131,7 @@ def test_reference_baseline_and_metrics_checksums() -> None:
     assert _sha256(metrics) == manifest["baseline"]["metrics_sha256"]
 
 
+@pytest.mark.private_baseline
 def test_baselines_are_pickle_free_finite_and_converged() -> None:
     manifest = _manifest()
     for state in manifest["states"]:
@@ -173,6 +176,7 @@ def test_baselines_are_pickle_free_finite_and_converged() -> None:
                 )
 
 
+@pytest.mark.private_baseline
 def test_runner_recomputes_recorded_metrics_without_a_solver(
     monkeypatch, tmp_path
 ) -> None:
@@ -249,7 +253,7 @@ def test_otter_recompute_configuration_is_strict_and_candidate_only() -> None:
     assert cfg.aa_overrides.get("bound_occ_mode", "fd") == "fd"
     assert cfg.aa_overrides.get("bound_rmax_mult") is None
     assert cfg.aa_overrides.get("bound_zero_tail_refine", False) is False
-    assert cfg.aa_overrides["b3_tail_target"] == "full"
+    assert cfg.aa_overrides == {}
     assert cfg.aa_overrides.get("b3_tail_model", "full") == "full"
 
 

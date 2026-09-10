@@ -1,56 +1,65 @@
 :orphan:
 
-September 2026 numerical validation and data refresh
-=====================================================
+Otter 3.0.0: numerical validation and recorded results
+============================================================
 
-The updated AA solver and selective state exports are accompanied by reviewed,
-recomputed Otter-only baselines. Numerical convergence is not a claim of exact
-agreement with a publication or of validity outside the tested states.
+The example gallery and scientific benchmarks use the September 9, 2026
+conditioned-SCF calculation campaign. The two SC presentation packages were
+subsequently recalculated with the SC-only zero-tail default. Numerical
+convergence is not a claim of exact agreement with a publication, nor of
+validity outside the tested states. SC feedback remains experimental.
 
-Updated results
----------------
+Electronic and ionic checks
+----------------------------
 
-The Al full workflow, QM/TF comparison, Rayleigh-weight example, carbon
-ionization and LFC examples, CH1.36 example, Argha-Roy carbon structure-factor
-comparison, Starrett mixture comparison and Starrett single-species comparison
-use the completed September 8 campaign. Their producing solver files were
-checked against this source revision. The SC feedback module is the only
-subsequent solver change, and is not used by those IS calculations.
+The 16 calculation groups cover all example and benchmark pages. The two
+carbon-ionization pages share one 84-state scan, rather than two independent
+calculations. All 84 full SCFs converge: 80 states are resolved and four are
+marginal; none is unresolved. Marginal shallow levels are not displayed as
+precisely determined energies. The Be scan contains 48 converged, resolved
+states. Individual pages report the electronic and ionic residuals.
 
-The Al IS/SC example and the Starrett--Saumon Al/Fe electronic tables were
-recomputed with the SC precision safeguard. These archives retain the actual
-outer residuals and precision-refinement indicators. Inner full/external SCF
-acceptance alone does not establish convergence of the coupled AA/HNC loop.
-SC now confirms QM full-AA precision and checks the current output-minus-input
-correlation potential, not just its damped update. The model remains
-experimental; see :doc:`../experimental/sc_feedback`.
+SC acceptance checks the unmixed correlation-potential residual as well as
+changes in the ion structure. Quantum SC steps use zero-tail shallow-state
+matching and tighten full-AA precision near outer convergence. Explicit user
+settings are preserved; ordinary IS and TF defaults are unchanged. See
+:doc:`../experimental/sc_feedback`.
 
-Displayed energies and scattering widths use Hartree; displayed Otter numbers
-use three significant digits. Stored arrays retain full precision. Tests
-compare every Otter cell in the electronic HTML tables against those arrays.
-Published reference values are unchanged.
+An additional CH2 electronic validation covers 58 temperatures from 5 to
+119 eV at 0.946 g cm\ :sup:`-3`. Every C/H full and external calculation
+passes its convergence and QOZ-entry checks. One carbon state is marginal;
+none is unresolved. Mean and median electronic times are 126.5 and 90.3 s
+per temperature, respectively. These are measured wall times, not a hardware-
+independent performance guarantee. This sweep did not include a new full
+ion-temperature sweep or MD.
 
-Archived MD comparisons
------------------------
+Current Otter curves and historical MD
+---------------------------------------
 
-The CH2, Johnson aluminium, Schörner aluminium and ion-structure-library
-baselines remain archived comparisons. Their original HNC/VMHNC curves and MD
-statistics are kept together. No LAMMPS calculations were performed during
-this refresh, and no new HNC curve from a different electronic potential is
-presented as a same-potential comparison with old MD.
+The CH2 benchmark uses three newly computed electronic states and nine new
+HNC curves. Johnson, Schörner and the ion-structure library also use fresh
+Otter electronic/HNC/VMHNC results. HNC and VMHNC at the same state share one
+electronic pair potential.
 
-Consequently these pages test the ionic closures for their documented archived
-potentials; they do not validate every change in the current AA solver. Their
-NPZ field inventories/checksums may change when metadata is refreshed, but
-their numerical arrays are preserved. The current Otter-only candidates for
-these comparisons have not replaced the matched MD baselines.
+LAMMPS was not rerun for this refresh. Retained MD arrays, the CH2 animation
+and its poster are historical. Their differences from current Otter curves
+can include changes in the electronic pair potential; these overlays do not
+isolate the HNC bridge approximation at a fixed potential. The public MD
+reproduction scripts first calculate new Otter potentials, then run LAMMPS
+and analyze the new trajectories.
 
-Reproducibility
----------------
+Reproduction and presentation
+-------------------------------
 
-Baselines are small pickle-free NPZ files under ``benchmarks/baselines``.
-Each package has a manifest recording inputs, convergence and producing-code
-provenance. The public source hash inventory and per-package update scope are
-recorded in ``benchmarks/baselines/validation_20260908.json``. The ordinary
-documentation build loads these checked data and regenerates its plots; it
-does not run AA or MD simulations.
+Run the Python source linked on each page to compute its results from physical
+inputs. No bundled Otter NPZ is required. Local NPZ output and selective state
+exports remain supported; these files are not distributed with the public
+source. LAMMPS/MPI and, for the LDA/PBE comparison, Libxc are optional external
+requirements.
+
+HTML builds display recorded figures, tables and terminal output without
+running AA or MD. These assets are regenerated together from reviewed local
+results. The inventory in
+``benchmarks/baselines/validation_20260909.json`` records their numerical
+source hashes and validation scope. The presentation manifest also records
+the rendering code hashes. Published reference coordinates are unchanged.

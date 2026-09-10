@@ -32,8 +32,8 @@
     "bound_energy_cut_value": 0.7,
     "bound_occ_mode": "fd",
     "bound_rmax_mult": null,
-    "bound_zero_tail_refine": true,
-    "calculation_fingerprint": "740f489ce4218903b3376d8228fade9ad0ac3abe79395c18d8ecd8034e989e9e",
+    "bound_zero_tail_refine": false,
+    "calculation_fingerprint": "d181dc1f0529660abac168c72c835c060f6a0ea4f43990613b409f7cd94e7716",
     "densities_g_cc": [
       0.1,
       0.15,
@@ -132,7 +132,7 @@
   },
   "scientific_audit": {
     "accepted_seed_states": 0,
-    "fresh_max_stage2_error": 0.0009928025121235286,
+    "fresh_max_stage2_error": 1.4857132676465431e-05,
     "fresh_states": 84,
     "nonconverged_policy": "Failed states are audit metadata only and are excluded from all electronic and shell-level arrays; diagnostic fd_m solutions are never substituted for production fd states.",
     "requested_states": 84,
@@ -143,12 +143,17 @@
   "producer": {
     "project": "Otter",
     "script_relative_path": "docs/examples/plot_carbon_ionization_levels.py",
-    "script_sha256_at_generation": "84ca0dbcc6fe93a71bd610c9698884b50e6ea6a4558bfcc82f40fc82f43f35ef",
-    "script_sha256_current": "c72c96f77fad736e7a0b793221b5baa2d971b538f77cd9c3b44015f0aa0dd236",
+    "script_sha256_current": "0cc8e3c2ed70fe21c7bf93dd6528b584fca2ed70d97d4ecee22c21a3d6d2b96a",
     "worktree_clean_at_generation": false,
-    "provenance_limitation": "The 84-state, 4096-point archive combines 74 accepted states with 10 newly solved refinement states. It uses bound_occ_mode=fd, one continuum-edge convention, and one shell-Qion diagnostic, and ends at 450 g cm^-3. Data and producer checksums identify the calculation state.",
-    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
-    "source_inventory": "../validation_20260908.json"
+    "provenance_limitation": "All 84 states were freshly solved in the September 8 campaign (zero reused seed rows). The configured continuum edge is E=0; bound_energy_cut_value is inactive in zero mode. There are 82 resolved and two marginal threshold diagnostics, at rho=4.6 and 300 g/cm^3. No unresolved rows are present. Data and producing-source checksums identify the calculation state.",
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+    "worktree_dirty": true,
+    "script_sha256_at_generation": "2d47f8c6db85ac15009959fd7ca262ffe7f274dac443be4532bd5bf7774157f2"
   },
   "units": {
     "mass_density": "g cm^-3",
@@ -159,7 +164,7 @@
   },
   "state": {
     "data_file": "C_Te100eV_density_scan.npz",
-    "data_sha256": "a136c9692a3ef01f3359c9e6927f06e3e36d1edc8cf6872163f80645e2990bf3"
+    "data_sha256": "a63ac1822856aa1774f7c59a5e9c199ac57a2e5fc34e222d93582b8fc71d4435"
   },
   "validation_scope": "completed_is_campaign",
   "validation_inventory": "../validation_20260908.json"

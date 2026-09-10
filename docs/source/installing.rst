@@ -7,8 +7,20 @@ Requirements
 Otter requires CPython 3.12 or newer.  Core dependencies are NumPy, SciPy,
 Numba, and Matplotlib.
 
-Poetry installation
--------------------
+Install the released package
+----------------------------
+
+Install Otter from PyPI:
+
+.. code-block:: console
+
+   $ python -m pip install otter-hed
+
+The distribution name is ``otter-hed``; the Python package is imported as
+``otter``.
+
+Reproducible source installation
+--------------------------------
 
 Install `Python <https://www.python.org/downloads/>`_ and
 `Git <https://git-scm.com/downloads/>`_, then install Poetry 2.1.3.
@@ -82,18 +94,6 @@ Run commands inside the managed environment with ``poetry run``:
 
    $ poetry run python -c "import otter; print(otter.__version__)"
 
-Run the included single-species aluminium example from the repository root:
-
-.. code-block:: console
-
-   $ poetry run python examples/single_species_workflow.py
-
-The calculation prints its convergence progress and saves its portable state
-and figures under :file:`outputs/`.  Edit the user-input block at the top of
-:download:`examples/single_species_workflow.py
-<../../examples/single_species_workflow.py>` to change the element, density,
-or temperatures.
-
 Run the tests
 -------------
 
@@ -121,6 +121,12 @@ Output is written to ``docs/build/html``.  To serve it locally:
 .. code-block:: console
 
    $ poetry run make -C docs serve
+
+Unlocked pip fallback
+---------------------
+
+Without Poetry, use ``python -m pip install -e .``.  This does not use
+:file:`poetry.lock`.
 
 Otter's source repository does not track generated HTML, autosummary pages, or
 Sphinx-Gallery output.

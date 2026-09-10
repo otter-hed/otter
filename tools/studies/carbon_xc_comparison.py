@@ -64,10 +64,9 @@ from otter.electronic.xc import (
     xc_potential,
     xc_provenance,
 )
+from otter.numerics.constants import HA_TO_EV
 from otter.plotting import grid_figsize, save_figure, set_style
 
-
-HARTREE_TO_EV = 27.211386245988
 DEFAULT_XC_MODELS = ("dirac", "lda_pw", "pbe")
 DEFAULT_RHO = (1.0, 3.0, 5.0)
 DEFAULT_TEMPERATURE = (2.0, 15.0, 50.0)
@@ -205,7 +204,7 @@ def _bound_level_records(electronic: dict[str, Any]) -> list[dict[str, float]]:
                         "l": float(l_value),
                         "n": float(n_index + 1),
                         "energy_ha": energy,
-                        "energy_ev": energy * HARTREE_TO_EV,
+                        "energy_ev": energy * HA_TO_EV,
                         "fd": float(fd[l_index, n_index]),
                         "occupation": float(occupation[l_index, n_index]),
                     }
@@ -243,7 +242,7 @@ def _scalar_diagnostics(
     )
     return {
         "mu_ha": float(electronic["mu"]),
-        "mu_ev": float(electronic["mu"]) * HARTREE_TO_EV,
+        "mu_ev": float(electronic["mu"]) * HA_TO_EV,
         "zbar": float(electronic["zbar"]),
         "zbar_partition": float(electronic.get("zbar_partition", np.nan)),
         "r_ws_bohr": r_ws,
@@ -285,7 +284,7 @@ def _scalar_diagnostics(
         "v_xc_core_max_abs_ev": float(
             electronic.get("v_xc_core_max_abs_ha", np.nan)
         )
-        * HARTREE_TO_EV,
+        * HA_TO_EV,
         "ion_status": "converged" if ion else "failed",
         "ion_error": str(ion_error),
         "hnc_converged": bool(ion.get("hnc_converged", False)),
@@ -542,7 +541,7 @@ def _plot_profiles(
             )
             axes[0, 1].plot(
                 r / r_ws,
-                np.asarray(data["v_xc_ha"]) * HARTREE_TO_EV,
+                np.asarray(data["v_xc_ha"]) * HA_TO_EV,
                 label=str(row["xc_model"]),
             )
             r_ion = np.asarray(data["r_ion_bohr"])
@@ -591,13 +590,13 @@ def _plot_profiles(
                 continue
             line = ax_core.plot(
                 r[mask] / core_radius,
-                np.asarray(data["v_xc_ha"])[mask] * HARTREE_TO_EV,
+                np.asarray(data["v_xc_ha"])[mask] * HA_TO_EV,
                 label=f"{row['xc_model']} finite (SCF)",
             )[0]
             if "v_xc_strict_ha" in data.files:
                 ax_core.plot(
                     r[mask] / core_radius,
-                    np.asarray(data["v_xc_strict_ha"])[mask] * HARTREE_TO_EV,
+                    np.asarray(data["v_xc_strict_ha"])[mask] * HA_TO_EV,
                     linestyle="--",
                     color=line.get_color(),
                     alpha=0.75,

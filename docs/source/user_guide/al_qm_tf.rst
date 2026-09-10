@@ -25,18 +25,12 @@ Example and execution modes
 
 :ref:`sphx_glr_gen_examples_plot_al_qm_tf.py`
 
-The example has one user setting:
+Running the example calculates all eight QM/TF states from physical inputs::
 
-.. code-block:: python
+    poetry run python docs/examples/plot_al_qm_tf.py
 
-   RECOMPUTE_WITH_OTTER = False
-
-The default verifies and loads four checksummed Otter state files.  Set
-``RECOMPUTE_WITH_OTTER=True`` to make the same script construct
-``PlasmaWorkflowConfig`` objects and call ``solve_plasma_workflow`` for all
-eight calculations.  New files are written under
-``benchmarks/outputs/al_qm_tf/gallery_recomputed`` and never overwrite or
-replace accepted data automatically.
+The default is ``RECOMPUTE_WITH_OTTER = True``. Results are written under
+``benchmarks/outputs/al_qm_tf/gallery_recomputed``; no bundled NPZ is needed.
 
 What is plotted
 ---------------
@@ -64,7 +58,7 @@ close for this state even though the electronic decompositions are not
 identical.  The four points illustrate a trend; they do not define a
 universal temperature boundary for the validity of TF theory.
 
-The table below is recomputed from the reviewed v2 files.  ``Delta Z`` is
+The table below uses the September 2026 reviewed v2 files. ``Delta Z`` is
 :math:`\bar Z_{\rm TF}-\bar Z_{\rm KS-DFT}` using the QOZ
 pseudoatom-partition ionization.  RMSEs use :math:`r\leq12` Bohr and
 :math:`k\leq6` Bohr\ :sup:`-1`.
@@ -78,21 +72,21 @@ pseudoatom-partition ionization.  RMSEs use :math:`r\leq12` Bohr and
      - RMSE :math:`g_{ii}`
      - RMSE :math:`S_{ii}`
    * - 1
-     - +1.84337
-     - 0.06149
-     - 0.07227
+     - +1.84369
+     - 0.06051
+     - 0.07196
    * - 15
-     - +1.81427
-     - 0.04222
-     - 0.03499
+     - +1.81326
+     - 0.04190
+     - 0.03437
    * - 50
-     - +0.67313
-     - 0.01246
-     - 0.01197
+     - +0.66385
+     - 0.01167
+     - 0.01078
    * - 100
-     - -0.18648
-     - 0.00209
-     - 0.00160
+     - -0.19889
+     - 0.00280
+     - 0.00249
 
 Numerical record
 ----------------

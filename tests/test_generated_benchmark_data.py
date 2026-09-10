@@ -92,6 +92,7 @@ def _assert_portable_archive(path: Path) -> None:
                 assert "/tmp/" not in text
 
 
+@pytest.mark.private_baseline
 def test_all_project_generated_baselines_embed_metadata() -> None:
     baseline_root = ROOT / "benchmarks" / "baselines"
     paths = sorted(baseline_root.glob("*/*.npz"))
@@ -129,8 +130,26 @@ def test_changed_hnc_cannot_be_paired_with_archived_md(tmp_path, monkeypatch) ->
         module._with_preserved_md(package, "state.npz", {"gii_r": np.array([0., 1.1])})
     preserved = module._with_preserved_md(package, "state.npz", {"gii_r": np.array([0., 1.])})
     np.testing.assert_array_equal(preserved["md_gii_r"], [0., 1.])
+    historical = module._with_preserved_md(
+        package, "state.npz", {"gii_r": np.array([0., 1.1])},
+        allow_historical_md=True,
+    )
+    assert historical["md_is_historical"].item() is True
+    np.testing.assert_array_equal(historical["md_gii_r"], [0., 1.])
+    record = module._update_record(
+        {"hnc_vs_same_potential_md_rmse": 0.0}, None, historical,
+        baseline_name="state.npz", digest="synthetic",
+    )
+    assert record["same_potential_md"] is False
+    assert "hnc_vs_same_potential_md_rmse" not in record
+    with pytest.raises(ValueError, match="modify preserved MD"):
+        module._with_preserved_md(
+            package, "state.npz", {"md_gii_r": np.array([0., 2.])},
+            allow_historical_md=True,
+        )
 
 
+@pytest.mark.private_baseline
 def test_promotion_covers_every_project_generated_baseline_package() -> None:
     import tools.promote_recomputed_data as module
 
@@ -142,6 +161,7 @@ def test_promotion_covers_every_project_generated_baseline_package() -> None:
     assert {package.name for package in module.PACKAGES} == baseline_names
 
 
+@pytest.mark.private_baseline
 def test_otter_only_promotion_preserves_existing_md_arrays_exactly() -> None:
     import tools.promote_recomputed_data as module
 
@@ -174,6 +194,7 @@ def test_otter_only_promotion_preserves_existing_md_arrays_exactly() -> None:
         ("carbon_lfc_sensitivity", "benchmark_analysis"),
     ),
 )
+@pytest.mark.private_baseline
 def test_offline_readers_accept_selective_field_inventory(
     package_name: str,
     profile: str,
@@ -199,6 +220,7 @@ def test_offline_readers_accept_selective_field_inventory(
 
 
 @pytest.mark.parametrize("name", tuple(PACKAGES))
+@pytest.mark.private_baseline
 def test_v2_manifest_provenance_hashes_and_relative_paths(name: str) -> None:
     package = PACKAGES[name]
     manifest = _manifest(package)
@@ -257,6 +279,7 @@ def test_v2_manifest_provenance_hashes_and_relative_paths(name: str) -> None:
             )
 
 
+@pytest.mark.private_baseline
 def test_al_qm_tf_v2_physical_and_shape_invariants() -> None:
     package = PACKAGES["al_qm_tf"]
     manifest = _manifest(package)
@@ -328,17 +351,14 @@ def test_al_qm_tf_v2_physical_and_shape_invariants() -> None:
                 }.isdisjoint(archive.files)
 
 
+@pytest.mark.private_baseline
 def test_carbon_lfc_v2_shared_input_charge_and_convergence() -> None:
     package = PACKAGES["carbon_lfc_sensitivity"]
     manifest = _manifest(package)
     configuration = manifest["configuration"]
     assert configuration["rho_g_cc"] == pytest.approx(5.0)
-    assert configuration["bound_occ_mode"] == "fd"
-    assert configuration["bound_rmax_mult"] is None
-    assert configuration["bound_zero_tail_matching_mode"] == (
-        "direct_physical_boundary"
-    )
-    assert configuration["b3_tail_model"] == "full"
+    assert configuration["strict_electronic_convergence_required"] is True
+    assert configuration["allow_unconverged_aa"] is False
     expected_models = (
         "none",
         "hubbard",
@@ -354,9 +374,8 @@ def test_carbon_lfc_v2_shared_input_charge_and_convergence() -> None:
                 str(archive["producer_signature_json"].item())
             )
             assert signature["structure_model"] == "IS"
-            assert signature["bound_occ_mode"] == "fd"
-            assert signature["bound_rmax_mult"] is None
-            assert signature["b3_tail_model"] == "full"
+            assert signature["electronic_configuration"]["aa_overrides"] == {}
+            assert signature["electronic_configuration"]["allow_unconverged_aa"] is False
             r = np.asarray(archive["r_bohr"], dtype=float)
             k = np.asarray(archive["k_bohr_inv"], dtype=float)
             r_e = np.asarray(archive["electronic_r_bohr"], dtype=float)
@@ -400,6 +419,7 @@ def test_carbon_lfc_v2_shared_input_charge_and_convergence() -> None:
 
 
 @pytest.mark.parametrize("name", tuple(PACKAGES))
+@pytest.mark.private_baseline
 def test_offline_runner_evaluates_reviewed_v2_data_from_arbitrary_cwd(
     name: str,
     monkeypatch,
@@ -424,6 +444,7 @@ def test_offline_runner_evaluates_reviewed_v2_data_from_arbitrary_cwd(
                 assert np.isfinite(float(value)), (name, key)
 
 
+@pytest.mark.private_baseline
 def test_v2_curated_states_capture_cold_difference_and_hot_convergence() -> None:
     al_package = PACKAGES["al_qm_tf"]
     al_runner = _load_runner("al_qm_tf_metrics", al_package)
@@ -450,13 +471,13 @@ def test_v2_curated_states_capture_cold_difference_and_hot_convergence() -> None
         (float(row["temperature_ev"]), row["model"]): row
         for row in carbon_rows
     }
-    # Freeze the recomputed metric, rather than an arbitrary old >0.4
-    # illustration boundary (the refreshed value is approximately 0.3993).
+    # Freeze the September 9 recomputed metric; the source change is audited
+    # separately from this checksum-level plotting regression.
     assert float(
         carbon_by_state[(2.0, "none")][
             "max_abs_dg_vs_chabrier_r_le_20"
         ]
-    ) == pytest.approx(0.39928713272596283, rel=1.0e-8)
+    ) == pytest.approx(0.40111985682498086, rel=1.0e-8)
     assert float(
         carbon_by_state[(100.0, "none")][
             "max_abs_dg_vs_chabrier_r_le_20"
@@ -510,23 +531,27 @@ def test_al_full_workflow_v2_augmentation_is_grid_strict(
     manifest = producer._candidate_manifest(
         candidate,
         worktree_status="",
+        workflow={
+            "configuration": {"aa_overrides": {"bound_zero_tail_refine": True}},
+            "electronic": {"result": {"meta": {
+                "bound_zero_tail_refine": True,
+                "bound_zero_tail_scan_points": 48,
+                "b3_tail_target": "full",
+            }}},
+        },
     )
     assert manifest["status"] == "candidate_not_accepted"
     assert isinstance(
         manifest["producer"]["worktree_clean_at_generation"], bool
     )
-    assert manifest["configuration"]["bound_rmax_mult"] is None
-    assert manifest["configuration"]["bound_zero_tail_refine"] is False
-    assert manifest["configuration"]["qoz_n_points_before_padding"] == 4096
-    assert manifest["configuration"]["hnc_tolerance"] == 1.0e-6
-    assert (
-        manifest["configuration"]["hnc_transform_closure_tolerance"]
-        == 1.0e-3
-    )
+    assert manifest["configuration"]["aa_overrides"]["bound_zero_tail_refine"] is True
+    assert manifest["aa_final_settings"]["bound_zero_tail_refine"] is True
+    assert manifest["aa_final_settings"]["bound_zero_tail_scan_points"] == 48
     assert manifest["state"]["data_file"] == candidate.name
     assert manifest["state"]["data_sha256"] == _sha256(candidate)
 
 
+@pytest.mark.private_baseline
 def test_accepted_al_is_sc_example_archive_and_manifest() -> None:
     directory = (
         ROOT / "benchmarks" / "baselines" / "al_is_sc_comparison"

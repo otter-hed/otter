@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,7 @@ def _load() -> tuple[dict[str, object], dict[str, np.ndarray]]:
     return manifest, payload
 
 
+@pytest.mark.private_baseline
 def test_ch2_baseline_covers_six_two_temperature_states_and_controls() -> None:
     manifest, data = _load()
     assert manifest["status"] == "accepted"
@@ -48,11 +50,14 @@ def test_ch2_baseline_covers_six_two_temperature_states_and_controls() -> None:
         assert np.unique(data["electronic_state_id"][mask]).size == 1
 
 
+@pytest.mark.private_baseline
 def test_ch2_hnc_md_claim_is_supported_by_saved_diagnostics() -> None:
     manifest, data = _load()
     config = manifest["configuration"]
-    assert config["same_qoz_pair_potential_for_hnc_and_md"] is True
-    assert np.max(data["qoz_potential_max_abs_delta_within_te"]) < 1.0e-12
+    assert config["same_qoz_pair_potential_for_hnc_and_md"] is False
+    assert bool(data["md_is_historical"]) is True
+    assert config["md_matches_current_otter_potential_verified"] is False
+    assert "qoz_potential_max_abs_delta_within_te" not in data
     assert np.max(np.abs(data["md_nve_relative_energy_drift"])) < 2.0e-3
     assert np.max(data["hnc_output_residual"]) < 1.0e-6
     assert np.max(data["g_rmse"]) < 2.0e-2
@@ -87,6 +92,7 @@ def test_ch2_hnc_md_claim_is_supported_by_saved_diagnostics() -> None:
     ]
 
 
+@pytest.mark.private_baseline
 def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
     source = (
         ROOT / "benchmarks" / "examples" / "plot_ch2_hnc_md.py"
@@ -105,23 +111,26 @@ def test_ch2_gallery_uses_otter_style_titles_and_embeds_project_media() -> None:
     assert "ionic statistical treatment rather than" not in source
     assert "polypropylene (PP)" in source
     assert r"B_{ab}(r)=0" in source
-    assert "6.74 s" in source and "7.76 h" in source
+    _, data = _load()
+    assert f"{np.sum(data['hnc_elapsed_s']):.2f} s" in source
+    assert f"{np.sum(data['md_elapsed_s']) / 3600:.2f} h" in source
     assert "16 MPI ranks" in source and "eight workers" in source
     assert "29.322944 Angstrom" in source and "55.4123 Bohr" in source
-    assert "benchmarks/baselines/ch2_hnc_md/ch2_hnc_md.npz" in source
+    assert "tools/reproduce_ch2_hnc_md.py" in source
     assert "ch2_md.mp4" in source and "ch2_md.png" in source
-    assert "ch2_hnc_md_gab_residual.png" in source
-    assert "ch2_md_sab_rdf_vs_density.png" in source
-    assert "ch2_md_sab_rdf_minus_density.png" in source
+    assert 'FIGURE_DIR / "ch2_hnc_md_gab_residual"' in source
+    assert 'FIGURE_DIR / "ch2_md_sab_rdf_vs_density"' in source
+    assert 'FIGURE_DIR / "ch2_md_sab_rdf_minus_density"' in source
     assert source.index("ch2_md.mp4") < source.index("The material is")
-    assert source.index("ch2_md.mp4") < source.index("ch2_hnc_md_gab.png")
-    assert source.index("ch2_hnc_md_gab.png") < source.index(
-        "from __future__ import annotations"
-    )
+    # Gallery captures all six live figures; only video/poster remain static.
+    assert "close=True" not in source
+    assert ".. image:: /_static/benchmarks/ch2_hnc_md/ch2_hnc" not in source
+    assert source.count("_ = save_figure(") == 6
     assert "plot_ch2_hnc_md" in index
     assert index.count('class="sphx-glr-thumbcontainer"') >= 8
 
 
+@pytest.mark.private_baseline
 def test_ch2_gallery_static_results_are_checksummed() -> None:
     manifest, _ = _load()
     roles = {str(record["role"]) for record in manifest["media"]}

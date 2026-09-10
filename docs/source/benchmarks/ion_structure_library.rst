@@ -1,5 +1,10 @@
 :orphan:
 
+.. note::
+
+   All seven Otter states and Be VMHNC use the September 2026 recalculation.
+   Be MD retains its earlier potential. See :doc:`validation_20260908`.
+
 Ion-structure literature library
 ================================
 
@@ -39,14 +44,19 @@ Each panel states whether it is an equilibrium or two-temperature comparison.
 The two Clérouin panels include independent Otter KS and Thomas--Fermi
 average-atom calculations; both use the same QOZ/HNC settings.
 
-The Wünsch Be panels contain three Otter results made from one IS-QOZ pair
-potential:
+Reproduction uses the default AA radial resolution and SCF tolerances,
+without element-specific precision overrides. The native screening-charge
+integral is checked before accepting a calculated state.
+
+The Wünsch Be panels contain two current integral-equation results and an
+explicitly historical MD overlay:
 
 * **Otter-HNC** uses the bridge-free hypernetted-chain closure.
 * **Otter-VMHNC** uses the variational Rosenfeld--Ashcroft hard-sphere bridge
   :cite:p:`RosenfeldAshcroft1979,Faussurier2004`.
-* **Otter-MD** is a 2048-ion LAMMPS :cite:p:`ThompsonEtAl2022` calculation
-  with the same tabulated potential.  Shaded bands are twice the standard
+* **Otter-MD (old potential)** is a 2048-ion LAMMPS
+  :cite:p:`ThompsonEtAl2022` calculation with the earlier tabulated potential.
+  Shaded bands are twice the standard
   error across RDF blocks or saved-frame reciprocal-shell averages.
 
 The accepted archive retains every periodic reciprocal shell.  The plotted
@@ -56,8 +66,8 @@ MD :math:`S_{ii}(k)` starts at the second shell,
 vectors and is therefore excluded from the curve as a direction-starved
 finite-size estimate.  No smoothing or replacement value is applied.
 
-Thus the HNC--MD difference diagnoses the ionic closure without changing the
-average atom, ionization, screening density, or pair potential.  VMHNC is not
+Only current HNC versus VMHNC holds the electronic potential fixed. The
+comparison to historical MD can also include changes to that potential. VMHNC is not
 IEMHNC: VMHNC uses a variational hard-sphere reference, whereas IEMHNC maps an
 OCP bridge to a YOCP state.
 
@@ -73,30 +83,16 @@ modifying the archived reference columns.
 Reproduce the comparison
 ------------------------
 
-The downloadable script
-:doc:`gen_benchmarks/plot_ion_structure_library` exposes one switch:
+Run the downloadable source from :doc:`gen_benchmarks/plot_ion_structure_library`::
 
-.. code-block:: python
+    poetry run python benchmarks/examples/plot_ion_structure_library.py
 
-   USE_PRECOMPUTED_DATA = True
+The default calculates the electronic and ionic states, writes local results
+under ``benchmarks/outputs``, and exports PNG and PDF figures. No precomputed
+Otter NPZ is needed. Literature reference data remain separate inputs.
 
-``True`` verifies and loads checksummed Otter results.  ``False`` runs the
-audited producer, including the Wünsch HNC/VMHNC and LAMMPS calculation,
-writes new files
-under ``benchmarks/outputs/ion_structure_library/gallery_recomputed``, and
-plots those results.  Accepted files are never overwritten automatically.
-Each run exports PNG and PDF figures.
-
-The common single- and multi-species MD implementation is
-``tools/otter_lammps_md.py``.  The benchmark producer
-``benchmarks/runners/regenerate_ion_structure_library.py`` keeps all Wünsch
-particle counts, temperatures, time scales, sampling intervals, and MPI
-settings in its user-editable Python constants.  A run preserves
-``atoms.data``, ``pair_potentials.table``, ``in.otter_md``, LAMMPS logs, RDF
-blocks, the trajectory, statistical results, and a checksummed JSON metadata
-record below ``benchmarks/outputs/ion_structure_library/recomputed/md_work``.
-For mixtures the same tool requires every unordered pair potential and writes
-all partial :math:`g_{ij}(r)` and :math:`S_{ij}(k)` channels.
+The MD curves are also recalculated and require LAMMPS and MPI. Particle
+counts, timesteps, sampling intervals and CPU counts are in the input block.
 
 Reference-data notice
 ---------------------

@@ -92,8 +92,8 @@
       "scope": "completed_is_campaign",
       "files": {
         "Al_Te10eV_rayleigh.npz": {
-          "sha256": "ff08fde848be65d6df2acd27713a74557cbe3e7d0820833cf2c27058108ea6a6",
-          "bytes": 44944
+          "sha256": "6801acdb6a94fbb09437a33f7227206c5c7ed214996526aea95ccf2c84a066ec",
+          "bytes": 44943
         }
       }
     },
@@ -126,8 +126,8 @@
       "scope": "completed_is_campaign",
       "files": {
         "C_Te100eV_density_scan.npz": {
-          "sha256": "a136c9692a3ef01f3359c9e6927f06e3e36d1edc8cf6872163f80645e2990bf3",
-          "bytes": 17648
+          "sha256": "2d0ee1f3ba19a11c55d3832b000c09f60d1952ecf5e1f1cf4b746df3956239c1",
+          "bytes": 17725
         }
       }
     },
@@ -154,134 +154,118 @@
       }
     },
     "ch2_hnc_md": {
-      "scope": "archived_matched_potential_comparison",
+      "scope": "refreshed_otter_with_historical_md",
       "files": {
         "ch2_hnc_md.npz": {
-          "sha256": "5d7d5a09ae0def42049d555dd954efa533c4f9eb06b77805ddddf7a8d7adbad7",
-          "bytes": 1150426,
-          "archived_npz_sha256": "46b24b1d41eb8978d72d1b93ce865cf705aac9cb38f04f6af376222e38d8555c",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 31
+          "sha256": "3265796d89a792c7f5797a47cb24c4c5da233cd5805e4d95c67a9d01039a6351",
+          "bytes": 1150422,
+          "historical_md_fields_verified": 17,
+          "historical_md_arrays_unchanged": true
         }
       }
     },
     "ion_structure_library": {
-      "scope": "archived_matched_potential_comparison",
+      "scope": "refreshed_otter_with_historical_md",
       "files": {
         "al_clerouin_rho8p1_te10_ti10.npz": {
-          "sha256": "0c407ef25b48802f6e006245e40de7deb00816a35e450cd6078f367c0bab0201",
-          "bytes": 44976,
-          "archived_npz_sha256": "2f8a4991b1b8c62fc1f450ffd33fa830dbbb3c2d6884190bdd03485c725b14bc",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "c846254a9e1d7702c4d0d2374ada337b42aa3323242d518c90b9739c6a84748e",
+          "bytes": 45967,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         },
         "al_clerouin_rho8p1_te10_ti10_tf.npz": {
-          "sha256": "eb445e815e1c9c085898723b3a82ff0ed0688925c3529812fe98cd73733c4d59",
-          "bytes": 44994,
-          "archived_npz_sha256": "fe37b67721eb02800279399f3a4f6efe7c42ce96231ed000c47f1210498d1ba7",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "29eee71fdb217c1fbb4ef00e8c2ef14beab40b5babcff87ec01d3e8ff2a717cd",
+          "bytes": 45950,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         },
         "al_clerouin_rho8p1_te10_ti2.npz": {
-          "sha256": "f16a5e630e0734398b3f7f55d820c712d98058cb4a5fbd025be933173762a462",
-          "bytes": 46415,
-          "archived_npz_sha256": "4acc0af77c0d14a666e929777a40543b87b45704e9636c9dc518d200e611b9df",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "b9619302bd3862f8f0574958db9880e5de7ff197d228ccc2274ca03812facf35",
+          "bytes": 47405,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         },
         "al_clerouin_rho8p1_te10_ti2_tf.npz": {
-          "sha256": "4ecad00e1d4496c17e99525043f58ec807d6d8990c800d446fb8ea5d020556e6",
-          "bytes": 46208,
-          "archived_npz_sha256": "87daf65462231cd0cb387ff0a27b170225c00e879a8e62affab0b1fa4b2f357d",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "04bcf0e0b261a4e51436bc31efcfb86ecb1b9a645b65c17919c25d24e657368e",
+          "bytes": 47191,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         },
         "al_gill_rho2p7_te5_ti5.npz": {
-          "sha256": "c3c8c5869036628ae02aac35ebfcb20e8e0604da0a60f8ca15cfddf5e48ff1b4",
-          "bytes": 37699,
-          "archived_npz_sha256": "c972172c013cdace81033222a6aad7a1a7820e0d3ad35b9b1f732ffa0e30aaac",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "37fe01aadd765366bf0bb76b52e5e53bdd2bc9a3304ccca614b5a93eda28774a",
+          "bytes": 38723,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         },
         "be_wunsch_rho5p544_te13_ti13.npz": {
-          "sha256": "4d0dca70bd15e066b0fb1742edee6c7a5468fa838e013bc16127f1e3b02f4067",
-          "bytes": 92378,
-          "archived_npz_sha256": "8338ed7970d2f5a7e5eab94087fe124c9bad41a589fbc584b2c287c93228570a",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 47
+          "sha256": "f48b34a532358184298d61b98595c20fc58f945bf33a19e95ebe0ffbcb14323c",
+          "bytes": 93513,
+          "historical_md_fields_verified": 24,
+          "historical_md_arrays_unchanged": true
         },
         "c_starrett_rho20_te50_ti50.npz": {
-          "sha256": "3eb1efaf19eaa72709e29b025660f46af97693e7f4fb3025375a6ec2c5f3ccf6",
-          "bytes": 60354,
-          "archived_npz_sha256": "cfa55182320952976c7263501df831257e0aefe57e9fe54761361fa80a727693",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 19
+          "sha256": "9f6bd72711cba67278321460309e6a826d6b9af1288135300e4e4f1537761266",
+          "bytes": 61300,
+          "historical_md_fields_verified": 0,
+          "historical_md_arrays_unchanged": true
         }
       }
     },
     "johnson_et_al_2025_two_temperature_al": {
-      "scope": "archived_matched_potential_comparison",
+      "scope": "refreshed_otter_with_historical_md",
       "files": {
         "al_rho2p7_te10_ti1.npz": {
-          "sha256": "cc583ecbdb6cf271d7641efa5712e7411f967aaddd288b16925a3b2683b6740d",
-          "bytes": 58260,
-          "archived_npz_sha256": "3cf1a9f93c785aee47aacc120dd2a8c06174c1c124b93e4122fdff93692b7c20",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 37
+          "sha256": "7c28f618f1744a063605ddd8769dbb7d698952a8e9b5f543944e83514161671f",
+          "bytes": 58637,
+          "historical_md_fields_verified": 13,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho2p7_te1_ti1.npz": {
-          "sha256": "ba97371088bcb5930fa050103df3d8c9235758d0f017fa49a6daf441d54be3a6",
-          "bytes": 58153,
-          "archived_npz_sha256": "5aa59757f4ebd51fe44c2a22d022e61583eb2d675d2c21387b3a8214f3572479",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 37
+          "sha256": "34a6d231cf29c376e1343fc759159aff279cc80e8338618d8ffb271f80c01add",
+          "bytes": 58519,
+          "historical_md_fields_verified": 13,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho2p7_te30_ti1.npz": {
-          "sha256": "6b06c0867e52b547ec6c620ad3609638bdb5fb057659beb7d332745610bd5c72",
-          "bytes": 58285,
-          "archived_npz_sha256": "2268da7b64863a94e05d50d5def2c7ce136e7075e25714af9e4875fa4a5cbb84",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 37
+          "sha256": "a9d27b7fee7d9bfb80b74f2b559c8cf39c7fabdca6f818fa5041eceffd293611",
+          "bytes": 58656,
+          "historical_md_fields_verified": 13,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho2p7_te3_ti1.npz": {
-          "sha256": "0cf396fb1435b9dc7930ff9b9c8f67e71114fa3c3acf5eb58d7d305b73fe4f4b",
-          "bytes": 58162,
-          "archived_npz_sha256": "813e70ce34a746168668fbbe30464ff9e38f3daae027586b819637d6199064c8",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 37
+          "sha256": "bae8e48e349fd150e717ce9f16bc35cbf357d0578804311022d697624a869fbf",
+          "bytes": 58554,
+          "historical_md_fields_verified": 13,
+          "historical_md_arrays_unchanged": true
         }
       }
     },
     "schorner_et_al_2022_al_sii": {
-      "scope": "archived_matched_potential_comparison",
+      "scope": "refreshed_otter_with_historical_md",
       "files": {
         "al_rho4p712_te1_ti1_lda.npz": {
-          "sha256": "b0a6ffb8fcdbc1adb619b71b2214e9250c169c0c2cdadd1fd90fce2084b78d85",
-          "bytes": 26636,
-          "archived_npz_sha256": "b3736a5a7908604cd2db7202cd156e9841764f4ee0f696e5a6ae9fd0253ab88d",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 34
+          "sha256": "873825bde751e1a182239c3aadc826e80860edf57c8527c6fe8f69714452f355",
+          "bytes": 26549,
+          "historical_md_fields_verified": 19,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho4p712_te1_ti1_pbe.npz": {
-          "sha256": "e947ae8d36502bcfbc40f5757e291beedfe5a610bc513058c46cc71059cb2865",
-          "bytes": 26497,
-          "archived_npz_sha256": "16f1732556b6fc5de6b8791d3f1c4894e46e6698abd0db1ab7fccb13b2588790",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 34
+          "sha256": "8f7b9ca4d70d6ffd6266c2921b2099421c211510c631e3cb348c6965c7aa743c",
+          "bytes": 26441,
+          "historical_md_fields_verified": 19,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho8p1_te5_ti5_lda.npz": {
-          "sha256": "2124af2fb256734ecca4222725c4197a42880f425b90811e24ee8fb41c4e0790",
-          "bytes": 24900,
-          "archived_npz_sha256": "8b6b9964998d297205c8cefde662c9168f7623d078435d8f1bedf3d18bc12640",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 34
+          "sha256": "a7d43a76e149601c55341a0059730278f9e9d89c28855dd373b0ca62879787ed",
+          "bytes": 24836,
+          "historical_md_fields_verified": 19,
+          "historical_md_arrays_unchanged": true
         },
         "al_rho8p1_te5_ti5_pbe.npz": {
-          "sha256": "f72a8e713c78ed6b102dfe7ce2b4a1fb102fac6ced20282601eadc740563aa8e",
-          "bytes": 24804,
-          "archived_npz_sha256": "9f570502e229871a7b3642fd9fda9d6ec2e4c620be6dd76934bae02569bddadc",
-          "retained_numeric_arrays_equal": true,
-          "retained_numeric_array_count": 34
+          "sha256": "e77498a9a09e252ae94acf33249acfb6a2b66f23748cc99d13a4fed645db7cef",
+          "bytes": 24735,
+          "historical_md_fields_verified": 19,
+          "historical_md_arrays_unchanged": true
         }
       }
     },
@@ -387,6 +371,15 @@
           "bytes": 39212
         }
       }
+    },
+    "doppner_2023_be_ionization": {
+      "scope": "diagnostic_partial_full_only_scan",
+      "files": {
+        "Be_ionization.npz": {
+          "sha256": "0863acc6161a3b1cb2f8ad9b48e9df201c601b0d4318b91032d0bf84edede4c9",
+          "bytes": 12761
+        }
+      }
     }
   },
   "electronic_sc": {
@@ -450,5 +443,23 @@
       false,
       false
     ]
+  },
+  "gallery_refresh": {
+    "run_stale_examples": true,
+    "ch2_figures_rendered_from_npz": true,
+    "md_rerun": false,
+    "unresolved_carbon_rows": 0,
+    "be_scan": {
+      "requested": 48,
+      "full_scf_converged": 47,
+      "resolved": 46,
+      "marginal": 1,
+      "failed": [
+        {
+          "te_ev": 50,
+          "rho_g_cc": 65
+        }
+      ]
+    }
   }
 }

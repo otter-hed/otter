@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import os
@@ -58,6 +58,10 @@ class Package:
 
 
 PACKAGES = (
+    Package(
+        "doppner_2023_be_ionization",
+        OUTPUTS / "doppner_2023_be_ionization" / "recomputed",
+    ),
     Package(
         "al_full_workflow_1ev",
         OUTPUTS / "al_full_workflow_1ev" / "recomputed",
@@ -482,7 +486,8 @@ def _compact_metadata(
     if not isinstance(producer, dict):
         producer = {}
     producer.setdefault("project", "Otter")
-    producer.setdefault("version", otter_version)
+    # Packaging an existing calculation does not change its producing version.
+    producer["packaging_version"] = otter_version
     return {
         "schema_version": "otter_compact_archive_metadata_v1",
         "archive_schema_version": str(_npz_scalar(arrays, "schema_version")),
@@ -498,7 +503,7 @@ def _compact_metadata(
         "method_references": _method_references(manifest),
         "units": manifest.get("units", {}),
         "data_rights": manifest.get("data_rights", {}),
-        "convergence": scalar_diagnostics,
+        "convergence": {**deepcopy(manifest.get("scientific_audit", {})), **scalar_diagnostics},
         "fields": sorted(arrays),
     }
 
@@ -566,7 +571,15 @@ def _update_record(
     if "status" in record:
         record["status"] = "accepted"
     if any(key.startswith("md_") for key in arrays):
-        record["same_potential_md"] = True
+        record["same_potential_md"] = not bool(
+            _npz_scalar(arrays, "md_is_historical")
+        )
+        if not record["same_potential_md"]:
+            # These metrics described the old HNC/MD pairing, not this payload.
+            for key in ("hnc_vs_same_potential_md_rmse",
+                        "vmhnc_vs_same_potential_md_rmse",
+                        "same_potential_md_gii_rmse"):
+                record.pop(key, None)
     producer_commit = _npz_scalar(arrays, "otter_git_commit")
     if producer_commit is not None:
         record["producer_git_commit"] = str(producer_commit)
@@ -736,6 +749,8 @@ def _with_preserved_md(
     package: Package,
     baseline_name: str,
     candidate: dict[str, np.ndarray],
+    *,
+    allow_historical_md: bool = False,
 ) -> dict[str, np.ndarray]:
     """Merge immutable accepted MD measurements into a new Otter result."""
     payload = dict(candidate)
@@ -748,7 +763,8 @@ def _with_preserved_md(
         with np.load(package.baseline_dir / baseline_name, allow_pickle=False) as old:
             for key in ("gii_r", "sii_k", "gij_r", "sij_k", "hnc_gij_r", "hnc_sij_k",
                         "vmhnc_gii_r", "vmhnc_sii_k"):
-                if key in payload and key in old and not np.array_equal(payload[key], old[key]):
+                if (not allow_historical_md and key in payload and key in old
+                        and not np.array_equal(payload[key], old[key])):
                     raise ValueError(
                         f"{package.name}/{baseline_name}: cannot pair changed {key} "
                         "with archived MD without verified matching-potential provenance. "
@@ -761,6 +777,10 @@ def _with_preserved_md(
                 f"to modify preserved MD field {key!r}."
             )
         payload[key] = accepted
+    if md_arrays and allow_historical_md:
+        # Explicit opt-in is for an annotated historical overlay, never evidence
+        # that the newly calculated potential is the one used in the MD run.
+        payload["md_is_historical"] = np.asarray(True)
     return payload
 
 
@@ -851,7 +871,6 @@ def _build_ch2_hnc_candidate(
             "hnc_elapsed_s": hnc_elapsed,
             "hnc_output_residual": hnc_residual,
             "hnc_closure_mismatch": hnc_closure,
-            "qoz_potential_max_abs_delta_within_te": np.zeros(9),
             "source_case_signature": np.asarray(signatures),
         }
     )
@@ -908,7 +927,7 @@ def _refresh_ch2_manifest(
     arrays = next(iter(promoted.values()))[0]
     producer = manifest.setdefault("producer", {})
     driver = ROOT / "applications" / "ch2_xrts_dataset" / "compare_hnc_md.py"
-    producer["project_version"] = otter_version
+    producer["packaging_version"] = otter_version
     producer["source_driver_sha256_at_packaging"] = sha256_file(driver)
     producer["otter_hnc_recomputed_with_md_preserved"] = True
     producer["md_arrays_reused_without_modification"] = True
@@ -963,6 +982,7 @@ def _merge_manifest(
     *,
     candidate_manifest: dict[str, Any] | None,
     promoted: dict[str, tuple[dict[str, np.ndarray], str]],
+    preserve_configuration: bool = False,
 ) -> dict[str, Any]:
     manifest_path = package.baseline_dir / "manifest.json"
     accepted = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -974,9 +994,24 @@ def _merge_manifest(
             "configuration",
             "scientific_audit",
             "shell_charge_diagnostic",
+            "aa_final_settings",
         ):
             if key in candidate_manifest:
                 accepted[key] = deepcopy(candidate_manifest[key])
+    # Prefer the configuration actually recorded by a fresh producer. In
+    # particular, archive-only library producers have no candidate manifest;
+    # keeping the old manifest's worker/grid controls would mislabel new data.
+    state_configurations = {}
+    for name, (arrays, _) in promoted.items():
+        signature = _npz_scalar(arrays, "producer_signature_json")
+        if signature is not None:
+            signature = json.loads(str(signature))
+            if any(key in signature for key in ("resolved_configuration", "electronic_configuration")):
+                state_configurations[name] = signature
+    if state_configurations:
+        accepted["state_configurations"] = state_configurations
+        if candidate_manifest is None and not preserve_configuration:
+            accepted["configuration"] = {"per_state": deepcopy(state_configurations)}
     if "status" in accepted:
         accepted["status"] = "accepted"
     if any(
@@ -988,13 +1023,34 @@ def _merge_manifest(
         for key in ("same_potential_md", "wunsch_same_potential_md"):
             if key in accepted_configuration:
                 configuration[key] = deepcopy(accepted_configuration[key])
+        if any(bool(_npz_scalar(arrays, "md_is_historical"))
+               for arrays, _ in promoted.values()):
+            configuration["md_matches_current_otter_potential_verified"] = False
+            configuration["md_comparison_scope"] = (
+                "Historical MD on the earlier Otter potential; not a "
+                "same-potential closure validation of the refreshed HNC curves."
+            )
+            if "same_qoz_pair_potential_for_hnc_and_md" in configuration:
+                configuration["same_qoz_pair_potential_for_hnc_and_md"] = False
+            for key in ("same_potential_md", "wunsch_same_potential_md"):
+                if isinstance(configuration.get(key), dict):
+                    configuration[key]["historical_protocol_only"] = True
     producer_commits = {
         str(commit)
         for arrays, _ in promoted.values()
         if (commit := _npz_scalar(arrays, "otter_git_commit")) is not None
     }
     if len(producer_commits) == 1:
-        accepted.setdefault("producer", {})["git_commit"] = producer_commits.pop()
+        producer = accepted.setdefault("producer", {})
+        commit = producer_commits.pop()
+        evidence = producer.get("git_commit_recovery_evidence")
+        if evidence:
+            evidence_path = package.baseline_dir / evidence
+            recovered = json.loads(evidence_path.read_text()) if evidence_path.is_file() else {}
+            if recovered.get("verified_git_commit") != commit:
+                producer["historical_git_commit_recovery_evidence"] = producer.pop("git_commit_recovery_evidence")
+                producer.pop("git_commit_recovery_method", None)
+        producer["git_commit"] = commit
     _refresh_producer_metadata(accepted)
 
     if isinstance(accepted.get("states"), list):
@@ -1063,10 +1119,15 @@ def _merge_manifest(
 
 def _validate_package(
     package: Package,
+    *,
+    allow_historical_md: bool = False,
 ) -> tuple[
     dict[str, tuple[Path, dict[str, np.ndarray]]],
     dict[str, Any] | None,
 ]:
+    candidate_manifest = _candidate_manifest(package)
+    if (candidate_manifest or {}).get("status") == "diagnostic_partial":
+        raise ValueError(f"{package.name}: diagnostic partial scan is not a complete accepted baseline")
     baseline_names = {
         path.name for path in package.baseline_dir.glob("*.npz")
     }
@@ -1086,6 +1147,7 @@ def _validate_package(
             package,
             baseline_name,
             _load_candidate(candidate_path),
+            allow_historical_md=allow_historical_md,
         )
         _validate_storage_contract(package, candidate_path, arrays)
         candidate_files[baseline_name] = (candidate_path, arrays)
@@ -1101,7 +1163,7 @@ def _validate_package(
     }
     if extra:
         raise ValueError(f"{package.name}: unexpected candidate files {sorted(extra)}.")
-    return candidate_files, _candidate_manifest(package)
+    return candidate_files, candidate_manifest
 
 
 def _atomic_copy(source: Path, destination: Path) -> None:
@@ -1185,12 +1247,18 @@ def _refresh_existing_metadata(package: Package) -> None:
         package,
         candidate_manifest=None,
         promoted=promoted,
+        preserve_configuration=True,
     )
     _write_manifest(package.baseline_dir / "manifest.json", manifest)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--candidate-root",
+        type=Path,
+        help="use a reviewed snapshot of benchmarks/outputs; requires --keep-candidates",
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -1202,28 +1270,46 @@ def main() -> None:
         help="retain candidate directories after a successful promotion",
     )
     parser.add_argument(
+        "--allow-historical-md",
+        action="store_true",
+        help=("retain old MD with an explicit historical flag; requires reviewing "
+              "the gallery labels and removing same-potential claims"),
+    )
+    parser.add_argument(
         "--refresh-metadata-only",
         action="store_true",
         help="refresh embedded metadata and checksums in accepted baselines",
     )
     args = parser.parse_args()
 
+    packages = PACKAGES
+    if args.candidate_root is not None:
+        if not args.keep_candidates or args.refresh_metadata_only:
+            parser.error("--candidate-root requires --keep-candidates and cannot refresh metadata only")
+        candidate_root = args.candidate_root.resolve()
+        if not candidate_root.is_dir():
+            parser.error("--candidate-root must be an existing directory")
+        packages = tuple(replace(p, candidate_dir=candidate_root / p.candidate_dir.relative_to(OUTPUTS))
+                         for p in PACKAGES)
+
     if args.refresh_metadata_only:
-        for package in PACKAGES:
+        for package in packages:
             _refresh_existing_metadata(package)
             print(f"[metadata] {package.name}")
         return
 
     validated = {
-        package.name: _validate_package(package) for package in PACKAGES
+        package.name: _validate_package(
+            package, allow_historical_md=args.allow_historical_md
+        ) for package in packages
     }
     total = sum(len(files) for files, _ in validated.values())
-    print(f"Validated {total} candidate NPZ files in {len(PACKAGES)} packages.")
+    print(f"Validated {total} candidate NPZ files in {len(packages)} packages.")
     if not args.apply:
         print("Dry run only; use --apply to replace project-generated baselines.")
         return
 
-    for package in PACKAGES:
+    for package in packages:
         candidate_files, candidate_manifest = validated[package.name]
         provisional = {
             baseline_name: (arrays, sha256_file(source))
@@ -1255,7 +1341,7 @@ def main() -> None:
         print(f"[promoted] {package.name}: {len(promoted)} state file(s)")
 
     if not args.keep_candidates:
-        for package in PACKAGES:
+        for package in packages:
             if package.name == "carbon_ionization_levels":
                 for path in (
                     package.candidate_dir / "C_Te100eV_density_scan.npz",

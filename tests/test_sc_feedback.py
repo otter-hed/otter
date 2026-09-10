@@ -213,6 +213,7 @@ def test_mixture_sc_feedback_keeps_is_mu_and_uses_full_gij_background(
         assert cfg.full_fixed_mu_ha == 0.4
         assert cfg.n0_mode_override == "ideal"
         assert cfg.electronic_model == electronic_model
+        assert cfg.bound_zero_tail_refine is (electronic_model == "qm")
         np.testing.assert_allclose(cfg.g_ii_override, expected_background[idx])
         assert cfg.v_corr_full is not None
         assert cfg.v_corr_ext is not None
@@ -343,3 +344,47 @@ def test_inner_precision_trigger_and_scale_validation():
     for value in (0., -1., 2., np.nan, np.inf):
         with pytest.raises(ValueError, match="inner_full_tol_scale"):
             SCFeedbackConfig(inner_full_tol_scale=value)
+
+
+@pytest.mark.parametrize(
+    "model, global_override, species_override, expected",
+    [
+        ("qm", None, None, True),
+        ("qm", False, None, False),
+        ("qm", True, None, True),
+        ("qm", None, False, False),
+        ("qm", True, False, False),
+        ("qm", False, True, True),
+        ("tf", None, None, False),
+        ("tf", True, None, True),
+    ],
+)
+def test_sc_zero_tail_default_preserves_explicit_policy_and_is_defaults(
+    constant_feedback, model, global_override, species_override, expected,
+):
+    initial, seen = constant_feedback
+    aa_overrides = {"bound_zero_tail_max_binding_ha": 2e-3}
+    if global_override is not None:
+        aa_overrides["bound_zero_tail_refine"] = global_override
+    species_overrides = (
+        {} if species_override is None
+        else {"Al": {"bound_zero_tail_refine": species_override}}
+    )
+    cfg = PlasmaWorkflowConfig(
+        formula="Al", temperature_ev=10., ion_temperature_ev=10., rho_g_cc=2.7,
+        electronic_model=model, aa_overrides=dict(aa_overrides),
+        species_overrides=species_overrides,
+    )
+    solve_sc_feedback_workflow(cfg, initial, feedback_cfg=SCFeedbackConfig(
+        max_outer=2, v_corr_mix=1., v_corr_tol=2.))
+
+    # Every update, including the final tighter-precision QM solve, inherits
+    # the SC policy without modifying caller inputs or the search window.
+    assert len(seen) == (2 if model == "qm" else 1)
+    assert all(aa.bound_zero_tail_refine is expected for aa in seen)
+    assert all(aa.bound_zero_tail_max_binding_ha == 2e-3 for aa in seen)
+    assert cfg.aa_overrides == aa_overrides
+    assert cfg.species_overrides == species_overrides
+    assert sc_feedback_module.FullExternalConfig.bound_zero_tail_refine is False
+    assert sc_feedback_module.FullExternalConfig.bound_zero_tail_max_binding_ha == 1e-3
+    assert "sc_feedback" not in initial

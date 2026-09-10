@@ -5,9 +5,10 @@ Scientific benchmarks
 
 This page is the complete benchmark catalogue.  Each card opens a runnable
 benchmark report containing its physical state, model choices, provenance,
-quantitative diagnostics, and downloadable Python source.  Expensive quantum
-or molecular-dynamics calculations are represented by compact, checksummed
-accepted data; a documentation build never silently recomputes them.
+quantitative diagnostics, and downloadable Python source. Running that source
+calculates from physical inputs, including MD where shown; no bundled Otter
+NPZ is required. Documentation builds use recorded figures and terminal
+output and do not launch expensive calculations.
 
 For the current data refresh and the scope of archived MD comparisons, see
 :doc:`validation_20260908`.
@@ -22,6 +23,7 @@ than passing through separate ``detailed`` and ``gallery`` index levels.
    :titlesonly:
 
    gen_benchmarks/plot_bethkenhagen_et_al_2020_carbon_ionization
+   gen_benchmarks/plot_doppner_2023_be_ionization
    gen_benchmarks/plot_starrett_saumon_2013_electronic
    gen_benchmarks/plot_starrett_et_al_2014_mixtures_fig3
    gen_benchmarks/plot_starrett_single_species_2013_2014
@@ -71,6 +73,22 @@ Electronic structure and ionization
 .. raw:: html
 
       <div class="sphx-glr-thumbnail-title">Starrett--Saumon electronic levels and ionization</div>
+    </div>
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Be full-AA ionization at 50, 100 and 150 eV compared with Döppner et al. (2023), Figure 3(a).">
+
+.. only:: html
+
+   .. image:: /benchmarks/gen_benchmarks/images/thumb/sphx_glr_plot_doppner_2023_be_ionization_thumb.png
+      :alt: Döppner et al. beryllium ionization benchmark
+
+   :doc:`gen_benchmarks/plot_doppner_2023_be_ionization`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Döppner 2023 Be ionization</div>
     </div>
 
 .. thumbnail-parent-div-close

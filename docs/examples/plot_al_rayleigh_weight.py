@@ -10,17 +10,37 @@ This self-contained example evaluates the static ionic Rayleigh weight
 
 for aluminium at :math:`T_e=T_i=10\,\mathrm{eV}` and three mass densities.
 Here ``q(k)`` is Otter's charge-closed screening-cloud transform and
-``f(k)`` is the ionic form factor (the transform of the bound-electron
-density).  Both are exported by :func:`otter.io.state.build_state_arrays`,
+``f(k)`` is the ionic form factor (the transform of :math:`n_{\rm ion}`,
+including the pressure-ionization and radial-cutoff partition, not simply
+the full bound-state density). Both are exported by
+:func:`otter.io.state.build_state_arrays`,
 so the expression uses exactly the quantities supplied to the QOZ/HNC
 workflow.  The convention is the static form-factor factor used in the
 ion-structure construction of Starrett and Saumon (2014),
 :cite:t:`StarrettSaumon2014`.
 
-The default loads a checksummed archive produced by this same script.  Set
-``RECOMPUTE_WITH_OTTER=True`` below, or run with
-``OTTER_RECOMPUTE_AL_RAYLEIGH=1``, to perform all three Otter calculations
-again.  The script writes both PNG and vector PDF figures.
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python docs/examples/plot_al_rayleigh_weight.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_al_rayleigh_weight/results.rst
+
 """
 
 from __future__ import annotations
@@ -44,8 +64,8 @@ from otter.plotting import grid_figsize, save_figure, style_context
 # =============================================================================
 # User input
 # =============================================================================
-USE_PRECOMPUTED_DATA = True
-RECOMPUTE_WITH_OTTER = False
+USE_PRECOMPUTED_DATA = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_RECOMPUTE_AL_RAYLEIGH", "0") == "1":
     USE_PRECOMPUTED_DATA = False
     RECOMPUTE_WITH_OTTER = True
@@ -65,20 +85,15 @@ SCHEMA = "otter_al_rayleigh_weight_10ev_v2"
 
 
 def repository_root() -> Path:
-    """Find this checkout when called directly or by Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        is_checkout = (candidate / "src" / "otter" / "__init__.py").is_file()
-        has_archive = (
-            candidate / "benchmarks" / "baselines" / "al_rayleigh_weight_10ev"
-        ).is_dir()
-        if is_checkout and (has_archive or candidate.name == "otter"):
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter repository root.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -105,7 +120,6 @@ def workflow_config(rho_g_cc: float) -> PlasmaWorkflowConfig:
         rho_g_cc=float(rho_g_cc),
         hnc_tol=HNC_TOL,
         hnc_closure_transform_tol=HNC_CLOSURE_TOL,
-        hnc_max_iter=1000,
     )
 
 
@@ -208,76 +222,84 @@ def load_states() -> list[dict[str, np.ndarray]]:
     return states
 
 
-states = calculate_states() if RECOMPUTE_WITH_OTTER else load_states()
-print(
-    "Using "
-    + (
-        "newly calculated Otter states."
-        if RECOMPUTE_WITH_OTTER
-        else "the checksummed current-Otter states."
-    )
-)
-for state in states:
+def main() -> None:
+    states = calculate_states() if RECOMPUTE_WITH_OTTER else load_states()
     print(
-        f"rho={float(state['rho_g_cc']):g} g/cc: "
-        f"mu={float(state['mu_ha']):.8f} Ha, "
-        f"max W={float(np.max(rayleigh_weight(state))):.6e}"
-    )
-
-
-with style_context("thesis", palette="bing"):
-    fig, axes = plt.subplots(
-        2,
-        2,
-        figsize=grid_figsize(2, 2),
-        squeeze=False,
-    )
-    colours = ("#2E5EAA", "#E76F51", "#23BB62")
-    for state, colour in zip(states, colours, strict=True):
-        rho = float(state["rho_g_cc"])
-        label = rf"$\rho={rho:g}\ \mathrm{{g\,cm^{{-3}}}}$"
-        k = np.asarray(state["k_bohr_inv"], dtype=float)
-        axes[0, 0].plot(k, state["q_k"], color=colour, label=label + r", $q$")
-        axes[0, 0].plot(k, state["f_k"], color=colour, ls="--", label=label + r", $f$")
-        axes[0, 1].plot(k, state["sii_k"], color=colour, label=label)
-        axes[1, 0].plot(k, state["q_k"] + state["f_k"], color=colour, label=label)
-        axes[1, 1].plot(k, rayleigh_weight(state), color=colour, label=label)
-
-    axes[0, 0].set(title=r"Form-factor components", ylabel=r"$q(k),\ f(k)$")
-    axes[0, 1].set(title=r"Ionic structure", ylabel=r"$S_{ii}(k)$")
-    axes[1, 0].set(title=r"Total form factor", ylabel=r"$q(k)+f(k)$")
-    axes[1, 1].set(title=r"Rayleigh weight", ylabel=r"$W(k)$")
-    for axis in axes.flat:
-        axis.set_xlabel(r"$k$ [Bohr$^{-1}$]")
-        axis.set_xlim(-0.05, 12.0)
-
-    density_handles = [
-        Line2D(
-            [0.0],
-            [0.0],
-            color=colour,
-            label=rf"${float(state['rho_g_cc']):g}\ \mathrm{{g\,cm^{{-3}}}}$",
+        "Using "
+        + (
+            "newly calculated Otter states."
+            if RECOMPUTE_WITH_OTTER
+            else "the checksummed current-Otter states."
         )
-        for state, colour in zip(states, colours, strict=True)
-    ]
-    component_handles = [
-        Line2D([0.0], [0.0], color="0.25", ls="-", label=r"$q(k)$"),
-        Line2D([0.0], [0.0], color="0.25", ls="--", label=r"$f(k)$"),
-    ]
-    fig.legend(
-        handles=density_handles + component_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.945),
-        ncol=5,
-        frameon=False,
     )
-    fig.suptitle(
-        r"Al: static Rayleigh weight, $T_e=T_i=10$ eV",
-        y=0.99,
-    )
-    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.89))
-    # Keep the figure open so Sphinx-Gallery embeds the same multi-density
-    # result on the ``Al: elastic Rayleigh weight versus density`` HTML page.
-    # ``save_figure`` still writes the slide-ready PNG/PDF copies; the open
-    # figure is only additionally used by the documentation renderer.
-    save_figure(fig, FIGURE_DIR / "al_rayleigh_weight_10ev", close=False)
+    for state in states:
+        print(
+            f"rho={float(state['rho_g_cc']):g} g/cc: "
+            f"mu={float(state['mu_ha']):.8f} Ha, "
+            f"max W={float(np.max(rayleigh_weight(state))):.6e}"
+        )
+
+
+    with style_context("thesis", palette="bing"):
+        fig, axes = plt.subplots(
+            2,
+            2,
+            figsize=grid_figsize(2, 2),
+            squeeze=False,
+        )
+        colours = ("#2E5EAA", "#E76F51", "#23BB62")
+        for state, colour in zip(states, colours, strict=True):
+            rho = float(state["rho_g_cc"])
+            label = rf"$\rho={rho:g}\ \mathrm{{g\,cm^{{-3}}}}$"
+            k = np.asarray(state["k_bohr_inv"], dtype=float)
+            axes[0, 0].plot(k, state["q_k"], color=colour, label=label + r", $q$")
+            axes[0, 0].plot(k, state["f_k"], color=colour, ls="--", label=label + r", $f$")
+            axes[0, 1].plot(k, state["sii_k"], color=colour, label=label)
+            axes[1, 0].plot(k, state["q_k"] + state["f_k"], color=colour, label=label)
+            axes[1, 1].plot(k, rayleigh_weight(state), color=colour, label=label)
+
+        axes[0, 0].set(title=r"Form-factor components", ylabel=r"$q(k),\ f(k)$")
+        axes[0, 1].set(title=r"Ionic structure", ylabel=r"$S_{ii}(k)$")
+        axes[1, 0].set(title=r"Total form factor", ylabel=r"$q(k)+f(k)$")
+        axes[1, 1].set(title=r"Rayleigh weight", ylabel=r"$W(k)$")
+        for axis in axes.flat:
+            axis.set_xlabel(r"$k$ [Bohr$^{-1}$]")
+            axis.set_xlim(-0.05, 12.0)
+
+        density_handles = [
+            Line2D(
+                [0.0],
+                [0.0],
+                color=colour,
+                label=rf"${float(state['rho_g_cc']):g}\ \mathrm{{g\,cm^{{-3}}}}$",
+            )
+            for state, colour in zip(states, colours, strict=True)
+        ]
+        component_handles = [
+            Line2D([0.0], [0.0], color="0.25", ls="-", label=r"$q(k)$"),
+            Line2D([0.0], [0.0], color="0.25", ls="--", label=r"$f(k)$"),
+        ]
+        fig.legend(
+            handles=density_handles + component_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.945),
+            ncol=5,
+            frameon=False,
+        )
+        fig.suptitle(
+            r"Al: static Rayleigh weight, $T_e=T_i=10$ eV",
+            y=0.99,
+        )
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.89))
+        # Keep the figure open so Sphinx-Gallery embeds the same multi-density
+        # result on the ``Al: elastic Rayleigh weight versus density`` HTML page.
+        # ``save_figure`` still writes the slide-ready PNG/PDF copies; the open
+        # figure is only additionally used by the documentation renderer.
+        save_figure(fig, FIGURE_DIR / "al_rayleigh_weight_10ev", close=False)
+
+
+
+if __name__ == "__main__":
+    main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_al_rayleigh_weight/thumbnail.png"

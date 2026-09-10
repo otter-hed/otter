@@ -1,26 +1,22 @@
-"""
+r"""
 Ion-structure literature library
 ================================
 
 .. note::
 
-   This library retains its archived baseline, including the matched HNC,
-   VMHNC and MD beryllium comparison. It is not relabelled as a rerun of the
-   updated AA solver. See :doc:`/benchmarks/validation_20260908`.
+   All seven Otter HNC states and the Be VMHNC curve use the September 2026
+   recalculation. Be MD is historical and uses the earlier potential.
+   See :doc:`/benchmarks/validation_20260908`.
 
 This benchmark compares Otter ion-structure results with literature curves for
-aluminium, beryllium, and carbon.  ``USE_PRECOMPUTED_DATA = True`` verifies
-and loads checksummed Otter NPZ files.  With ``False``, this file
-constructs :class:`otter.PlasmaWorkflowConfig`, evaluates every average atom
-and ion structure, saves new NPZ files below
-``benchmarks/outputs/ion_structure_library/gallery_recomputed``, and plots
-those results.
+aluminium, beryllium, and carbon.
 
 In the four-panel :math:`S_{ii}(k)` figure, panel 1 uses Gill *et al.*,
 Fig. 3 :cite:p:`GillEtAl2015`; panels 2 and 3 use Clérouin *et al.*, Fig. 1
 :cite:p:`ClerouinEtAl2015`; and panel 4 uses Wünsch *et al.*, Fig. 2
 :cite:p:`WunschEtAl2009`.  For Wünsch Be, ordinary HNC, Rosenfeld--Ashcroft
-VMHNC, and same-potential LAMMPS MD reuse one IS-QOZ pair potential.  The MD
+VMHNC reuse one current IS-QOZ pair potential; the historical LAMMPS MD
+is not a same-potential test of those refreshed curves. The MD
 error band is twice the standard error across independent RDF blocks or
 saved-frame reciprocal-shell averages.  The real-space comparison uses
 Fig. 1(c).  The carbon PA-HNC data were provided by C. E. Starrett
@@ -35,6 +31,33 @@ finite-temperature jellium LFC follows :cite:t:`Chabrier1990`.  See
 </benchmarks/ion_structure_library>` for the scientific interpretation.
 Both benchmark figures are exported as matching PNG and vector PDF files
 under ``benchmarks/outputs/ion_structure_library/figures``.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python benchmarks/examples/plot_ion_structure_library.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Reproducing the MD curves also requires LAMMPS and MPI and can take hours.
+AA calculations keep one continuum worker per atom and use the default
+radial resolution and SCF tolerances.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_ion_structure_library/results.rst
+
 """
 
 from __future__ import annotations
@@ -70,14 +93,14 @@ from otter.plotting import (
 # =============================================================================
 # User input
 # =============================================================================
-USE_PRECOMPUTED_DATA = True
+USE_PRECOMPUTED_DATA = False
 if os.environ.get("OTTER_RECOMPUTE_ION_STRUCTURE_LIBRARY", "0") == "1":
     USE_PRECOMPUTED_DATA = False
 
 # Three independent state groups, each with the default AA worker. The two
 # Al 8.1-g/cc states share one electronic calculation because only the ion
 # temperature differs.
-MAX_STATE_WORKERS = 3
+MAX_STATE_WORKERS = 1
 HNC_CLOSURE_TOL = 2.5e-3
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
@@ -305,22 +328,15 @@ OTTER_SERIES.update(
 
 
 def repository_root() -> Path:
-    """Locate the Otter checkout when run directly or by Sphinx-Gallery."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate
-            / "benchmarks"
-            / "baselines"
-            / "ion_structure_library"
-            / "manifest.json"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -388,9 +404,8 @@ def workflow_config(
         rho_g_cc=float(state["rho_g_cc"]),
         **model_override,
         hnc_closure_transform_tol=float(HNC_CLOSURE_TOL),
-        hnc_max_iter=500,
         hnc_bridge_model=bridge_model,
-        vmhnc_eta_tol=VMHNC_ETA_TOL,
+        **({"vmhnc_eta_tol": VMHNC_ETA_TOL} if bridge_model != "none" else {}),
     )
 
 
@@ -400,6 +415,8 @@ def strict_check(
     """Reject unconverged electronic or HNC best-effort output."""
     electronic = dict(workflow["electronic"]["result"])
     ion = dict(workflow["ion"])
+    from benchmarks.runners.ion_structure_validation import validate_screening_charge
+    validate_screening_charge(ion)
     if electronic.get("stage2_converged") is not True:
         raise RuntimeError("Full average-atom stage 2 did not converge.")
     if dict(electronic.get("ext_status", {})).get("converged") is not True:
@@ -663,6 +680,8 @@ def otter_curve(
 
 
 def print_metrics(states: dict[str, dict[str, np.ndarray]]) -> None:
+    if any(bool(state.get("md_is_historical", False)) for state in states.values()):
+        print("MD rows are historical old-potential results; Otter HNC/VMHNC curves were refreshed.")
     print(
         f"{'state':42s} {'model':10s} {'obs':>3s} {'reference':19s} "
         f"{'RMSE':>10s} {'MAE':>10s} {'max':>10s}"
@@ -689,188 +708,198 @@ def print_metrics(states: dict[str, dict[str, np.ndarray]]) -> None:
                 )
 
 
-states = load_precomputed_states() if USE_PRECOMPUTED_DATA else solve_all_states()
-print(
-    "Using "
-    + (
-        "checksummed, precomputed Otter results."
-        if USE_PRECOMPUTED_DATA
-        else "new results calculated directly by this gallery script."
-    )
-)
-print_metrics(states)
-
-
-def plot_observable(
-    *,
-    observable: str,
-    state_ids: tuple[str, ...],
-) -> plt.Figure:
-    """Draw one self-contained comparison figure."""
-    ncols = 2
-    nrows = (len(state_ids) + ncols - 1) // ncols
-    fig, axes = plt.subplots(
-        nrows,
-        ncols,
-        figsize=grid_figsize(nrows, ncols),
-        squeeze=False,
-    )
-    marker_cycle = ("o", "s", "^", "x")
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for panel, state_id in enumerate(state_ids):
-        axis = axes.ravel()[panel]
-        series_list = [
-            item
-            for item in REFERENCE_SERIES[state_id]
-            if item["observable"] == observable
-        ]
-        display_unit = str(series_list[0]["x_unit"])
-        for model_index, (result_id, label, line_style, prefix) in enumerate(
-            OTTER_SERIES[state_id]
-        ):
-            x_otter, y_otter = otter_curve(
-                states[result_id],
-                observable,
-                display_unit,
-                prefix,
-            )
-            style = dict(MODEL_STYLES["otter"])
-            style["linestyle"] = line_style
-            style["alpha"] = 0.82
-            if model_index == 1:
-                style["color"] = colors[0]
-            elif model_index == 2:
-                style["color"] = colors[1]
-            axis.plot(x_otter, y_otter, label=label, **style)
-            sem_key = (
-                "md_sii_frame_sem"
-                if prefix == "md_" and observable == "sii"
-                else "md_gii_block_sem"
-            )
-            if prefix == "md_" and sem_key in states[result_id]:
-                sem = np.asarray(states[result_id][sem_key], dtype=float)
-                if observable == "sii":
-                    reliable = (
-                        np.asarray(
-                            states[result_id]["md_sii_vectors_per_bin"],
-                            dtype=int,
-                        )
-                        >= MD_MIN_HALF_SPACE_MODES_PER_BIN
-                    )
-                    sem = sem[reliable]
-                axis.fill_between(
-                    x_otter,
-                    y_otter - 2.0 * sem,
-                    y_otter + 2.0 * sem,
-                    color=style["color"],
-                    alpha=0.14,
-                    linewidth=0.0,
-                )
-        reference_x: list[np.ndarray] = []
-        for index, series in enumerate(series_list):
-            x_ref, y_ref = load_reference(series)
-            reference_x.append(x_ref)
-            marker = marker_cycle[index % len(marker_cycle)]
-            scatter_options: dict[str, Any] = {
-                "s": 25,
-                "marker": marker,
-                "linewidths": 1.2,
-                "label": series["label"],
-                "zorder": 3,
-            }
-            color = colors[index % len(colors)]
-            if marker == "x":
-                scatter_options["color"] = color
-            else:
-                scatter_options["facecolors"] = "none"
-                scatter_options["edgecolors"] = color
-            axis.scatter(x_ref, y_ref, **scatter_options)
-        axis.set_title(STATE_TITLES[state_id], fontsize=10)
-        axis.set_ylabel(r"$S_{ii}(k)$" if observable == "sii" else r"$g_{ii}(r)$")
-        if display_unit == "angstrom^-1":
-            axis.set_xlabel(r"$k$ [$\mathrm{\AA}^{-1}$]")
-        elif display_unit == "angstrom":
-            axis.set_xlabel(r"$r$ [$\mathrm{\AA}$]")
-        else:
-            axis.set_xlabel(r"$r$ [Bohr]")
-        all_reference_x = np.concatenate(reference_x)
-        span = float(np.ptp(all_reference_x))
-        margin = max(0.03 * span, 1.0e-6)
-        left = (
-            -0.5
-            if observable == "gii"
-            else max(0.0, float(np.min(all_reference_x)) - margin)
+def main() -> None:
+    states = load_precomputed_states() if USE_PRECOMPUTED_DATA else solve_all_states()
+    print(
+        "Using "
+        + (
+            "checksummed, precomputed Otter results."
+            if USE_PRECOMPUTED_DATA
+            else "new results calculated directly by this gallery script."
         )
-        axis.set_xlim(left, float(np.max(all_reference_x)) + margin)
-        axis.axhline(1.0, color="0.55", lw=0.8, ls=":")
-        axis.legend(fontsize="small")
-    for panel in range(len(state_ids), axes.size):
-        axes.ravel()[panel].set_visible(False)
-    fig.suptitle("Otter ion structure versus curated literature curves", y=0.985)
-    source_line = (
-        "Reference data: Gill et al. (2015); Clérouin et al. (2015); "
-        "Wunsch et al. (2009)."
-        if observable == "sii"
-        else "Reference data: Wunsch et al. (2009); "
-        "C. E. Starrett (private communication)."
     )
-    fig.text(
-        0.5,
-        0.006,
-        source_line,
-        ha="center",
-        va="bottom",
-        fontsize=7.5,
+    print_metrics(states)
+
+
+    def plot_observable(
+        *,
+        observable: str,
+        state_ids: tuple[str, ...],
+    ) -> plt.Figure:
+        """Draw one self-contained comparison figure."""
+        ncols = 2
+        nrows = (len(state_ids) + ncols - 1) // ncols
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=grid_figsize(nrows, ncols),
+            squeeze=False,
+        )
+        marker_cycle = ("o", "s", "^", "x")
+        colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        for panel, state_id in enumerate(state_ids):
+            axis = axes.ravel()[panel]
+            series_list = [
+                item
+                for item in REFERENCE_SERIES[state_id]
+                if item["observable"] == observable
+            ]
+            display_unit = str(series_list[0]["x_unit"])
+            for model_index, (result_id, label, line_style, prefix) in enumerate(
+                OTTER_SERIES[state_id]
+            ):
+                x_otter, y_otter = otter_curve(
+                    states[result_id],
+                    observable,
+                    display_unit,
+                    prefix,
+                )
+                style = dict(MODEL_STYLES["otter"])
+                style["linestyle"] = line_style
+                style["alpha"] = 0.82
+                if model_index == 1:
+                    style["color"] = colors[0]
+                elif model_index == 2:
+                    style["color"] = colors[1]
+                if prefix == "md_" and bool(states[result_id].get("md_is_historical", False)):
+                    label += " (old potential)"
+                axis.plot(x_otter, y_otter, label=label, **style)
+                sem_key = (
+                    "md_sii_frame_sem"
+                    if prefix == "md_" and observable == "sii"
+                    else "md_gii_block_sem"
+                )
+                if prefix == "md_" and sem_key in states[result_id]:
+                    sem = np.asarray(states[result_id][sem_key], dtype=float)
+                    if observable == "sii":
+                        reliable = (
+                            np.asarray(
+                                states[result_id]["md_sii_vectors_per_bin"],
+                                dtype=int,
+                            )
+                            >= MD_MIN_HALF_SPACE_MODES_PER_BIN
+                        )
+                        sem = sem[reliable]
+                    axis.fill_between(
+                        x_otter,
+                        y_otter - 2.0 * sem,
+                        y_otter + 2.0 * sem,
+                        color=style["color"],
+                        alpha=0.14,
+                        linewidth=0.0,
+                    )
+            reference_x: list[np.ndarray] = []
+            for index, series in enumerate(series_list):
+                x_ref, y_ref = load_reference(series)
+                reference_x.append(x_ref)
+                marker = marker_cycle[index % len(marker_cycle)]
+                scatter_options: dict[str, Any] = {
+                    "s": 25,
+                    "marker": marker,
+                    "linewidths": 1.2,
+                    "label": series["label"],
+                    "zorder": 3,
+                }
+                color = colors[index % len(colors)]
+                if marker == "x":
+                    scatter_options["color"] = color
+                else:
+                    scatter_options["facecolors"] = "none"
+                    scatter_options["edgecolors"] = color
+                axis.scatter(x_ref, y_ref, **scatter_options)
+            axis.set_title(STATE_TITLES[state_id], fontsize=10)
+            axis.set_ylabel(r"$S_{ii}(k)$" if observable == "sii" else r"$g_{ii}(r)$")
+            if display_unit == "angstrom^-1":
+                axis.set_xlabel(r"$k$ [$\mathrm{\AA}^{-1}$]")
+            elif display_unit == "angstrom":
+                axis.set_xlabel(r"$r$ [$\mathrm{\AA}$]")
+            else:
+                axis.set_xlabel(r"$r$ [Bohr]")
+            all_reference_x = np.concatenate(reference_x)
+            span = float(np.ptp(all_reference_x))
+            margin = max(0.03 * span, 1.0e-6)
+            left = (
+                -0.5
+                if observable == "gii"
+                else max(0.0, float(np.min(all_reference_x)) - margin)
+            )
+            axis.set_xlim(left, float(np.max(all_reference_x)) + margin)
+            axis.axhline(1.0, color="0.55", lw=0.8, ls=":")
+            axis.legend(fontsize="small")
+        for panel in range(len(state_ids), axes.size):
+            axes.ravel()[panel].set_visible(False)
+        fig.suptitle("Otter ion structure versus curated literature curves", y=0.985)
+        source_line = (
+            "Reference data: Gill et al. (2015); Clérouin et al. (2015); "
+            "Wunsch et al. (2009)."
+            if observable == "sii"
+            else "Reference data: Wunsch et al. (2009); "
+            "C. E. Starrett (private communication)."
+        )
+        fig.text(
+            0.5,
+            0.006,
+            source_line,
+            ha="center",
+            va="bottom",
+            fontsize=7.5,
+        )
+        fig.tight_layout(rect=(0.0, 0.035, 1.0, 0.965), pad=0.55)
+        return fig
+
+
+    # %%
+    # Static ion structure factors
+    # ----------------------------
+    #
+    # Literature wave numbers are stored in inverse ångström.  Otter's native
+    # inverse-Bohr grid is converted explicitly inside ``otter_curve``.
+
+    plot_style = ExitStack()
+    plot_style.enter_context(style_context("thesis", palette="bing"))
+    fig_sii = plot_observable(
+        observable="sii",
+        state_ids=(
+            "al_gill_rho2p7_te5_ti5",
+            "al_clerouin_rho8p1_te10_ti10",
+            "al_clerouin_rho8p1_te10_ti2",
+            "be_wunsch_rho5p544_te13_ti13",
+        ),
     )
-    fig.tight_layout(rect=(0.0, 0.035, 1.0, 0.965), pad=0.55)
-    return fig
 
 
-# %%
-# Static ion structure factors
-# ----------------------------
-#
-# Literature wave numbers are stored in inverse ångström.  Otter's native
-# inverse-Bohr grid is converted explicitly inside ``otter_curve``.
+    # %%
+    # Pair distribution functions
+    # ---------------------------
+    #
+    # The Be coordinates are ångström, while the carbon digitization uses Bohr.
 
-plot_style = ExitStack()
-plot_style.enter_context(style_context("thesis", palette="bing"))
-fig_sii = plot_observable(
-    observable="sii",
-    state_ids=(
-        "al_gill_rho2p7_te5_ti5",
-        "al_clerouin_rho8p1_te10_ti10",
-        "al_clerouin_rho8p1_te10_ti2",
-        "be_wunsch_rho5p544_te13_ti13",
-    ),
-)
+    fig_gii = plot_observable(
+        observable="gii",
+        state_ids=(
+            "be_wunsch_rho5p544_te13_ti13",
+            "c_starrett_rho20_te50_ti50",
+        ),
+    )
+
+    save_figure(
+        fig_sii,
+        FIGURE_DIR / "ion_structure_library_sii",
+        close=False,
+    )
+    save_figure(
+        fig_gii,
+        FIGURE_DIR / "ion_structure_library_gii",
+        close=False,
+    )
+    plot_style.close()
+
+    if "agg" not in plt.get_backend().lower():
+        plt.show()
 
 
-# %%
-# Pair distribution functions
-# ---------------------------
-#
-# The Be coordinates are ångström, while the carbon digitization uses Bohr.
 
-fig_gii = plot_observable(
-    observable="gii",
-    state_ids=(
-        "be_wunsch_rho5p544_te13_ti13",
-        "c_starrett_rho20_te50_ti50",
-    ),
-)
+if __name__ == "__main__":
+    main()
 
-save_figure(
-    fig_sii,
-    FIGURE_DIR / "ion_structure_library_sii",
-    close=False,
-)
-save_figure(
-    fig_gii,
-    FIGURE_DIR / "ion_structure_library_gii",
-    close=False,
-)
-plot_style.close()
-
-if "agg" not in plt.get_backend().lower():
-    plt.show()
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_ion_structure_library/thumbnail.png"

@@ -29,6 +29,11 @@ class Task:
 
 
 TASKS: dict[str, Task] = {
+    "doppner_be_ionization": Task(
+        "benchmarks/runners/regenerate_doppner_2023_be_ionization.py",
+        {},
+        ("benchmarks/outputs/doppner_2023_be_ionization/recomputed",),
+    ),
     "al_full_workflow": Task(
         "benchmarks/runners/regenerate_al_full_workflow.py",
         {},
@@ -68,7 +73,7 @@ TASKS: dict[str, Task] = {
         ("benchmarks/outputs/carbon_lfc_sensitivity/recomputed",),
     ),
     "ch2_hnc_md": Task(
-        "applications/ch2_xrts_dataset/compare_hnc_md.py",
+        "tools/reproduce_ch2_hnc_md.py",
         {
             "OTTER_CH2_RUN_MD": "0",
             "OTTER_CH2_RECOMPUTE_ELECTRONIC": "1",
@@ -138,10 +143,10 @@ def candidate_failures(task: Task) -> list[str]:
         directory = ROOT / relative
         for path in directory.glob("*.json"):
             record = json.loads(path.read_text())
-            if not isinstance(record, dict):
-                continue
             if path.name == "failures.json" and record:
                 issues.append(f"{path.name}: {record}")
+            if not isinstance(record, dict):
+                continue
             audit = record.get("scientific_audit", {})
             if audit.get("stage2_nonconverged_states", 0):
                 issues.append(f"{path.name}: {audit['stage2_nonconverged_states']} SCF failures")
@@ -150,10 +155,11 @@ def candidate_failures(task: Task) -> list[str]:
                     issues.append(f"{state.get('state_id')}: {state.get('reason', state['status'])}")
         for path in directory.glob("*.npz"):
             with np.load(path, allow_pickle=False) as data:
-                if "threshold_status" in data:
-                    count = int(np.count_nonzero(data["threshold_status"] == "unresolved"))
-                    if count:
-                        issues.append(f"{path.name}: {count} unresolved threshold states")
+                for key in ("threshold_status", "threshold_state_status"):
+                    if key in data:
+                        count = int(np.count_nonzero(data[key] == "unresolved"))
+                        if count:
+                            issues.append(f"{path.name}: {count} unresolved threshold states ({key})")
     return issues
 
 

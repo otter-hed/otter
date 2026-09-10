@@ -17,6 +17,7 @@ from types import ModuleType
 from typing import Any
 
 import numpy as np
+from otter.electronic import FullExternalConfig
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +33,6 @@ STATE = {
 }
 HNC_TOL = 1.0e-6
 HNC_CLOSURE_TOL = 1.0e-3
-HNC_MAX_ITER = 1000
 
 
 def _sha256(path: Path) -> str:
@@ -92,7 +92,6 @@ def _configuration(producer: ModuleType):
     cfg = producer._configuration(STATE)
     cfg.hnc_tol = float(HNC_TOL)
     cfg.hnc_closure_transform_tol = float(HNC_CLOSURE_TOL)
-    cfg.hnc_max_iter = int(HNC_MAX_ITER)
     return cfg
 
 
@@ -176,6 +175,14 @@ def _pack_gallery_result(
         "te_ev": np.asarray(STATE["te_ev"]),
         "ti_ev": np.asarray(STATE["ti_ev"]),
         "producer_elapsed_s": np.asarray(float(elapsed_s)),
+        "producer_signature_json": np.asarray(json.dumps({
+            "resolved_configuration": workflow["configuration"],
+            "aa_final_settings": {
+                key: value for key, value in electronic["meta"].items()
+                if (key.startswith("bound_zero_tail_") and key in FullExternalConfig.__dataclass_fields__)
+                or key in ("n_points", "cont_rmax_mult", "b3_tail_target")
+            },
+        }, sort_keys=True)),
         "r_e_bohr": species("r_bohr"),
         "n_full_bohr3": species("n_full_r"),
         "n_bound_bohr3": species("n_bound_r"),
@@ -235,6 +242,7 @@ def _candidate_manifest(
     output_path: Path,
     *,
     worktree_status: str,
+    workflow: dict[str, Any],
     payload: dict[str, np.ndarray] | None = None,
 ) -> dict[str, Any]:
     """Describe a review-only v2 result without claiming it is accepted."""
@@ -289,27 +297,15 @@ def _candidate_manifest(
                 "worktree_clean_at_generation is true."
             ),
         },
-        "configuration": {
-            "element": "Al",
-            "rho_g_cc": 8.1,
-            "te_ev": 1.0,
-            "ti_ev": 1.0,
-            "electronic_model": "qm",
-            "structure_model": "IS",
-            "bound_occ_mode": "fd",
-            "bound_rmax_mult": None,
-            "bound_zero_tail_refine": False,
-            "b3_tail_model": "full",
-            "chi0_model": "lindhard_fd",
-            "lfc_model": "chabrier1990",
-            "qoz_n_points_before_padding": 4096,
-            "qoz_zbar_mode": "pseudoatom_partition",
-            "qoz_renormalize_nscr_to_zbar": True,
-            "hnc_tolerance": HNC_TOL,
-            "hnc_transform_closure_tolerance": HNC_CLOSURE_TOL,
-            "hnc_max_iterations": HNC_MAX_ITER,
-            "r_retained_max_bohr": 20.0,
-            "k_retained_max_bohr_inv": 20.0,
+        # Requested inputs and accepted AA settings are distinct when an
+        # automatic recovery changes the numerical representation. Never
+        # reconstruct either from today's defaults or a handwritten summary.
+        "configuration": workflow["configuration"],
+        "aa_final_settings": {
+            key: value
+            for key, value in workflow["electronic"]["result"]["meta"].items()
+            if (key.startswith("bound_zero_tail_") and key in FullExternalConfig.__dataclass_fields__)
+            or key in ("n_points", "cont_rmax_mult", "b3_tail_target")
         },
         "state": {
             "state_id": STATE["state_id"],
@@ -350,6 +346,7 @@ def regenerate(*, output_path: Path = OUTPUT_PATH) -> Path:
             _candidate_manifest(
                 output_path,
                 worktree_status=worktree_status,
+                workflow=result,
                 payload=payload,
             ),
             indent=2,

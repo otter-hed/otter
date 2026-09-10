@@ -31,7 +31,7 @@
     "temperature_k": 100000.0,
     "temperature_ev": 8.617333262145,
     "data_file": "CH1p36_5gcc_100kK.npz",
-    "data_sha256": "cdb2176432f0297b46f54c9ccca625fbd7cddd48232509be681dd14711333ebc",
+    "data_sha256": "d307eeeb351e5fbec504b872bdc06d3b7c20b896339c46e57c76f5384a6fc6d6",
     "producer": "docs/examples/plot_ch136_mixture_workflow.py",
     "producer_sha256_at_generation": "3084ce6bd83d2b14841225adf1eaf0a5dc774838cf40fd90d4c0c83cfed49cc2",
     "producer_sha256_current": "3084ce6bd83d2b14841225adf1eaf0a5dc774838cf40fd90d4c0c83cfed49cc2",
@@ -51,15 +51,20 @@
       "all_species_external_aa_converged": true,
       "hnc_converged": true
     },
-    "hnc_output_residual": 7.503758747102117e-12,
-    "hnc_closure_mismatch": 6.394884621840902e-14,
+    "hnc_output_residual": 2.3687918324939377e-11,
+    "hnc_closure_mismatch": 1.9551027463649007e-13,
     "n_model_points": 8192
   },
   "validation_scope": "completed_is_campaign",
   "validation_inventory": "../validation_20260908.json",
   "producer": {
     "project": "Otter",
-    "verified_solver_revision": "6ee1f31d10e3b3fcf8d2fa7feb57a5c2a7618c3d",
-    "source_inventory": "../validation_20260908.json"
+    "source_inventory": "benchmarks/baselines/validation_20260909.json",
+    "version": "0.2.4",
+    "packaging_version": "3.0.0",
+    "validation_inventory": "benchmarks/baselines/validation_20260909.json",
+    "validation_source_set": "conditioned_scf_campaign",
+    "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
+    "worktree_dirty": true
   }
 }

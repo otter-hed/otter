@@ -27,6 +27,8 @@ from scipy.constants import physical_constants
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
@@ -35,6 +37,9 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 from otter.electronic.full_external import FullExternalConfig
+from benchmarks.runners.ion_structure_validation import (
+    validate_screening_charge,
+)
 from otter import (  # noqa: E402
     PlasmaWorkflowConfig,
     continue_plasma_workflow_from_electronic_result,
@@ -49,7 +54,7 @@ from otter_lammps_md import (  # noqa: E402
 
 
 # Parallelize independent states, not the energies within one AA.
-MAX_STATE_WORKERS = 3
+MAX_STATE_WORKERS = 1
 R_RETAIN_MAX_BOHR = 20.0
 K_RETAIN_MAX_BOHR_INV = 20.0
 VMHNC_ETA_TOL = 1.0e-6
@@ -180,19 +185,12 @@ def _configuration(
         ion_temperature_ev=float(state["ti_ev"]),
         rho_g_cc=float(state["rho_g_cc"]),
         **model_override,
-        aa_overrides={
-            "bound_zero_tail_refine": True,
-            "bound_zero_tail_max_binding_ha": 1.0e-2,
-            "bound_zero_tail_scan_points": 64,
-            "bound_zero_tail_edge_rel_tol": 0.1,
-        },
         # Keep the nonlinear root strict while independently allowing the
         # measured ~2e-3 finite-DST g<->S mismatch of cold, strongly coupled
         # Al.  This does not relax positivity or fixed-point checks.
         hnc_closure_transform_tol=2.5e-3,
-        hnc_max_iter=1000,
         hnc_bridge_model=bridge_model,
-        vmhnc_eta_tol=VMHNC_ETA_TOL,
+        **({"vmhnc_eta_tol": VMHNC_ETA_TOL} if bridge_model != "none" else {}),
     )
 
 
@@ -205,6 +203,7 @@ def _pack_result(
     """Convert a workflow payload to a compact pickle-free state archive."""
     electronic = dict(result["electronic"]["result"])
     ion = dict(result["ion"])
+    validate_screening_charge(ion)
     r_i = np.asarray(ion["r"], dtype=float)
     k = np.asarray(ion["k"], dtype=float)
     ion_mask = r_i <= R_RETAIN_MAX_BOHR
@@ -255,6 +254,7 @@ def _pack_result(
             str(electronic.get("threshold_state_representation", "none"))
         ),
         "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
+        "q_scr_raw_measure": np.asarray("native_radial_trapezoid"),
         "r_bohr": r_i[ion_mask],
         "k_bohr_inv": k[k_mask],
         "gii_r": np.asarray(ion["gii_r"], dtype=float)[ion_mask],

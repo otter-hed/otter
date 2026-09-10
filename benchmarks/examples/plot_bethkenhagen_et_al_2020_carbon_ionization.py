@@ -6,15 +6,36 @@ This benchmark compares Otter's carbon ionization diagnostics at
 :math:`T_e=100` eV with the model-dependent :math:`Z^{\rm free}` curves in
 Figure 3(a) of :cite:t:`BethkenhagenEtAl2020`.
 
-The Otter data are produced once by
-``docs/examples/plot_carbon_ionization_levels.py``.  This benchmark verifies
-and reuses that scan; it does not repeat the average-atom calculations.  Set
-``USE_ACCEPTED_OTTER_SCAN = False`` to plot the current candidate under
-``benchmarks/outputs/carbon_ionization_levels``.
+The full-AA density scan uses the same calculation routine as
+:doc:`/gen_examples/plot_carbon_ionization_levels`. Running this benchmark
+calculates the scan directly; no earlier gallery run is required.
 
 Otter reports :math:`\bar Z=Z-Q_{\rm ion}(R_{\rm WS})` and
 :math:`Z^*=n_e^0/n_i`.  The published curves use several different electron
 partitions, so no pointwise error metric is assigned.
+
+Reproduction
+------------
+
+From the root of the complete Otter checkout, using Poetry, run::
+
+    poetry run python benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py
+
+Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
+contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
+
+The script calculates the states from their input parameters and then plots
+the results. No bundled Otter NPZ is required. Numerical outputs are written
+locally; literature reference tables remain inputs to the comparison.
+
+Recorded results
+----------------
+
+The figures and output below are from the recorded validation run; running
+the source recalculates them with the installed Otter version.
+
+.. include:: /_static/gallery_results/plot_bethkenhagen_et_al_2020_carbon_ionization/results.rst
+
 """
 
 from __future__ import annotations
@@ -22,6 +43,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import importlib.util
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -33,7 +56,8 @@ from otter.plotting import PALETTES, grid_figsize, save_figure, style_context
 # =============================================================================
 # User input
 # =============================================================================
-USE_ACCEPTED_OTTER_SCAN = True
+USE_ACCEPTED_OTTER_SCAN = False
+RECOMPUTE_WITH_OTTER = True
 if os.environ.get("OTTER_USE_CANDIDATE_CARBON_IONIZATION", "0") == "1":
     USE_ACCEPTED_OTTER_SCAN = False
 # =============================================================================
@@ -43,22 +67,15 @@ STATE_SCHEMA = "otter_carbon_ionization_levels_v3"
 
 
 def repository_root() -> Path:
-    """Locate the Otter checkout."""
+    """Locate source and reference inputs, independently of numerical outputs."""
     candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
     source_file = globals().get("__file__")
     if source_file is not None:
-        source = Path(str(source_file)).resolve()
-        candidates.extend([source.parent, *source.parents])
+        candidates.extend(Path(source_file).resolve().parents)
     for candidate in candidates:
-        if (
-            candidate
-            / "benchmarks"
-            / "reference_data"
-            / "bethkenhagen_et_al_2020_carbon_ionization"
-            / "manifest.json"
-        ).is_file():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "src/otter").is_dir():
             return candidate
-    raise FileNotFoundError("Cannot locate the Otter checkout.")
+    raise FileNotFoundError("Run from an Otter source checkout with its dependencies installed.")
 
 
 ROOT = repository_root()
@@ -240,8 +257,16 @@ def plot_comparison(
 
 
 def main() -> None:
-    """Load the shared Otter scan and render the literature comparison."""
-    state = load_otter_scan(accepted=USE_ACCEPTED_OTTER_SCAN)
+    """Calculate the shared scan and render the literature comparison."""
+    if RECOMPUTE_WITH_OTTER:
+        path = ROOT / "docs/examples/plot_carbon_ionization_levels.py"
+        spec = importlib.util.spec_from_file_location("otter_carbon_scan", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        state = module._compute_and_stage()
+    else:
+        state = load_otter_scan(accepted=USE_ACCEPTED_OTTER_SCAN)
     published = load_published_curves()
     print(
         f"Loaded {len(published)} digitized curves from "
@@ -252,3 +277,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# sphinx_gallery_thumbnail_path = "_static/gallery_results/plot_bethkenhagen_et_al_2020_carbon_ionization/thumbnail.png"

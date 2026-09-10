@@ -98,6 +98,15 @@ result.
 Numerical convergence and inner accuracy
 ------------------------------------------
 
+Orbital (QM) SC steps default to ``bound_zero_tail_refine=True``. This matches
+shallow bound orbitals to the decaying exterior solution as feedback moves
+levels near the continuum edge, avoiding finite-box normalization jumps.
+The matching search window and threshold acceptance checks remain unchanged.
+Ordinary IS/full+external defaults and the TF path are unaffected. An explicit
+``aa_overrides={"bound_zero_tail_refine": False}`` opts out; a corresponding
+``species_overrides`` entry takes precedence for that species. SC does not
+modify the caller's configuration or its initial IS result.
+
 An individually converged AA calculation need not be accurate enough for an
 outer feedback loop. In particular, a small full-density change can coexist
 with a larger change in the pseudoatom screening response. Otter therefore

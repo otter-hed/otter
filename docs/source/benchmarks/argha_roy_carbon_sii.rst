@@ -24,17 +24,13 @@ deviation because that interpretation has not been confirmed.
 Reproduce the comparison
 ------------------------
 
-The downloadable script :doc:`gen_benchmarks/plot_argha_roy_carbon_sii`
-contains the calculation and plotting code.  Set
+Run the downloadable source from :doc:`gen_benchmarks/plot_argha_roy_carbon_sii`::
 
-.. code-block:: python
+    poetry run python benchmarks/examples/plot_argha_roy_carbon_sii.py
 
-   USE_PRECOMPUTED_DATA = True
-
-to verify and load the five checksummed Otter results.  Set it to ``False``
-to run all five states and write new results under
-``benchmarks/outputs/argha_roy_carbon_sii/gallery_recomputed``.  Existing
-accepted files are not overwritten.  The figure is exported as PNG and PDF.
+The default calculates the electronic and ionic states, writes local results
+under ``benchmarks/outputs``, and exports PNG and PDF figures. No precomputed
+Otter NPZ is needed. Literature reference data remain separate inputs.
 
 Reference-data notice
 ---------------------

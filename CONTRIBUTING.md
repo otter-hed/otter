@@ -31,13 +31,18 @@ On Windows without `make`, use
 - For physics changes, add or update a benchmark with a citable source,
   immutable input data, units, provenance, and quantitative metrics.
 - Do not regenerate expensive AA calculations in ordinary tests or docs.
-  Commit small, pickle-free reference arrays and validate their hashes instead.
+  Public examples and benchmarks calculate from physical inputs when run;
+  they must not require bundled Otter NPZ files. Commit reviewed presentation
+  assets and provenance, not generated NPZ or restart caches. Private baseline
+  checks may additionally validate local archives and their hashes.
 - Do not hide failed common-chemical-potential, charge-closure, or HNC solves by
   clipping or silently returning a best-effort result.
 - Add the primary literature citation near the implementation and to
   `src/otter/literature.bib`.
-- Keep generated Sphinx pages, caches, plots, and local environments out of
-  version control.
+- Keep generated Sphinx pages, calculation caches, and local environments out
+  of version control. Reviewed figures and recorded output under
+  `docs/source/_static/gallery_results` are presentation assets: refresh them
+  together from accepted calculations and verify their source fingerprints.
 
 The validation policy and architecture notes are in `docs/source/benchmarks`
 and `docs/source/development`.
