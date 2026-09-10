@@ -4,7 +4,9 @@ Quick start
 Google Colab
 ------------
 
-Run the introductory aluminium workflow in a browser:
+Run the aluminium workflow in a browser, with the same two overview figures
+and colours as :doc:`gen_examples/plot_al_full_workflow`. The Colab default is
+Al at :math:`8.1\,\mathrm{g\,cm^{-3}}` and :math:`T_e=T_i=1\,\mathrm{eV}`:
 
 .. raw:: html
 
