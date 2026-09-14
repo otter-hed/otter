@@ -260,7 +260,7 @@ def run(T_e, rho, alpha, filename, n_workers=None):
                     f_nl[:, :, :, n_idx, m_idx, p_idx] = res_f_nl[:, :, :k_cutoff]
                 f.flush()
 
-                print(f"Finished [{n_idx}, {m_idx}] ({len(result)=})")
+                print(f"Finished [{n_idx}, {m_idx} {p_idx}]")
 
 
 if __name__ == "__main__":
