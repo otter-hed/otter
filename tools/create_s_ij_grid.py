@@ -6,15 +6,18 @@ Allows parallelization over several computations.
 import h5py
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from otter import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter import PlasmaWorkflowConfig, solve_plasma_workflow, ion_orbital_form_factors
 
 ###
-elements = ["C", "H"]
-number_fraction = [0.5, 0.5]
+elements = ["C"]
+number_fraction = [0.5]
 
 # Set the k-grid with these parameters
 qoz_pad_factor = 2
 qoz_linear_n_points = 2**12
+# the k-grid is big for calculation, but the inputs most of the time only
+# require the first few k
+k_cutoff = 600
 
 # Sample parameters
 T_e = np.linspace(5, 100, 1)
@@ -23,11 +26,11 @@ alpha = [1]
 
 # Output quantities. currently implemented:
 # Sii, q, f, Zbar, Zstar
-output = ["Sii", "q", "f", "Zbar", "Zstar"]
+output = ["Sii", "q", "f", "f_nl", "Zbar", "Zstar"]
 
 ###
 
-k_points = qoz_linear_n_points * qoz_pad_factor
+k_points = qoz_linear_n_points * qoz_pad_factor if k_cutoff is None else k_cutoff
 
 
 def otter_calc(T_e, rho, alpha):
@@ -54,6 +57,7 @@ def otter_calc(T_e, rho, alpha):
         rho_g_cc=rho,
         ion_temperature_ev=T_e * alpha,
         save_state_npz=False,
+        state_include_groups=("orbital_densities",),
         # electronic_model='tf',
         **kwargs,
     )
@@ -61,17 +65,39 @@ def otter_calc(T_e, rho, alpha):
     ion_res = res["ion"]
     e_res = res["electronic"]["result"]
     if len(elements) == 1:
-        zbar = e_res["n0"] / ion_res["n_i"]
+        zstar = e_res["zstar"]
+        f_orb = [ion_orbital_form_factors(e_res, r=ion_res["r"], k=ion_res["k"])]
+        q_k = ion_res["q_k"][np.newaxis, :]
+        f_k = ion_res["f_k"][np.newaxis, :]
     else:
-        n0 = [e_res["species"][idx]["result"]["n0"] for idx in range(len(elements))]
-        zbar = n0 / ion_res["n_i"]
+        zstar = [
+            e_res["species"][idx]["result"]["zstar"] for idx in range(len(elements))
+        ]
+        f_orb = [
+            ion_orbital_form_factors(
+                e_res["species"][idx]["result"], r=ion_res["r"], k=ion_res["k"]
+            )
+            for idx in range(len(elements))
+        ]
+        q_k = ion_res["q_k"]
+        f_k = ion_res["f_k"]
+    f_nl = np.zeros((len(elements), 10, f_orb[0].shape[2]))
+    idx = 0
+    for element in range(len(elements)):
+        for n in range(f_orb[element].shape[0]):
+            for l in range(n + 1):
+                f_nl[element, idx, :] = f_orb[element][l, n, :]
+                idx += 1
+                if idx > 10:
+                    break
     return (
         ion_res["k"],
         ion_res["sij_k"],
         ion_res["zbar"],
-        zbar,
-        ion_res["f_k"],
-        ion_res["q_k"],
+        zstar,
+        q_k,
+        f_k,
+        f_nl,
     )
 
 
@@ -107,6 +133,15 @@ def run(T_e, rho, alpha, filename, n_workers=None):
             )
             f_k.attrs["axis"] = ["i", "k", "T_e", "rho", "alpha"]
             f_k.attrs["unit"] = [""]
+        if "f_nl" in output:
+            f_nl = f.create_dataset(
+                "f_nl",
+                shape=(len(elements), 10, k_points, n, m, p),
+                dtype=np.float64,
+                chunks=(len(elements), 10, k_points, 1, 1, 1),
+            )
+            f_nl.attrs["axis"] = ["i", "orbital", "k", "T_e", "rho", "alpha"]
+            f_nl.attrs["unit"] = [""]
         if "q" in output:
             q_k = f.create_dataset(
                 "q",
@@ -173,6 +208,24 @@ def run(T_e, rho, alpha, filename, n_workers=None):
             dtype=h5py.string_dtype(),
         )
         element_out[:] = elements
+        if "f_nl" in output:
+            orbital_out = axis.create_dataset(
+                "orbitals",
+                shape=(10,),
+                dtype=h5py.string_dtype(),
+            )
+            orbital_out[:] = [
+                "n=0,l=0",
+                "n=1,l=0",
+                "n=1,l=1",
+                "n=2,l=0",
+                "n=2,l=1",
+                "n=2,l=2",
+                "n=3,l=0",
+                "n=3,l=1",
+                "n=3,l=2",
+                "n=3,l=3",
+            ]
 
         f.flush()
 
@@ -190,19 +243,21 @@ def run(T_e, rho, alpha, filename, n_workers=None):
 
             for future in as_completed(futures):
                 n_idx, m_idx, p_idx, result = future.result()
-                res_k, res_Sii, res_Zbar, res_Zstar, res_q, res_f = result
+                res_k, res_Sii, res_Zbar, res_Zstar, res_q, res_f, res_f_nl = result
 
-                k_out[:] = res_k
+                k_out[:] = res_k[:k_cutoff]
                 if "Sii" in output:
-                    Sii[:, :, :, n_idx, m_idx, p_idx] = res_Sii
+                    Sii[:, :, :, n_idx, m_idx, p_idx] = res_Sii[:, :, :k_cutoff]
                 if "Zbar" in output:
                     Zbar[:, n_idx, m_idx, p_idx] = res_Zbar
                 if "Zstar" in output:
                     Zstar[:, n_idx, m_idx, p_idx] = res_Zstar
                 if "q" in output:
-                    q_k[:, :, n_idx, m_idx, p_idx] = res_q
+                    q_k[:, :, n_idx, m_idx, p_idx] = res_q[:, :k_cutoff]
                 if "f" in output:
-                    f_k[:, :, n_idx, m_idx, p_idx] = res_f
+                    f_k[:, :, n_idx, m_idx, p_idx] = res_f[:, :k_cutoff]
+                if "f_nl" in output:
+                    f_nl[:, :, :, n_idx, m_idx, p_idx] = res_f_nl[:, :, :k_cutoff]
                 f.flush()
 
                 print(f"Finished [{n_idx}, {m_idx}] ({len(result)=})")
