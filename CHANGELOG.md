@@ -11,6 +11,9 @@ have not yet been released are collected under “Unreleased”.
   n0 and profiles use the same access path without copying numerical arrays.
   Preserve legacy result paths, solver defaults and the portable NPZ schema.
   Document the interface and test ordering, aliasing, continuation and exports.
+  Cover three- and four-species workflows, full pair matrices and common
+  electron-response channels in contract tests. Specify the native ionic
+  field dimensions separately from portable-export dimensions.
 
 - Restore interactive figure windows in the example and benchmark scripts.
   Delegate display to Matplotlib instead of rejecting every backend whose

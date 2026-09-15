@@ -66,9 +66,9 @@ The completed workflow provides the raw orbital arrays without another solve:
    n_nl = aa["ion_orbital_density_r"]         # on aa["r"]
    f_nl = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
 
-The unified species list is available in the development version after 0.3.1.
-It also applies to mixtures; see :doc:`/user_guide/state_exports` for access
-and compatibility with released versions.
+The species list contains one entry for aluminium. The same access path
+applies to each species in a mixture; field definitions and version
+compatibility are documented in :doc:`/user_guide/state_exports`.
 
 This script also saves ``benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz``
 with :func:`otter.save_plasma_state`. It contains unweighted wavefunctions,

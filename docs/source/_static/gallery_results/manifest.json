@@ -1,6 +1,10 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "fbc84181244ea59ada13b55cbec26bd7c4096c5bff05fa2e6905ebf53438973a",
+    "rendering_source_sha256": "d26226e5d9a67bf1bb4a693c9faee4493d20c4cf393abe138d2d798fbbe1c70c",
+    "interface_documentation_update": {
+      "previous_source_sha256": "fbc84181244ea59ada13b55cbec26bd7c4096c5bff05fa2e6905ebf53438973a",
+      "change": "Revise interface documentation and link field dimensions and version compatibility. Executable code, figures, recorded output and calculation provenance are unchanged."
+    },
     "access_only_update": {
       "previous_source_sha256": "d46e7d81166990e8cf3de69e0c4cc3dd4a8c699e1f4ca71efeb75e74fa4c1b6d",
       "change": "Use and document the unified electronic species access path. Numerical inputs, figure construction and recorded figures/output are unchanged; no new calculation is claimed."
@@ -133,7 +137,11 @@
     }
   },
   "docs/examples/plot_ch136_mixture_workflow.py": {
-    "rendering_source_sha256": "269793258f07e2b083833a85284a161edc94cfc010faba492882864ed2ed9623",
+    "rendering_source_sha256": "2643dc33eaa0fe47a666db5c4bc0b345caa7a1a08653ac609e2be38a784b3682",
+    "interface_documentation_update": {
+      "previous_source_sha256": "269793258f07e2b083833a85284a161edc94cfc010faba492882864ed2ed9623",
+      "change": "Describe the species interface for arbitrary component counts. Executable code, figures, recorded output and calculation provenance are unchanged."
+    },
     "access_only_update": {
       "previous_source_sha256": "e70eb31efaea5be199f2622fcdbb0aeb0619c26a8ab344a8b40b5c3263abd95b",
       "change": "Use and document the unified electronic species access path. Numerical inputs, figure construction and recorded figures/output are unchanged; no new calculation is claimed."

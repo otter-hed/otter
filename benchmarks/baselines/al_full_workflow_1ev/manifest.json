@@ -87,7 +87,8 @@
     },
     "generated_at_utc": "2026-09-10T17:24:06.832926+00:00",
     "note": "One default-config Colab solve; identical gallery configuration and plotted arrays verified. Dirty source identified by hashes, not HEAD alone.",
-    "script_sha256_current": "fbc84181244ea59ada13b55cbec26bd7c4096c5bff05fa2e6905ebf53438973a",
+    "script_sha256_current": "d26226e5d9a67bf1bb4a693c9faee4493d20c4cf393abe138d2d798fbbe1c70c",
+    "interface_documentation_update": "Revise the species-access explanation only. Executable code, generation hashes and numerical data are unchanged.",
     "access_only_update": "Use the unified electronic species access path. Calculation inputs, figure construction, generation hashes and numerical data are unchanged.",
     "display_only_update": "Removed the backend-name display filter; calculation and figure construction unchanged. Generation hashes and numerical data retained.",
     "script_sha256_at_generation": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695"

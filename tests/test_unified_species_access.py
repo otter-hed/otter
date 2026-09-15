@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -49,7 +50,8 @@ def _assert_view(result):
     json.dumps(electronic, default=lambda value: value.tolist())
 
 
-@pytest.mark.parametrize("symbols", [["C"], ["H", "C"]])
+@pytest.mark.parametrize("symbols", [["C"], ["H", "C"], ["O", "C", "H"],
+                                     ["N", "H", "O", "C"]])
 @pytest.mark.parametrize("model", ["qm", "tf"])
 @pytest.mark.parametrize("run_mode", ["full", "full+ext"])
 def test_solve_exposes_same_species_access(monkeypatch, symbols, model, run_mode):
@@ -85,7 +87,8 @@ def test_solve_exposes_same_species_access(monkeypatch, symbols, model, run_mode
     assert aa["zstar"] == 9.0
 
 
-@pytest.mark.parametrize("symbols", [["C"], ["H", "C"]])
+@pytest.mark.parametrize("symbols", [["C"], ["H", "C"], ["O", "C", "H"],
+                                     ["N", "H", "O", "C"]])
 @pytest.mark.parametrize("with_ions", [False, True])
 def test_continuation_view_uses_final_payload(monkeypatch, symbols, with_ions):
     kind, payload = _electronic_payload(symbols)
@@ -127,3 +130,74 @@ def test_continuation_view_uses_final_payload(monkeypatch, symbols, with_ions):
         assert result["electronic"]["species"][0]["result"]["n0"] > 1.0
         payload = result["electronic"]["result"]
     assert seen == (["validate", "ion"] * 3 if with_ions else [])
+
+
+@pytest.mark.parametrize("symbols", [["H", "C"], ["O", "C", "H"],
+                                     ["N", "H", "O", "C"]])
+def test_multicomponent_ionic_response_and_pair_axes(monkeypatch, symbols):
+    """Keep every species/pair channel and one common electronic response."""
+    kind, payload = _electronic_payload(symbols)
+    n_species = len(symbols)
+    for entry in payload["species"]:
+        aa = entry["result"]
+        aa["n_ion"] = np.zeros_like(aa["r"])
+        aa["n_scr"] = np.exp(-aa["r"])
+        aa["zbar"] = aa["zbar_partition"]
+        entry["Z"] = wf.element_info(entry["element"]).z
+        entry["volume_bohr3"] = 4.0 * np.pi * entry["r_ws_bohr"]**3 / 3.0
+    payload["meta"]["vbar_bohr3"] = sum(
+        entry["x"] * entry["volume_bohr3"] for entry in payload["species"])
+    monkeypatch.setattr(wf, "_solve_electronic_structure",
+                        lambda *args, **kwargs: (kind, payload))
+    responses = {}
+
+    def build(**kwargs):
+        r, k = kwargs["r"], kwargs["k"]
+        responses.update(
+            chi_ee_k=-1.0 / (1.0 + k**2),
+            chi0_k=-0.8 / (1.0 + 0.5 * k**2),
+            gee_k=0.25 * (1.0 - np.exp(-0.5 * k)),
+        )
+        return SimpleNamespace(
+            vij_r=np.zeros((n_species, n_species, r.size)),
+            vij_k=np.zeros((n_species, n_species, k.size)),
+            n_scr_k=np.arange(1, n_species + 1)[:, None] * np.exp(-k),
+            **responses,
+        )
+
+    def hnc(r, k, *args, **kwargs):
+        g = np.ones((n_species, n_species, r.size))
+        s = np.repeat(np.eye(n_species)[:, :, None], k.size, axis=2)
+        return (g, s, np.zeros_like(g), np.zeros_like(g), [1e-8],
+                [{"potential_scale": 1.0, "res_final": 1e-8, "converged": True}])
+
+    monkeypatch.setattr(wf, "build_effective_vij_from_nscr", build)
+    monkeypatch.setattr(wf, "hnc_solver_multicomponent_continuation", hnc)
+    result = wf.solve_plasma_workflow(wf.PlasmaWorkflowConfig(
+        elements=symbols, counts=list(range(1, n_species + 1)),
+        temperature_ev=10.0, rho_g_cc=1.3, ion_temperature_ev=10.0,
+        qoz_linear_n_points=64, show_progress=False, save_state_npz=False,
+    ))
+    ion = result["ion"]
+    _assert_view(result)
+    assert ion["species"] == symbols
+    for grid, names in (
+        ("r", ("gij_r", "hij_r", "cij_r", "vij_r")),
+        ("k", ("sij_k", "vij_k")),
+    ):
+        for name in names:
+            assert ion[name].shape == (n_species, n_species, ion[grid].size)
+    for grid, names in (
+        ("r", ("n_scr_r", "n_ion_r", "v_ie_r", "c_ie_r")),
+        ("k", ("q_k", "f_k", "v_ie_k", "c_ie_k")),
+    ):
+        for name in names:
+            assert ion[name].shape == (n_species, ion[grid].size)
+    for name, source in (("G_ee_k", "gee_k"), ("chi0_k", "chi0_k"),
+                         ("chi_ee_k", "chi_ee_k")):
+        assert ion[name].shape == ion["k"].shape
+        np.testing.assert_array_equal(ion[name], responses[source])
+    for i in range(n_species):
+        np.testing.assert_array_equal(ion["q_k"][i], (i + 1) * np.exp(-ion["k"]))
+        for j in range(n_species):
+            np.testing.assert_array_equal(ion["sij_k"][i, j], float(i == j))

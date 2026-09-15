@@ -34,10 +34,19 @@ AA option or record every adaptive solver decision. The producer version and
 available convergence diagnostics must therefore be retained too.
 Calculation scripts should normally specify only intentional non-default settings.
 
-In-memory access
-----------------
+.. _in-memory-access:
 
-Single species and mixtures use the same electronic access path:
+Electronic structure
+--------------------
+
+For a system containing :math:`N_s` species, the electronic results are
+stored in ``result["electronic"]["species"]``. The list contains one entry
+per species and preserves the order in ``result["species_symbols"]``.
+The same interface applies to a pure element, a binary mixture and mixtures
+with three or more species.
+
+.. versionadded:: Unreleased
+   The ``electronic["species"]`` access path.
 
 .. code-block:: python
 
@@ -45,17 +54,14 @@ Single species and mixtures use the same electronic access path:
        aa = entry["result"]
        print(entry["element"], aa["n0"], aa["zbar_partition"], aa["zstar"])
 
-``species`` is always a list, including for one element. Its order matches
-``result["species_symbols"]`` and the ionic-species axes. Each entry contains
+Each entry contains
 ``element``, ``count``, ``x`` (number fraction), ``r_ws_bohr``, ``mu_ha`` and
 ``result``. The latter is the native AA dictionary, with its own radial grid,
 density profiles and metadata. No averaging or grid interpolation is performed.
 
-This access path is an unreleased addition after 0.3.1. It is also returned by
-cached electronic continuation and SC feedback. PyPI 0.3.1 uses the legacy
-paths described below.
+Cached electronic continuation and SC feedback return the same structure.
 
-For aluminium, select the first and only entry:
+For a pure aluminium plasma, the AA result is the first list entry:
 
 .. code-block:: python
 
@@ -109,7 +115,7 @@ uses a quantum full/external calculation: full-only and TF results do not
 provide all the same profile or level fields. With no ionic stage,
 ``result["ion"]`` is ``None``.
 
-For a mixture, use the same loop shown above, or select a species by element:
+Element symbols can also be used to select a species:
 
 .. code-block:: python
 
@@ -124,9 +130,10 @@ For a mixture, use the same loop shown above, or select a species by element:
 Compatibility
 ~~~~~~~~~~~~~
 
-The existing paths still work: ``result["electronic"]["result"]`` for a
+Otter 0.3.1 exposes ``result["electronic"]["result"]`` for a
 single AA, and ``result["electronic"]["result"]["species"][i]["result"]``
-for a mixture species. The new entries reference those same final AA
+for a mixture species. These paths remain supported. The list entries
+reference the same final AA
 dictionaries, not copies of the density arrays. In-place edits through either
 path affect the same data; treat completed solver results as read-only.
 
@@ -137,8 +144,86 @@ Mixture-wide common-mu diagnostics remain in
 Low-level AA solvers keep their native returns. The electronic access addition
 does not change numerical settings, ionic array shapes or the NPZ schema.
 
+QOZ/HNC results
+--------------------
+
+``result["ion"]`` contains the ionic correlations, effective pair potentials
+and electron-response channels on the common QOZ grids. It is ``None`` when
+``ion_temperature_ev`` is not specified.
+
+.. code-block:: python
+
+   ion = result["ion"]
+   r = ion["r"]
+   k = ion["k"]
+   G_ee = ion["G_ee_k"]
+   chi0 = ion["chi0_k"]
+   chi_ee = ion["chi_ee_k"]
+   g_ab = ion["gij_r"]
+   S_ab = ion["sij_k"]
+   V_ab = ion["vij_k"]
+
+The local-field correction (LFC) :math:`G_{ee}(k)` and the response functions
+:math:`\chi^0_{ee}(k)` and :math:`\chi_{ee}(k)` describe the common electron
+response. Each has shape ``(N_k,)``, independent of the number of ionic
+species. The selected models are recorded in ``qoz_response_lfc_model`` and
+``qoz_response_chi0_model``. These fields belong to the QOZ result, not to an
+individual species' AA dictionary.
+
+The native in-memory dimensions are:
+
+.. list-table:: Native QOZ/HNC fields
+   :header-rows: 1
+   :widths: 46 27 27
+
+   * - Keys
+     - Single species
+     - :math:`N_s` species
+   * - ``r``, ``k``
+     - ``(N_r,)``, ``(N_k,)``
+     - ``(N_r,)``, ``(N_k,)``
+   * - ``G_ee_k``, ``chi0_k``, ``chi_ee_k``, ``v_ee_k``, ``c_ee_k``
+     - ``(N_k,)``
+     - ``(N_k,)``
+   * - ``v_ee_r``, ``c_ee_r``
+     - ``(N_r,)``
+     - ``(N_r,)``
+   * - ``q_k``, ``f_k``, ``n_scr_k``, ``n_ion_k``, ``v_ie_k``, ``c_ie_k``
+     - ``(N_k,)``
+     - ``(N_s, N_k)``
+   * - ``n_scr_r``, ``n_ion_r``, ``v_ie_r``, ``c_ie_r``
+     - ``(N_r,)``
+     - ``(N_s, N_r)``
+   * - ``gij_r``, ``hij_r``, ``cij_r``, ``vij_r``
+     - ``(1, 1, N_r)``
+     - ``(N_s, N_s, N_r)``
+   * - ``sij_k``, ``vij_k``
+     - ``(1, 1, N_k)``
+     - ``(N_s, N_s, N_k)``
+   * - ``zbar``, ``zbar_qoz``, ``zbar_partition``, ``zbar_aa_ws``, ``n_i``
+     - scalar
+     - ``(N_s,)``
+
+The species order is ``result["species_symbols"]``. Pair indexing is
+identical for pure elements and mixtures: ``ion["sij_k"][i, j]`` selects
+:math:`S_{ij}(k)`. For a pure element, ``i = j = 0``. A system of three
+species has a ``(3, 3, N_k)`` structure-factor array, including all unlike
+pairs; it is not represented as independent binary mixtures.
+
+Single-species density, form-factor and electron--ion arrays retain their
+historical one-dimensional layout. The portable NPZ interface below retains
+the species axis for these quantities, including when :math:`N_s=1`.
+``v_ei_k`` and ``v_ei_r`` are aliases of ``v_ie_k`` and ``v_ie_r``.
+``gee_k`` and ``g_ee_k`` are compatibility aliases of ``G_ee_k``.
+
+Convergence and solver diagnostics are available in the same dictionary:
+``hnc_converged``, ``hnc_output_residual``, ``closure_transform_max_abs`` and
+``stage_meta``. Model-specific diagnostics are only provided by the solver
+that defines them; for example, the current VMHNC implementation supplies
+single-species bridge and hard-sphere reference parameters.
+
 Portable access
-~~~~~~~~~~~~~~~
+---------------
 
 The standard NPZ interface is the same for one element and mixtures:
 
@@ -501,8 +586,10 @@ threshold status as applicable). A successful load validates the file, not
 the physical accuracy of the calculation. ``solver_history`` exports HNC
 correlations and residual history, not the complete electronic SCF trajectory.
 
-Species and pair axes
----------------------
+.. _species-and-pair-axes:
+
+Portable species and pair axes
+------------------------------
 
 For :math:`N_s` species, :math:`N_r` common radial points, and :math:`N_k`
 common reciprocal points:
