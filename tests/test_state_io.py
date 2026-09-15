@@ -20,7 +20,32 @@ from otter.numerics.transforms import (
     precompute_dst_lattice_transform_like,
     radial_forward,
 )
-from otter.workflows import PlasmaWorkflowConfig
+from otter.workflows import (
+    PlasmaWorkflowConfig,
+    continue_plasma_workflow_from_electronic_result,
+)
+
+
+@pytest.mark.parametrize("n_species", [1, 2])
+@pytest.mark.parametrize("profile", ["complete", "electronic_summary", "ion_structure"])
+def test_unified_access_does_not_change_portable_export(tmp_path, n_species, profile):
+    workflow = _synthetic_workflow(n_species)
+    options = StateExportOptions(profile=profile)
+    before = build_state_arrays(workflow, options=options)
+    continued = continue_plasma_workflow_from_electronic_result(
+        PlasmaWorkflowConfig(elements=workflow["species_symbols"],
+                             counts=workflow["species_counts"],
+                             temperature_ev=10.0, rho_g_cc=1.0,
+                             save_state_npz=False),
+        electronic_kind=workflow["electronic"]["kind"],
+        electronic_result=workflow["electronic"]["result"],
+    )
+    workflow["electronic"] = continued["electronic"]
+    save_plasma_state(tmp_path / "state.npz", workflow, options=options)
+    after = load_plasma_state(tmp_path / "state.npz")
+    assert before.keys() == after.keys()
+    for key in before:
+        np.testing.assert_array_equal(before[key], after[key], err_msg=key)
 
 
 @pytest.mark.parametrize("n_species", [1, 2])

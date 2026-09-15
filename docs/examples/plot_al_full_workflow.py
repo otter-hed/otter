@@ -58,13 +58,17 @@ The completed workflow provides the raw orbital arrays without another solve:
 
    from otter import bound_wavefunctions, ion_orbital_form_factors
 
-   aa = result["electronic"]["result"]
+   aa = result["electronic"]["species"][0]["result"]
    ion = result["ion"]
    Zbar = aa["zbar_partition"]
    Zstar = aa["zstar"]
    R_nl = bound_wavefunctions(aa)             # raw R_nl on aa["r_bound"]
    n_nl = aa["ion_orbital_density_r"]         # on aa["r"]
    f_nl = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
+
+The unified species list is available in the development version after 0.3.1.
+It also applies to mixtures; see :doc:`/user_guide/state_exports` for access
+and compatibility with released versions.
 
 This script also saves ``benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz``
 with :func:`otter.save_plasma_state`. It contains unweighted wavefunctions,
@@ -217,7 +221,7 @@ def pack_workflow(
     elapsed_s: float,
 ) -> dict[str, np.ndarray]:
     """Pack the plotted fields without relying on an external producer."""
-    electronic = dict(workflow["electronic"]["result"])
+    electronic = dict(workflow["electronic"]["species"][0]["result"])
     ion = dict(workflow["ion"])
     portable = build_state_arrays(
         workflow,

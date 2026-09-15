@@ -86,7 +86,9 @@ The workflow returns electronic and ionic results in separate dictionaries:
 .. code-block:: python
 
    result = solve_plasma_workflow(config)
-   electronic = result["electronic"]["result"]
+   for entry in result["electronic"]["species"]:
+       aa = entry["result"]
+       print(entry["element"], aa["zbar_partition"], aa["zstar"])
    ion = result["ion"]
 
    k = ion["k"]
@@ -96,6 +98,10 @@ The workflow returns electronic and ionic results in separate dictionaries:
    v_ie_k = ion["v_ie_k"]
    g_ii = ion["gii_r"]
    s_ii = ion["sii_k"]
+
+The electronic loop works for both single species and mixtures in the
+development version after 0.3.1; the ionic lines above are for aluminium.
+For released 0.3.1 access paths, see :doc:`user_guide/state_exports`.
 
 Set ``save_state_npz=True`` in :class:`otter.PlasmaWorkflowConfig` to save a
 portable ``.npz`` archive.  Array names, shapes, units, interaction channels,

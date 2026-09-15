@@ -5,6 +5,13 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Add a uniform `result["electronic"]["species"]` list for single-species and
+  multicomponent workflows, including cached continuation and SC feedback.
+  Each entry's `result` aliases the final native AA dictionary, so Zbar, Zstar,
+  n0 and profiles use the same access path without copying numerical arrays.
+  Preserve legacy result paths, solver defaults and the portable NPZ schema.
+  Document the interface and test ordering, aliasing, continuation and exports.
+
 - Restore interactive figure windows in the example and benchmark scripts.
   Delegate display to Matplotlib instead of rejecting every backend whose
   name contains `agg` (including the interactive TkAgg and QtAgg backends).

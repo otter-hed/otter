@@ -1877,7 +1877,11 @@ def solve_plasma_workflow(cfg: PlasmaWorkflowConfig) -> dict[str, Any]:
     -------
     dict
         Top-level payload containing parsed composition, electronic structure,
-        and optional ion-structure outputs.  When the ion stage is requested,
+        and optional ion-structure outputs. ``result["electronic"]["species"]``
+        is always a list in ``species_symbols`` order; each entry's ``result``
+        is the native AA dictionary for that species. The legacy
+        ``result["electronic"]["result"]`` layout remains available.
+        When the ion stage is requested,
         ``result["ion"]`` includes ``v_ie_k`` (with ``v_ei_k`` as an alias),
         ``v_ee_k``, ``c_ie_k``, and ``c_ee_k`` on the returned ``k`` grid.
     """
@@ -2081,7 +2085,10 @@ def continue_plasma_workflow_from_electronic_result(
     Returns
     -------
     dict
-        Top-level workflow payload with optional ion-structure results.
+        Top-level workflow payload with optional ion-structure results and the
+        same ``electronic["species"]`` access as :func:`solve_plasma_workflow`.
+        Each entry references the final AA dictionary in the legacy payload;
+        no profile arrays are copied to provide the additional access path.
 
     Notes
     -----
@@ -2133,6 +2140,13 @@ def continue_plasma_workflow_from_electronic_result(
                 preparation=multicomponent_preparation,
             )
 
+    # Publish aliases to the final payload, not the solver's working copies.
+    # Keep the list outside the raw AA dictionary to avoid reference cycles.
+    if str(electronic_kind) == "single_species":
+        species_entries[0]["result"] = electronic_result
+    else:
+        species_entries = electronic_result["species"]
+
     result = {
         "otter_version": __version__,
         "formula": (None if cfg.formula is None else str(cfg.formula)),
@@ -2146,6 +2160,7 @@ def continue_plasma_workflow_from_electronic_result(
         "electronic": {
             "kind": str(electronic_kind),
             "result": electronic_result,
+            "species": species_entries,
         },
         "ion": ion_result,
         "configuration": asdict(cfg),

@@ -81,7 +81,7 @@ def main() -> None:
     )
     result = solve_plasma_workflow(cfg)
     ion = result["ion"]
-    electronic = result["electronic"]["result"]
+    electronic = result["electronic"]["species"][0]["result"]
 
     set_style("docs", palette="deep_science")
     fig, axes = plt.subplots(

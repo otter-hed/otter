@@ -73,7 +73,7 @@ def main():
     start = perf_counter()
     result = solve_plasma_workflow(config)
     print(f"Calculation wall time: {perf_counter() - start:.2f} s")
-    aa, ion = result["electronic"]["result"], result["ion"]
+    aa, ion = result["electronic"]["species"][0]["result"], result["ion"]
     factors = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
     print("max |sum(n_ion_nl) - n_ion| =", np.max(np.abs(
         aa["ion_orbital_density_r"].sum(axis=(0, 1)) - aa["n_ion"])))

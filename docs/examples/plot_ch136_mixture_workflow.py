@@ -18,6 +18,21 @@ The full/external pseudoatom and QOZ construction follow
 :cite:t:`StarrettEtAl2014`; and the finite-temperature jellium local-field
 correction follows :cite:t:`Chabrier1990`.
 
+Electronic data access
+----------------------
+
+In the development version after 0.3.1, single species and mixtures share
+one access path:
+
+.. code-block:: python
+
+   for entry in workflow["electronic"]["species"]:
+       aa = entry["result"]
+       print(entry["element"], aa["zbar_partition"], aa["zstar"])
+
+Each AA keeps its own radial grid. See :doc:`/user_guide/state_exports` for
+profiles, NPZ exports and compatibility with released versions.
+
 Reproduction
 ------------
 
@@ -148,7 +163,7 @@ def strict_audit(
     ):
         raise RuntimeError("The final common-mu residual exceeds tolerance.")
 
-    species = [dict(entry) for entry in electronic["species"]]
+    species = [dict(entry) for entry in electronic_block["species"]]
     if tuple(str(entry["element"]) for entry in species) != ELEMENTS:
         raise RuntimeError("Unexpected species order.")
     for entry in species:

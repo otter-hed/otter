@@ -37,7 +37,25 @@ Calculation scripts should normally specify only intentional non-default setting
 In-memory access
 ----------------
 
-For a single species:
+Single species and mixtures use the same electronic access path:
+
+.. code-block:: python
+
+   for entry in result["electronic"]["species"]:
+       aa = entry["result"]
+       print(entry["element"], aa["n0"], aa["zbar_partition"], aa["zstar"])
+
+``species`` is always a list, including for one element. Its order matches
+``result["species_symbols"]`` and the ionic-species axes. Each entry contains
+``element``, ``count``, ``x`` (number fraction), ``r_ws_bohr``, ``mu_ha`` and
+``result``. The latter is the native AA dictionary, with its own radial grid,
+density profiles and metadata. No averaging or grid interpolation is performed.
+
+This access path is an unreleased addition after 0.3.1. It is also returned by
+cached electronic continuation and SC feedback. PyPI 0.3.1 uses the legacy
+paths described below.
+
+For aluminium, select the first and only entry:
 
 .. code-block:: python
 
@@ -50,7 +68,7 @@ For a single species:
        rho_g_cc=8.1,
    )
    result = solve_plasma_workflow(config)
-   aa = result["electronic"]["result"]
+   aa = result["electronic"]["species"][0]["result"]
    ion = result["ion"]
 
    r_aa = aa["r"]
@@ -91,18 +109,36 @@ uses a quantum full/external calculation: full-only and TF results do not
 provide all the same profile or level fields. With no ionic stage,
 ``result["ion"]`` is ``None``.
 
-For a mixture, each average-atom result is in
-``result["electronic"]["result"]["species"][i]["result"]``.  The order is
-``result["species_symbols"]``.  Species axes in QOZ arrays use the same order.
+For a mixture, use the same loop shown above, or select a species by element:
 
 .. code-block:: python
 
-   species = result["electronic"]["result"]["species"]
-   for symbol, entry in zip(result["species_symbols"], species):
-       aa = entry["result"]
-       Zbar = aa["zbar_partition"]
-       Zstar = aa["zstar"]
-       print(symbol, Zbar, Zstar)
+   aa_by_element = {
+       entry["element"]: entry["result"]
+       for entry in result["electronic"]["species"]
+   }
+   carbon = aa_by_element["C"]
+   Zbar_C = carbon["zbar_partition"]
+   Zstar_C = carbon["zstar"]
+
+Compatibility
+~~~~~~~~~~~~~
+
+The existing paths still work: ``result["electronic"]["result"]`` for a
+single AA, and ``result["electronic"]["result"]["species"][i]["result"]``
+for a mixture species. The new entries reference those same final AA
+dictionaries, not copies of the density arrays. In-place edits through either
+path affect the same data; treat completed solver results as read-only.
+
+Mixture-wide common-mu diagnostics remain in
+``result["electronic"]["result"]["meta"]``; a species' AA metadata remains in
+``aa["meta"]``. For cached continuation, continue passing the raw
+``result["electronic"]["result"]`` together with ``result["electronic"]["kind"]``.
+Low-level AA solvers keep their native returns. The electronic access addition
+does not change numerical settings, ionic array shapes or the NPZ schema.
+
+Portable access
+~~~~~~~~~~~~~~~
 
 The standard NPZ interface is the same for one element and mixtures:
 
