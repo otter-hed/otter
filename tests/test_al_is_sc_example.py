@@ -126,3 +126,66 @@ def test_gallery_cites_equations_and_exposes_safe_recompute_switch() -> None:
     assert "benchmarks/runners" not in source
     assert 'style_context("thesis", palette="bing")' in source
     assert ".grid(" not in source
+
+
+def test_plot_and_terminal_report_identical_total_times(monkeypatch, capsys) -> None:
+    import matplotlib.pyplot as plt
+
+    gallery = _load_module(
+        "otter_al_is_sc_total_time_test", "docs/examples/plot_al_is_sc_comparison.py"
+    )
+    state = _synthetic_state()
+    state.update(
+        zbar_partition=np.full((2, 2), 3.0),
+        is_elapsed_s=np.asarray((18.42, 1.0)),
+        sc_extension_elapsed_s=np.asarray((83.05, 8.21)),
+        sc_total_elapsed_s=np.asarray((101.47, 9.21)),
+    )
+    for model in ("qm", "tf"):
+        state[f"{model}_sc_history_iteration"] = np.asarray((1, 2))
+        state[f"{model}_sc_history_max_g_change"] = np.asarray((1e-3, 1e-5))
+        state[f"{model}_sc_history_max_v_corr_residual_ha"] = np.asarray((2e-3, 2e-5))
+    figures = []
+    monkeypatch.setattr(gallery, "recompute_state", lambda: state)
+    monkeypatch.setattr(gallery, "save_figure", lambda fig, *a, **kw: figures.append(fig))
+    monkeypatch.setattr(plt, "show", lambda: None)
+    try:
+        gallery.main()
+        terminal = capsys.readouterr().out
+        axis = figures[-1].axes[0]
+        np.testing.assert_allclose(
+            [bar.get_height() for bar in axis.patches], [18.42, 1.0, 101.47, 9.21]
+        )
+        labels = [text.get_text() for text in axis.texts]
+        assert labels == ["18.42 s", "1.00 s", "101.47 s", "9.21 s"]
+        rows = [line for line in terminal.splitlines()
+                if line.startswith(("KS-DFT ", "Thomas--Fermi "))]
+        rows = [line for line in rows if line.split()[1] in ("IS", "SC")]
+        assert [float(line.split()[-1]) for line in rows] == [18.42, 101.47, 1.0, 9.21]
+        assert axis.get_ylabel() == "total wall time [s]"
+        assert axis.get_ylabel() in terminal
+        assert "SC total = initial IS calculation + SC feedback stage." in terminal
+    finally:
+        for fig in figures:
+            plt.close(fig)
+
+
+def test_recorded_timing_figure_matches_recorded_terminal() -> None:
+    import re
+    import xml.etree.ElementTree as ET
+
+    directory = ROOT / "docs/source/_static/gallery_results/plot_al_is_sc_comparison"
+    terminal = (directory / "results.rst").read_text()
+    rows = {}
+    for line in terminal.splitlines():
+        columns = line.split()
+        if len(columns) == 6 and columns[1] in ("IS", "SC"):
+            rows[(columns[0], columns[1])] = columns[-1] + " s"
+    expected = [rows[(model, path)] for path in ("IS", "SC")
+                for model in ("KS-DFT", "Thomas--Fermi")]
+    svg = ET.parse(directory / "figure_003.svg")
+    labels = ["".join(node.itertext()) for node in svg.iter()
+              if node.tag.endswith("}text")]
+    assert [label for label in labels if re.fullmatch(r"\d+\.\d{2} s", label)] == expected
+    assert "total wall time [s]" in labels
+    assert "total wall time [s]" in terminal

@@ -42,6 +42,8 @@ Recorded results
 
 The figures and output below are from the recorded validation run; running
 the source recalculates them with the installed Otter version.
+Both the timing plot and terminal report total wall time. For SC this includes
+the initial IS calculation plus the SC feedback stage.
 
 .. include:: /_static/gallery_results/plot_al_is_sc_comparison/results.rst
 
@@ -390,8 +392,8 @@ def recompute_state() -> dict[str, np.ndarray]:
                 print(
                     f"[computed] {MODEL_DISPLAY_LABELS[MODELS.index(model)]}: "
                     f"IS={solved[model]['is_elapsed_s']:.2f} s, "
-                    "SC extension="
-                    f"{solved[model]['sc_extension_elapsed_s']:.2f} s"
+                    "SC total="
+                    f"{solved[model]['sc_total_elapsed_s']:.2f} s"
                 )
     state = _pack_state(solved)
     CANDIDATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -502,9 +504,9 @@ def print_summary(state: dict[str, np.ndarray]) -> None:
     )
     print(
         "\nmodel             path      mu [Ha]       Zbar       "
-        "HNC residual   wall time [s]"
+        "HNC residual   total wall time [s]"
     )
-    print("-" * 82)
+    print("-" * 87)
     mu = np.asarray(state["mu_ha"], dtype=float)
     zbar = np.asarray(state["zbar_partition"], dtype=float)
     residual = np.asarray(state["hnc_residual"], dtype=float)
@@ -529,6 +531,8 @@ def print_summary(state: dict[str, np.ndarray]) -> None:
                 f"{residual[model_index, structure_index]:14.3e} "
                 f"{elapsed:15.2f}"
             )
+
+    print("SC total = initial IS calculation + SC feedback stage.")
 
     is_levels = {row["level"]: row for row in level_rows(state, "is")}
     sc_levels = {row["level"]: row for row in level_rows(state, "sc")}
@@ -714,12 +718,12 @@ def main() -> None:
     # %%
     # Runtime and SC convergence
     # --------------------------
-    # ``SC extension`` excludes the initial IS calculation.  Timings are machine
-    # dependent and document only these stored runs.  A valid SC result must meet
+    # Both paths show total wall time; SC includes the initial IS calculation.
+    # Timings are machine dependent. A valid SC result must meet
     # both the :math:`g_{ii}` and correlation-potential change tolerances.
 
     is_time = np.asarray(state["is_elapsed_s"], dtype=float)
-    sc_extension_time = np.asarray(state["sc_extension_elapsed_s"], dtype=float)
+    sc_total_time = np.asarray(state["sc_total_elapsed_s"], dtype=float)
     x = np.arange(len(model_names), dtype=float)
     width = 0.34
 
@@ -733,7 +737,7 @@ def main() -> None:
             (-0.5 * width, is_time, "IS", PALETTES["bing"][1]),
             (
                 0.5 * width,
-                sc_extension_time,
+                sc_total_time,
                 "SC",
                 PALETTES["bing"][2],
             ),
@@ -745,16 +749,16 @@ def main() -> None:
                 label=label,
                 color=color,
             )
-            ax_time.bar_label(bars, fmt="%.1f s", padding=2, fontsize=9)
+            ax_time.bar_label(bars, fmt="%.2f s", padding=2, fontsize=9)
         ax_time.set(
             xticks=x,
             xticklabels=model_names,
-            ylabel="wall time [s]",
-            title="Recorded calculation time",
+            ylabel="total wall time [s]",
+            title="Recorded total wall time",
         )
         ax_time.set_ylim(
             0.0,
-            1.18 * float(max(np.max(is_time), np.max(sc_extension_time))),
+            1.18 * float(max(np.max(is_time), np.max(sc_total_time))),
         )
         ax_time.legend()
 

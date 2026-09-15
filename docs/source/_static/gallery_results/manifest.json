@@ -29,14 +29,14 @@
     }
   },
   "docs/examples/plot_al_is_sc_comparison.py": {
-    "rendering_source_sha256": "1edbde08ea9662973bba0cdcd9fb269b0968f99d26f5d6104a956b5577acdcba",
+    "rendering_source_sha256": "577666f37cc7bd1a25561f1c4cddb5c2a2298f78a7d36d56ba1ba34da8c455fa",
     "figures": {
       "figure_001.svg": "b95a8f23374206c9ae4a9f4ad9390677f3883897c6f182cb514b727babcd27ea",
       "thumbnail.png": "e9d8aab3992759de9226439176b32468a5b9350e72bacda28580b542b46a91d2",
       "figure_002.svg": "f98430efdfbfd796ad79e08cd6636047b630e6634b634c4fded17f47c0516bc8",
-      "figure_003.svg": "5e2086d484e48dfa19f7fdf26085f7b87bc4e408b6009f38b7e0e99713b21987"
+      "figure_003.svg": "1432e3b66a386c0aa740c52b7ae729521013a5c7f4af2e78cdcdb670b6470ee0"
     },
-    "results_sha256": "9df70d07d49d36d08bdd45495e94065f0fbee6a810f2c8176f3a98d0ee2e4757",
+    "results_sha256": "f5098e1de853924337d4f8415e2707377fa55e2e642343dc5157ef2adecd1aa5",
     "role": "recorded_presentation_only_not_a_solver_input",
     "initial_html_capture": {
       "source_sha256_at_capture": "de73e8cc99be290c46b6187924cad2ff1230c3f50c320bcf4f30ecc472d48633",
@@ -46,6 +46,13 @@
     "display_only_update": {
       "previous_source_sha256": "9d35730224ac64ea7e72b6457a153bcddc4563cf08f7017770e8978a2d4f8633",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "timing_presentation_update": {
+      "previous_source_sha256": "1edbde08ea9662973bba0cdcd9fb269b0968f99d26f5d6104a956b5577acdcba",
+      "previous_results_sha256": "9df70d07d49d36d08bdd45495e94065f0fbee6a810f2c8176f3a98d0ee2e4757",
+      "previous_timing_figure_sha256": "5e2086d484e48dfa19f7fdf26085f7b87bc4e408b6009f38b7e0e99713b21987",
+      "numerical_archive_sha256": "c11583194e8cc43f3397c02a8bfc91488ab4fa5459d6089a10afc5658a4f3ef7",
+      "change": "Use total wall time for IS and SC in the plot and terminal, with two decimal places. SC includes initial IS plus SC feedback. Re-rendered from the same accepted numerical archive; no AA/MD calculation or solver change."
     }
   },
   "docs/examples/plot_al_qm_tf.py": {

@@ -157,8 +157,6 @@ def print_summary(state: dict[str, np.ndarray]) -> None:
     for index, label in enumerate(state["model_display_labels"].tolist()):
         print(
             f"{label}: IS={float(state['is_elapsed_s'][index]):.2f} s, "
-            "SC extension="
-            f"{float(state['sc_extension_elapsed_s'][index]):.2f} s, "
             f"SC total={float(state['sc_total_elapsed_s'][index]):.2f} s, "
             f"SC iterations={int(state['sc_iterations'][index])}"
         )

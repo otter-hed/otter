@@ -409,8 +409,8 @@ def regenerate(
                 print(
                     f"[done] {MODEL_DISPLAY_LABELS[MODELS.index(model)]}: "
                     f"IS={solved[model]['is_elapsed_s']:.2f} s, "
-                    "SC extension="
-                    f"{solved[model]['sc_extension_elapsed_s']:.2f} s",
+                    "SC total="
+                    f"{solved[model]['sc_total_elapsed_s']:.2f} s",
                     flush=True,
                 )
 
