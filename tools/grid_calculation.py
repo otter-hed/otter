@@ -9,8 +9,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from otter import PlasmaWorkflowConfig, solve_plasma_workflow, ion_orbital_form_factors
 
 ###
-elements = ["C"]
-number_fraction = [0.5]
+elements = ["C", "H"]
+number_fraction = [0.5, 0.5]
 
 # Set the k-grid with these parameters
 qoz_pad_factor = 2
@@ -26,7 +26,7 @@ alpha = [1]
 
 # Output quantities. currently implemented:
 # Sii, q, f, Zbar, Zstar
-output = ["Sii", "q", "f", "f_nl", "Zbar", "Zstar"]
+output = ["Sii", "q", "f", "f_nl", "E_nl", "Zbar", "Zstar"]
 
 ###
 
@@ -67,6 +67,7 @@ def otter_calc(T_e, rho, alpha):
     if len(elements) == 1:
         zstar = e_res["zstar"]
         f_orb = [ion_orbital_form_factors(e_res, r=ion_res["r"], k=ion_res["k"])]
+        E_orb = [e_res["bound_energy_ha"]]
         q_k = ion_res["q_k"][np.newaxis, :]
         f_k = ion_res["f_k"][np.newaxis, :]
     else:
@@ -79,17 +80,25 @@ def otter_calc(T_e, rho, alpha):
             )
             for idx in range(len(elements))
         ]
+        E_orb = [
+            e_res["species"][idx]["result"]["bound_energy_ha"]
+            for idx in range(len(elements))
+        ]
+
         q_k = ion_res["q_k"]
         f_k = ion_res["f_k"]
     f_nl = np.zeros((len(elements), 10, f_orb[0].shape[2]))
+    E_nl = np.zeros((len(elements), 10))
     idx = 0
     for element in range(len(elements)):
         for n in range(f_orb[element].shape[0]):
             for l in range(n + 1):
                 f_nl[element, idx, :] = f_orb[element][l, n, :]
+                E_nl[element, idx] = E_orb[element][l, n]
                 idx += 1
                 if idx > 10:
                     break
+    E_nl = np.where(np.isfinite(E_nl), E_nl, 0)
     return (
         ion_res["k"],
         ion_res["sij_k"],
@@ -98,6 +107,7 @@ def otter_calc(T_e, rho, alpha):
         q_k,
         f_k,
         f_nl,
+        E_nl,
     )
 
 
@@ -142,6 +152,15 @@ def run(T_e, rho, alpha, filename, n_workers=None):
             )
             f_nl.attrs["axis"] = ["i", "orbital", "k", "T_e", "rho", "alpha"]
             f_nl.attrs["unit"] = [""]
+        if "E_nl" in output:
+            E_nl = f.create_dataset(
+                "E_nl",
+                shape=(len(elements), 10, n, m, p),
+                dtype=np.float64,
+                chunks=(len(elements), 10, 1, 1, 1),
+            )
+            E_nl.attrs["axis"] = ["i", "orbital", "T_e", "rho", "alpha"]
+            E_nl.attrs["unit"] = ["Ha"]
         if "q" in output:
             q_k = f.create_dataset(
                 "q",
@@ -208,7 +227,7 @@ def run(T_e, rho, alpha, filename, n_workers=None):
             dtype=h5py.string_dtype(),
         )
         element_out[:] = elements
-        if "f_nl" in output:
+        if ("f_nl" in output) or ("E_nl" in output):
             orbital_out = axis.create_dataset(
                 "orbitals",
                 shape=(10,),
@@ -243,7 +262,16 @@ def run(T_e, rho, alpha, filename, n_workers=None):
 
             for future in as_completed(futures):
                 n_idx, m_idx, p_idx, result = future.result()
-                res_k, res_Sii, res_Zbar, res_Zstar, res_q, res_f, res_f_nl = result
+                (
+                    res_k,
+                    res_Sii,
+                    res_Zbar,
+                    res_Zstar,
+                    res_q,
+                    res_f,
+                    res_f_nl,
+                    res_E_nl,
+                ) = result
 
                 k_out[:] = res_k[:k_cutoff]
                 if "Sii" in output:
@@ -258,6 +286,8 @@ def run(T_e, rho, alpha, filename, n_workers=None):
                     f_k[:, :, n_idx, m_idx, p_idx] = res_f[:, :k_cutoff]
                 if "f_nl" in output:
                     f_nl[:, :, :, n_idx, m_idx, p_idx] = res_f_nl[:, :, :k_cutoff]
+                if "E_nl" in output:
+                    E_nl[:, :, n_idx, m_idx, p_idx] = res_E_nl
                 f.flush()
 
                 print(f"Finished [{n_idx}, {m_idx} {p_idx}]")
