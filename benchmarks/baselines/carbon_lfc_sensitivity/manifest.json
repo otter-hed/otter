@@ -10,7 +10,7 @@
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "script_relative_path": "benchmarks/runners/regenerate_carbon_lfc_sensitivity.py",
     "script_sha256": "f54eb68c154a53cb2d82f9338c726bf90c01ec80b4387e4cdfb3557b387e9ffd",
-    "script_sha256_current": "f54eb68c154a53cb2d82f9338c726bf90c01ec80b4387e4cdfb3557b387e9ffd",
+    "script_sha256_current": "005a129f3cc3fdb219797abd50cc33300742c952e3e4a032577e2a17cf6304bf",
     "worktree_clean_at_generation": false,
     "git_status_porcelain_sha256": "735aed4dd6543b1f3c57e19482cb230a2257d2f444d6ce8b0db0b9734ed135ff",
     "note": "git_commit identifies HEAD only. When worktree_clean_at_generation is false, script_sha256 and the status hash disclose that uncommitted source participated.",
@@ -20,7 +20,11 @@
     "validation_source_set": "conditioned_scf_campaign",
     "worktree_dirty": true,
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
-    "script_sha256_at_generation": "f54eb68c154a53cb2d82f9338c726bf90c01ec80b4387e4cdfb3557b387e9ffd"
+    "script_sha256_at_generation": "f54eb68c154a53cb2d82f9338c726bf90c01ec80b4387e4cdfb3557b387e9ffd",
+    "species_axis_migration": {
+      "previous_current_sha256": "f54eb68c154a53cb2d82f9338c726bf90c01ec80b4387e4cdfb3557b387e9ffd",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "data_rights": {
     "origin_type": "project_generated_numerical_output",

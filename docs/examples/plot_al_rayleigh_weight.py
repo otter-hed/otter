@@ -161,7 +161,7 @@ def pack_workflow(
         "f_k": f,
         "sii_k": sii,
         "mu_ha": np.asarray(float(electronic["mu"])),
-        "zbar": np.asarray(float(ion["zbar_qoz"])),
+        "zbar": np.asarray(np.asarray(ion["zbar_qoz"]).item()),
         "elapsed_s": np.asarray(float(elapsed_s)),
     }
 

@@ -1,6 +1,6 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "d26226e5d9a67bf1bb4a693c9faee4493d20c4cf393abe138d2d798fbbe1c70c",
+    "rendering_source_sha256": "40c388d3ce549c82314efa03b57a03a9008076f4be5a27c7f0684d746801fbb3",
     "interface_documentation_update": {
       "previous_source_sha256": "fbc84181244ea59ada13b55cbec26bd7c4096c5bff05fa2e6905ebf53438973a",
       "change": "Revise interface documentation and link field dimensions and version compatibility. Executable code, figures, recorded output and calculation provenance are unchanged."
@@ -34,10 +34,14 @@
     "display_only_update": {
       "previous_source_sha256": "3a5e4b9909838cd28a73d656f8001a80ebf23fd80befd182a2e00ad881f4b695",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "d26226e5d9a67bf1bb4a693c9faee4493d20c4cf393abe138d2d798fbbe1c70c",
+      "change": "Update species/pair indexing and API documentation. Numerical settings, plotted values, recorded output and generation provenance are unchanged."
     }
   },
   "docs/examples/plot_al_is_sc_comparison.py": {
-    "rendering_source_sha256": "577666f37cc7bd1a25561f1c4cddb5c2a2298f78a7d36d56ba1ba34da8c455fa",
+    "rendering_source_sha256": "a6aaec4d19cbc29d97d19b3f1fd80858e45d37105e1730e955aa45156829a14c",
     "figures": {
       "figure_001.svg": "b95a8f23374206c9ae4a9f4ad9390677f3883897c6f182cb514b727babcd27ea",
       "thumbnail.png": "e9d8aab3992759de9226439176b32468a5b9350e72bacda28580b542b46a91d2",
@@ -61,10 +65,14 @@
       "previous_timing_figure_sha256": "5e2086d484e48dfa19f7fdf26085f7b87bc4e408b6009f38b7e0e99713b21987",
       "numerical_archive_sha256": "c11583194e8cc43f3397c02a8bfc91488ab4fa5459d6089a10afc5658a4f3ef7",
       "change": "Use total wall time for IS and SC in the plot and terminal, with two decimal places. SC includes initial IS plus SC feedback. Re-rendered from the same accepted numerical archive; no AA/MD calculation or solver change."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "577666f37cc7bd1a25561f1c4cddb5c2a2298f78a7d36d56ba1ba34da8c455fa",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "docs/examples/plot_al_qm_tf.py": {
-    "rendering_source_sha256": "70d5a426e55abb40497109133d2c09ee61cac494a2b8462ec0a3f0015c44ddd3",
+    "rendering_source_sha256": "7a964dd7d33cec57c6db510a67d41e07714992b2fff1b7b6b832b20dbf40466a",
     "figures": {
       "figure_001.svg": "79e0f8a339a5bbb7d16f9a0ffe9ee8c445078ef2e633689b8e8d46b831b69ffe",
       "thumbnail.png": "cec397e220621399cda4a1911a6ff51e9704d6200c3eb57d7b38f6091e2692b2",
@@ -80,10 +88,14 @@
     "display_only_update": {
       "previous_source_sha256": "7804b83fe97e64204ce1cfabe9fe0abdb3b30d8d1ac9aa8d372a7516a770f142",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "70d5a426e55abb40497109133d2c09ee61cac494a2b8462ec0a3f0015c44ddd3",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "docs/examples/plot_al_rayleigh_weight.py": {
-    "rendering_source_sha256": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
+    "rendering_source_sha256": "c71986ce47cc5aa6512792232d58395ae1e6db9be287da502024bb7c4ab28d83",
     "figures": {
       "figure_001.svg": "51220be964f1486ea39193254e24298ba80f105f2b3475cbdb974de08429762c",
       "thumbnail.png": "645180386f7d1441f1222eab100b5e6be09ee122799cf86544d71b50cba6a320"
@@ -94,7 +106,11 @@
       "source_sha256_at_capture": "9421bf4879698ecaf6870e9c170f270cb059c0aaa4b3db47d696f1e95b58564b",
       "html_sha256_at_capture": "dbc62687f404b056186dd75381388701bd3fee2fe68d7c6e4662c24faf918f1c"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "species_axis_migration": {
+      "previous_source_sha256": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "docs/examples/plot_carbon_ionization_levels.py": {
     "rendering_source_sha256": "2b691137d2fad408c2df551b63e6ddabdc85c9f6052fd44c72dba9301da27bb3",
@@ -116,7 +132,7 @@
     }
   },
   "docs/examples/plot_carbon_lfc_sensitivity.py": {
-    "rendering_source_sha256": "9f0286f65c1c41aa4726c7b3adbcb45967c32fa85f034229b35f177a8ae01935",
+    "rendering_source_sha256": "f15c54d0819a79024cc85894f12f43c6c3971f0311181c88dc6f8d36120f7c37",
     "figures": {
       "figure_001.svg": "032df6f87884217a4306a6f2e313b2216b38f48030003e3f95bf6357eda2310f",
       "thumbnail.png": "8805e88d022d2b095d320f0e516037ae81645dcb82caaaa30ef26157e3cecd7f",
@@ -134,6 +150,10 @@
     "display_only_update": {
       "previous_source_sha256": "0d76f339b01e5aac8a15878c7177d5d88d9c87ef2398023e5d219660f1e8b9ae",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "9f0286f65c1c41aa4726c7b3adbcb45967c32fa85f034229b35f177a8ae01935",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "docs/examples/plot_ch136_mixture_workflow.py": {
@@ -163,7 +183,7 @@
     }
   },
   "benchmarks/examples/plot_argha_roy_carbon_sii.py": {
-    "rendering_source_sha256": "be5de8acadf89dbe558c0e2f5afa85aba979572e91ef8d080f5759c267be0369",
+    "rendering_source_sha256": "7df918341275f48ef526c0c586f8e67e9ff06cef282081df5b955447af2020f8",
     "figures": {
       "figure_001.svg": "c50f883d1498ae38a473de11cb0cc5efa421c1ea018e7f0bea20dc188bce00c1",
       "thumbnail.png": "28f8138e7f7e0d2666381925bab586a2aa1d98b72ae16c46af2a69df674d36bc"
@@ -178,6 +198,10 @@
     "display_only_update": {
       "previous_source_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "be5de8acadf89dbe558c0e2f5afa85aba979572e91ef8d080f5759c267be0369",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py": {
@@ -236,7 +260,7 @@
     "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
   },
   "benchmarks/examples/plot_ion_structure_library.py": {
-    "rendering_source_sha256": "c7f54eb5679a6b8cf1dfae78477e5c9da97f8dc0305c033e1a6d3e006664f804",
+    "rendering_source_sha256": "2e151e48ca6612835d80adb9d2f99729b20a10aae7e6dc0697c830fc16628e5a",
     "figures": {
       "figure_001.svg": "8570a38b14ce93da4a7ee477173a1c918b253d64d475ad7381a9019c3647f711",
       "thumbnail.png": "b325c2a28fdd0360d57bb7a0cc717a62400ea4669cdb4d38a0abd03834ee0d43",
@@ -252,10 +276,14 @@
     "display_only_update": {
       "previous_source_sha256": "dba8ff988e3b41fd433cedcf87b91b79ebf74662b86111e871deaf3aad33f702",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "c7f54eb5679a6b8cf1dfae78477e5c9da97f8dc0305c033e1a6d3e006664f804",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py": {
-    "rendering_source_sha256": "b2e6aeb39155c44d6daf709da61d3a558a56f542fff29857e470c18f43913f87",
+    "rendering_source_sha256": "0d93c8002aa2b6a55555d0f1f0b5fb342db6e3218dab0a56740849aaf1043acb",
     "figures": {
       "figure_001.svg": "a40e4a97a5ceb7182c874786af3469b90e24a849266ec6d7d1dd5881f61519b7",
       "thumbnail.png": "8e0e1769eb6951481648f6570eee295d6d46ae23b8dd2c0e39fc6e8ac98eacb5"
@@ -270,10 +298,14 @@
     "display_only_update": {
       "previous_source_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "b2e6aeb39155c44d6daf709da61d3a558a56f542fff29857e470c18f43913f87",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py": {
-    "rendering_source_sha256": "62de015624d34a8b2f6c129b4913daf9af823460ae53ea835d36e68dcafceb0a",
+    "rendering_source_sha256": "2fc7d4a2f60213b913b4366ca631c60bda54634e45435df6b00a817459fe9442",
     "figures": {
       "figure_001.svg": "a2ace576bac37bcabc41cd6871d3b6d5aee06c53e501ab5faf5ab6795479cb1b",
       "thumbnail.png": "2208698e3c4cf11a383f408895c8b1e9d9994d22ee5c44a8e16420c6ecbc23ce"
@@ -288,6 +320,10 @@
     "display_only_update": {
       "previous_source_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
       "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    },
+    "species_axis_migration": {
+      "previous_source_sha256": "62de015624d34a8b2f6c129b4913daf9af823460ae53ea835d36e68dcafceb0a",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
     }
   },
   "benchmarks/examples/plot_starrett_et_al_2014_mixtures_fig3.py": {
@@ -320,7 +356,7 @@
     "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
   },
   "benchmarks/examples/plot_starrett_single_species_2013_2014.py": {
-    "rendering_source_sha256": "8192313915935facac9fdb0012453b232cc6207675a33b508eb86e554e55c8b2",
+    "rendering_source_sha256": "5b86173d1a2f3b041b459948d79eba9647d3d47203ea099927a9f59c35b7addb",
     "figures": {
       "figure_001.svg": "9640d1f86be98b977cb5020863dbfa5275bbc5198e27fc8bdda35e9892055446",
       "thumbnail.png": "331396b73389b5f896111bf592d3d1b17fdef6ceab0e9971e8727a5e6bb9fc77"
@@ -331,6 +367,10 @@
       "source_sha256_at_capture": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
       "html_sha256_at_capture": "f847ba7a7c764342908b9a54a06d4cf81dac4b9f0391149ebefa02088cbfd949"
     },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
+    "species_axis_migration": {
+      "previous_source_sha256": "8192313915935facac9fdb0012453b232cc6207675a33b508eb86e554e55c8b2",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   }
 }

@@ -245,8 +245,8 @@ def _solve_one(temperature_ev: float, model: str) -> dict[str, Any]:
     )
     _, n_ion = _trim(electronic["r"], electronic["n_ion"], R_RETAIN_MAX_BOHR)
     _, n_scr = _trim(electronic["r"], electronic["n_scr"], R_RETAIN_MAX_BOHR)
-    r_i, gii = _trim(ion["r"], ion["gii_r"], R_RETAIN_MAX_BOHR)
-    k, sii = _trim(ion["k"], ion["sii_k"], K_RETAIN_MAX_BOHR_INV)
+    r_i, gii = _trim(ion["r"], ion["gij_r"][0, 0], R_RETAIN_MAX_BOHR)
+    k, sii = _trim(ion["k"], ion["sij_k"][0, 0], K_RETAIN_MAX_BOHR_INV)
     return {
         "model": str(model),
         "temperature_ev": float(temperature_ev),
@@ -261,7 +261,7 @@ def _solve_one(temperature_ev: float, model: str) -> dict[str, Any]:
         "sii": sii,
         "n0": float(electronic["n0"]),
         "zbar_aa": float(electronic["zbar"]),
-        "zbar_partition": float(ion["zbar_partition"]),
+        "zbar_partition": np.asarray(ion["zbar_partition"]).item(),
         "mu": float(electronic["mu"]),
         "r_ws": float(electronic["r_ws"]),
         "q_scr": float(

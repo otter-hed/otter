@@ -13,14 +13,18 @@
     "worktree_clean_at_generation": false,
     "git_status_porcelain_sha256": "735aed4dd6543b1f3c57e19482cb230a2257d2f444d6ce8b0db0b9734ed135ff",
     "note": "The commit identifies HEAD only. If worktree_clean_at_generation is false, the script checksum and status hash document that uncommitted source was involved; the commit alone is not a reproducible producer snapshot.",
-    "script_sha256_current": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
+    "script_sha256_current": "4f57024755c334794d3e71f8e80a9816bbe29e52ae77f9931780ca86820344fe",
     "version": "0.2.4",
     "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "worktree_dirty": true,
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
-    "script_sha256_at_generation": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276"
+    "script_sha256_at_generation": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
+    "species_axis_migration": {
+      "previous_current_sha256": "44535cb0d1a487ae7fbf60e11d0108ca354821dc4d318b21ef4eb7230176b276",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "configuration": {
     "rho_g_cc": 8.1,

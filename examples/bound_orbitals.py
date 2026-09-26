@@ -77,7 +77,7 @@ def main():
     factors = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
     print("max |sum(n_ion_nl) - n_ion| =", np.max(np.abs(
         aa["ion_orbital_density_r"].sum(axis=(0, 1)) - aa["n_ion"])))
-    print("max |sum(f_nl) - f| =", np.max(np.abs(factors.sum(axis=(0, 1)) - ion["f_k"])))
+    print("max |sum(f_nl) - f| =", np.max(np.abs(factors.sum(axis=(0, 1)) - ion["f_k"][0])))
     fig = plot_orbitals(aa, ion, multiply_fd=MULTIPLY_WAVEFUNCTION_BY_FD)
     if SAVE_FIGURES:
         print(save_figure(fig, FIGURE_STEM))

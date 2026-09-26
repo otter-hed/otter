@@ -2,7 +2,7 @@
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "ion_structure_library",
   "title": "Otter ion-structure literature comparisons",
-  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ ion-structure states paired with the provenance-audited subset of the local form-factor library; W\u00fcnsch Be includes HNC, VMHNC, and same-potential MD.",
+  "description": "Portable Otter KS and Thomas--Fermi average-atom plus QOZ ion-structure states paired with the provenance-audited subset of the local form-factor library; Wünsch Be includes HNC, VMHNC, and same-potential MD.",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
     "reference_data_in_separate_package": true,
@@ -43,10 +43,10 @@
     "git_commit_originally_recorded": "unknown",
     "script_relative_path": "benchmarks/runners/regenerate_ion_structure_library.py",
     "script_sha256": "ad8ed26173d1c3ca3a72abf6087b76a5e496e287a7dfabc0e9bdbcf32f0b1199",
-    "script_sha256_current": "ad8ed26173d1c3ca3a72abf6087b76a5e496e287a7dfabc0e9bdbcf32f0b1199",
+    "script_sha256_current": "1c79cde33d1f88ca85768d195d33c08f28f719bfa59d210c59ec51414ece9a00",
     "lammps_tool_relative_path": "tools/otter_lammps_md.py",
     "lammps_tool_sha256_current": "bfe7c210ad5fb1137b61aa8fa691eaa7d6c1b82b718269a03cdc35badfec9060",
-    "note": "The original HNC states retain their recorded producer revision. The W\u00fcnsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
+    "note": "The original HNC states retain their recorded producer revision. The Wünsch Be state was regenerated at its state-level producer revision with the current producer and LAMMPS tool; embedded signatures record the resolved settings.",
     "worktree_clean": false,
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "state_provenance_note": "Six states retain the recovered frozen-campaign revision. Carbon was radially refined separately; its state record and NPZ metadata identify the source and settings.",
@@ -56,7 +56,11 @@
     "validation_source_set": "conditioned_scf_campaign",
     "historical_git_commit_recovery_evidence": "provenance_recovery.json",
     "worktree_dirty": true,
-    "script_sha256_at_generation": "ad8ed26173d1c3ca3a72abf6087b76a5e496e287a7dfabc0e9bdbcf32f0b1199"
+    "script_sha256_at_generation": "ad8ed26173d1c3ca3a72abf6087b76a5e496e287a7dfabc0e9bdbcf32f0b1199",
+    "species_axis_migration": {
+      "previous_current_sha256": "ad8ed26173d1c3ca3a72abf6087b76a5e496e287a7dfabc0e9bdbcf32f0b1199",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "configuration": {
     "per_state": {

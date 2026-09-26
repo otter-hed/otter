@@ -243,17 +243,17 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         if zero_tail_states
         else str(zero_tail_meta.get("matching_mode", "none"))
     )
-    r, _ = _trim(reference_ion["r"], reference_ion["gii_r"], R_RETAIN_MAX_BOHR)
-    k, _ = _trim(reference_ion["k"], reference_ion["sii_k"], K_RETAIN_MAX_BOHR_INV)
+    r, _ = _trim(reference_ion["r"], reference_ion["gij_r"][0, 0], R_RETAIN_MAX_BOHR)
+    k, _ = _trim(reference_ion["k"], reference_ion["sij_k"][0, 0], K_RETAIN_MAX_BOHR_INV)
 
     def on_r(ion: dict[str, Any], key: str) -> np.ndarray:
         source_r = np.asarray(ion["r"], dtype=float)
-        source = np.asarray(ion[key], dtype=float)
+        source = np.asarray(ion[key], dtype=float).reshape(-1)
         return np.interp(r, source_r, source)
 
     def on_k(ion: dict[str, Any], key: str) -> np.ndarray:
         source_k = np.asarray(ion["k"], dtype=float)
-        source = np.asarray(ion[key], dtype=float)
+        source = np.asarray(ion[key], dtype=float).reshape(-1)
         return np.interp(k, source_k, source)
 
     signature = {
@@ -308,10 +308,10 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         "n_scr_k": on_k(reference_ion, "n_scr_k"),
         "chi0_k": on_k(reference_ion, "chi0_k"),
         "zbar_qoz": np.asarray(
-            [float(ion["zbar_qoz"]) for ion in ion_results]
+            [np.asarray(ion["zbar_qoz"]).item() for ion in ion_results]
         ),
         "n_i_bohr3": np.asarray(
-            [float(ion["n_i"]) for ion in ion_results]
+            [np.asarray(ion["n_i"]).item() for ion in ion_results]
         ),
         "hnc_output_residual": np.asarray(
             [float(ion["hnc_output_residual"]) for ion in ion_results]
@@ -366,7 +366,7 @@ def _solve_state(temperature_ev: float) -> dict[str, Any]:
         "n0_bohr3": np.asarray(float(electronic["n0"])),
         "zbar_aa_ws": np.asarray(float(electronic["zbar"])),
         "zbar_partition": np.asarray(
-            float(reference_ion["zbar_partition"])
+            np.asarray(reference_ion["zbar_partition"]).item()
         ),
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "q_scr_raw_integral": np.asarray(

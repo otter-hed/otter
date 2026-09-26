@@ -46,6 +46,11 @@ def _assert_view(result):
         assert "species" not in aa
         for key in ("n0", "zbar_partition", "zstar", "mu"):
             assert aa[key] == old[key]
+    for key in ("n0", "zbar_partition", "zstar", "mu"):
+        assert electronic[key].shape == (len(species),)
+        np.testing.assert_array_equal(electronic[key], [aa[key] for aa in legacy])
+    assert electronic["n_i_aa"].shape == (len(species),)
+    assert np.all(electronic["n_i_aa"] > 0.0)
     # Repeated references are fine, circular references are not.
     json.dumps(electronic, default=lambda value: value.tolist())
 
@@ -126,7 +131,11 @@ def test_continuation_view_uses_final_payload(monkeypatch, symbols, with_ions):
         result = wf.continue_plasma_workflow_from_electronic_result(
             cfg, electronic_kind=kind, electronic_result=payload)
         _assert_view(result)
-        assert result["ion"] is (ion if with_ions else None)
+        if with_ions:
+            assert result["ion"]["sij_k"] is ion["sij_k"]
+            assert "zstar" not in ion  # the native solver dictionary is unmodified
+        else:
+            assert result["ion"] is None
         assert result["electronic"]["species"][0]["result"]["n0"] > 1.0
         payload = result["electronic"]["result"]
     assert seen == (["validate", "ion"] * 3 if with_ions else [])

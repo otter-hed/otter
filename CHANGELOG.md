@@ -5,15 +5,21 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- **API change:** workflow ionic profiles retain a species axis for pure
+  elements: q/f, radial densities and electron--ion channels use `(Ns, N)`;
+  charges and ion number densities use `(Ns,)`; pair fields use `(Ns, Ns, N)`.
+  Common electron-response fields remain `(N,)`. Examples, benchmarks and
+  Colab support this layout; the state guide documents migration from 0.3.1.
+- Add electronic summary vectors and ionic `zstar`/`n_i_aa`. AA-cell densities
+  are distinct from bulk partial ion densities. Native AA returns, numerical
+  algorithms, defaults and NPZ v5 storage are unchanged. Tests cover one
+  through four species, shared array storage, continuation and NPZ equivalence.
+
 - Add a uniform `result["electronic"]["species"]` list for single-species and
   multicomponent workflows, including cached continuation and SC feedback.
   Each entry's `result` aliases the final native AA dictionary, so Zbar, Zstar,
   n0 and profiles use the same access path without copying numerical arrays.
-  Preserve legacy result paths, solver defaults and the portable NPZ schema.
-  Document the interface and test ordering, aliasing, continuation and exports.
-  Cover three- and four-species workflows, full pair matrices and common
-  electron-response channels in contract tests. Specify the native ionic
-  field dimensions separately from portable-export dimensions.
+  Legacy result paths remain supported.
 
 - Restore interactive figure windows in the example and benchmark scripts.
   Delegate display to Matplotlib instead of rejecting every backend whose

@@ -236,14 +236,14 @@ def solve_temperature(temperature_ev: float) -> dict[str, np.ndarray]:
         return np.interp(
             r,
             np.asarray(ion["r"], dtype=float),
-            np.asarray(ion[key], dtype=float),
+            np.asarray(ion[key], dtype=float).reshape(-1),
         )
 
     def on_k(ion: dict[str, Any], key: str) -> np.ndarray:
         return np.interp(
             k,
             np.asarray(ion["k"], dtype=float),
-            np.asarray(ion[key], dtype=float),
+            np.asarray(ion[key], dtype=float).reshape(-1),
         )
 
     return {
@@ -272,7 +272,7 @@ def solve_temperature(temperature_ev: float) -> dict[str, np.ndarray]:
         "n_scr_k": on_k(ion_results[0], "n_scr_k"),
         "chi0_k": on_k(ion_results[0], "chi0_k"),
         "zbar_qoz": np.asarray(
-            [float(ion["zbar_qoz"]) for ion in ion_results]
+            [np.asarray(ion["zbar_qoz"]).item() for ion in ion_results]
         ),
         "hnc_output_residual": np.asarray(
             [float(ion["hnc_output_residual"]) for ion in ion_results]

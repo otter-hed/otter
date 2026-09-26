@@ -13,8 +13,8 @@ def validate_screening_charge(ion: dict) -> None:
     ``zbar_screening_integral_raw`` is the native electronic radial integral,
     not ``charge_fix.q_scr_raw`` on the remapped QOZ/DST lattice.
     """
-    raw = float(ion["zbar_screening_integral_raw"])
-    target = float(ion["zbar_partition"])
+    raw = np.asarray(ion["zbar_screening_integral_raw"]).item()
+    target = np.asarray(ion["zbar_partition"]).item()
     error = abs(raw-target)
     if not np.isfinite(raw) or not np.isfinite(target) or error > MAX_RAW_SCREENING_CHARGE_ERROR:
         raise RuntimeError(

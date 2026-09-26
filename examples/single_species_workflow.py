@@ -148,14 +148,14 @@ def main() -> None:
     ax_potential.legend()
 
     r_ion = np.asarray(ion["r"], dtype=float)
-    ax_gii.plot(r_ion, ion["gii_r"], label=r"$g_{ii}(r)$")
+    ax_gii.plot(r_ion, ion["gij_r"][0, 0], label=r"$g_{ii}(r)$")
     ax_gii.set_xlabel(r"$r\,[a_0]$")
     ax_gii.set_ylabel(r"$g_{ii}(r)$")
     ax_gii.set_xlim(-0.5, 20.0)
     ax_gii.legend()
 
     k_ion = np.asarray(ion["k"], dtype=float)
-    ax_sii.plot(k_ion, ion["sii_k"], label=r"$S_{ii}(k)$")
+    ax_sii.plot(k_ion, ion["sij_k"][0, 0], label=r"$S_{ii}(k)$")
     ax_sii.set_xlabel(r"$k\,[a_0^{-1}]$")
     ax_sii.set_ylabel(r"$S_{ii}(k)$")
     ax_sii.set_xlim(0.0, 20.0)

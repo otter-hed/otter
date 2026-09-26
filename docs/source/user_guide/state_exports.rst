@@ -1,38 +1,27 @@
 Workflow results and portable NPZ files
 =======================================
 
-The return value of :func:`otter.solve_plasma_workflow` is the primary API.
-It contains the electronic result and, when ``ion_temperature_ev``
-is set, the QOZ/HNC result. Check the convergence flags before using a result.
-The same state can be written as a portable NPZ
-archive.  NPZ files contain only numeric arrays and fixed-width strings and
-are loaded with ``allow_pickle=False``.
+:func:`otter.solve_plasma_workflow` returns electronic results and, when
+``ion_temperature_ev`` is set, QOZ/HNC results. Convergence diagnostics are
+included in each result. :func:`otter.save_plasma_state` exports selected
+quantities to NPZ files containing numeric arrays and fixed-width strings,
+readable with ``allow_pickle=False``.
 
-Notation on this page distinguishes the electron channels
-:math:`V_{Ie}` and :math:`V_{ee}` from the effective ion--ion pair potential
-:math:`V_{ab}`, where :math:`a,b` label ionic species.  The Python keys
-``vij_k`` and ``vij_r`` retain ``ij`` for compatibility, but both of their
-leading axes are ionic-species axes; they are not electron--ion potentials.
+:math:`V_{Ie}` and :math:`V_{ee}` denote electron--ion and electron--electron
+channels. :math:`V_{ab}` denotes the effective ion--ion pair potential;
+both leading axes of ``vij_k`` and ``vij_r`` index ionic species.
 
-This page describes the portable workflow-state schema
-``otter_state_v5``.  It adds profile-selected exports while continuing to
-load ``otter_state_v1`` through ``otter_state_v4`` archives.  Benchmark
-baselines may instead use compact,
-benchmark-specific schemas because one archive can contain several model or
-thermodynamic states.  Such plotting archives are validated by their own
-producer/loader and are not inputs to :func:`otter.load_plasma_state`.
-Their field names and provenance follow the corresponding producer and manifest.
+The current portable schema is ``otter_state_v5``. The loader also supports
+schemas ``v1`` through ``v4``. Compact benchmark archives have separate
+schemas and loaders; they are not inputs to :func:`otter.load_plasma_state`.
 
 In a standard ``otter_state_v5`` archive,
 ``metadata_json["configuration"]`` stores the complete
-``PlasmaWorkflowConfig`` snapshot, including workflow defaults. An archive
-containing only overrides would become ambiguous if a later release changed a
-default.  ``metadata_json["configuration_nondefault"]`` is the compact reader
-view containing required inputs and values that differ from the producing
-version's workflow defaults. This snapshot does not expand every lower-level
-AA option or record every adaptive solver decision. The producer version and
-available convergence diagnostics must therefore be retained too.
-Calculation scripts should normally specify only intentional non-default settings.
+``PlasmaWorkflowConfig`` snapshot, including workflow defaults.
+``metadata_json["configuration_nondefault"]`` contains required inputs and
+settings that differ from those defaults. Lower-level AA options and adaptive
+solver decisions are not fully expanded in this snapshot; the producing
+version and convergence diagnostics are recorded separately.
 
 .. _in-memory-access:
 
@@ -42,8 +31,7 @@ Electronic structure
 For a system containing :math:`N_s` species, the electronic results are
 stored in ``result["electronic"]["species"]``. The list contains one entry
 per species and preserves the order in ``result["species_symbols"]``.
-The same interface applies to a pure element, a binary mixture and mixtures
-with three or more species.
+This convention includes pure elements (``N_s=1``).
 
 .. versionadded:: Unreleased
    The ``electronic["species"]`` access path.
@@ -54,12 +42,26 @@ with three or more species.
        aa = entry["result"]
        print(entry["element"], aa["n0"], aa["zbar_partition"], aa["zstar"])
 
-Each entry contains
-``element``, ``count``, ``x`` (number fraction), ``r_ws_bohr``, ``mu_ha`` and
-``result``. The latter is the native AA dictionary, with its own radial grid,
-density profiles and metadata. No averaging or grid interpolation is performed.
+Each entry contains ``element``, ``count``, ``x`` (number fraction),
+``r_ws_bohr``, ``mu_ha`` and ``result``. The AA dictionary in ``result`` retains
+the species' native radial grid, density profiles and metadata.
 
 Cached electronic continuation and SC feedback return the same structure.
+
+Species summaries are also available as vectors of shape ``(N_s,)``:
+
+.. code-block:: python
+
+   electronic = result["electronic"]
+   Zbar = electronic["zbar_partition"]
+   Zstar = electronic["zstar"]
+   n_i_aa = electronic["n_i_aa"]
+   n0 = electronic["n0"]
+   mu = electronic["mu"]
+
+These vectors are available for electronic-only calculations. They contain
+snapshots of the final AA values. For older cached results, a field is omitted
+if it is unavailable for any species.
 
 For a pure aluminium plasma, the AA result is the first list entry:
 
@@ -93,27 +95,25 @@ For a pure aluminium plasma, the AA result is the first list entry:
    mu = aa["mu"]
 
    k = ion["k"]
-   q = ion["q_k"]          # n_scr(k)
-   f = ion["f_k"]          # n_ion(k)
+   q = ion["q_k"][0]       # n_scr(k) for Al
+   f = ion["f_k"][0]       # n_ion(k) for Al
    G = ion["G_ee_k"]
    chi0 = ion["chi0_k"]
    chi_ee = ion["chi_ee_k"]
-   V_ie = ion["v_ie_k"]
+   V_ie = ion["v_ie_k"][0]
    V_ee = ion["v_ee_k"]
-   C_ie = ion["c_ie_k"]
+   C_ie = ion["c_ie_k"][0]
    C_ee = ion["c_ee_k"]
-   V_ie_r = ion["v_ie_r"]
+   V_ie_r = ion["v_ie_r"][0]
    V_ee_r = ion["v_ee_r"]
    V_ii_k = ion["vij_k"][0, 0]
    V_ii_r = ion["vij_r"][0, 0]
    g_ii = ion["gij_r"][0, 0]
    S_ii = ion["sij_k"][0, 0]
 
-``aa`` is the native AA dictionary; it is not the top-level workflow result.
-AA metadata is in ``aa["meta"]``, not ``result["meta"]``. The example above
-uses a quantum full/external calculation: full-only and TF results do not
-provide all the same profile or level fields. With no ionic stage,
-``result["ion"]`` is ``None``.
+AA metadata is in ``aa["meta"]``. The example uses a quantum full/external
+calculation; available profiles and levels depend on the electronic model
+and completed stages. Without an ionic stage, ``result["ion"]`` is ``None``.
 
 Element symbols can also be used to select a species:
 
@@ -132,17 +132,17 @@ Compatibility
 
 Otter 0.3.1 exposes ``result["electronic"]["result"]`` for a
 single AA, and ``result["electronic"]["result"]["species"][i]["result"]``
-for a mixture species. These paths remain supported. The list entries
-reference the same final AA
-dictionaries, not copies of the density arrays. In-place edits through either
-path affect the same data; treat completed solver results as read-only.
+for a mixture species. These paths remain supported and reference the same
+AA dictionaries as ``electronic["species"]``. Treat completed results as
+read-only: editing an AA dictionary changes its aliases but does not update
+the summary vectors.
 
 Mixture-wide common-mu diagnostics remain in
 ``result["electronic"]["result"]["meta"]``; a species' AA metadata remains in
 ``aa["meta"]``. For cached continuation, continue passing the raw
 ``result["electronic"]["result"]`` together with ``result["electronic"]["kind"]``.
-Low-level AA solvers keep their native returns. The electronic access addition
-does not change numerical settings, ionic array shapes or the NPZ schema.
+Low-level AA return formats and the NPZ schema are unchanged. The ionic
+array changes are described in `Migration from 0.3.1`_ below.
 
 QOZ/HNC results
 --------------------
@@ -170,9 +170,12 @@ species. The selected models are recorded in ``qoz_response_lfc_model`` and
 ``qoz_response_chi0_model``. These fields belong to the QOZ result, not to an
 individual species' AA dictionary.
 
-The native in-memory dimensions are:
+.. versionchanged:: Unreleased
+   Workflow species fields retain their species axis for a pure element.
 
-.. list-table:: Native QOZ/HNC fields
+The in-memory dimensions are:
+
+.. list-table:: QOZ/HNC fields
    :header-rows: 1
    :widths: 46 27 27
 
@@ -189,10 +192,10 @@ The native in-memory dimensions are:
      - ``(N_r,)``
      - ``(N_r,)``
    * - ``q_k``, ``f_k``, ``n_scr_k``, ``n_ion_k``, ``v_ie_k``, ``c_ie_k``
-     - ``(N_k,)``
+     - ``(1, N_k)``
      - ``(N_s, N_k)``
    * - ``n_scr_r``, ``n_ion_r``, ``v_ie_r``, ``c_ie_r``
-     - ``(N_r,)``
+     - ``(1, N_r)``
      - ``(N_s, N_r)``
    * - ``gij_r``, ``hij_r``, ``cij_r``, ``vij_r``
      - ``(1, 1, N_r)``
@@ -201,26 +204,77 @@ The native in-memory dimensions are:
      - ``(1, 1, N_k)``
      - ``(N_s, N_s, N_k)``
    * - ``zbar``, ``zbar_qoz``, ``zbar_partition``, ``zbar_aa_ws``, ``n_i``
-     - scalar
+     - ``(1,)``
      - ``(N_s,)``
+   * - ``zstar``, ``n_i_aa``
+     - ``(1,)``
+     - ``(N_s,)``
+   * - ``gii_r``, ``sii_k`` (diagonal species pairs)
+     - ``(1, N_r)``, ``(1, N_k)``
+     - ``(N_s, N_r)``, ``(N_s, N_k)``
+   * - ``bridge_r``, ``hnc_effective_potential_r`` (when provided)
+     - ``(1, 1, N_r)``
+     - ``(N_s, N_s, N_r)``
 
-The species order is ``result["species_symbols"]``. Pair indexing is
-identical for pure elements and mixtures: ``ion["sij_k"][i, j]`` selects
-:math:`S_{ij}(k)`. For a pure element, ``i = j = 0``. A system of three
-species has a ``(3, 3, N_k)`` structure-factor array, including all unlike
-pairs; it is not represented as independent binary mixtures.
+The species order is ``result["species_symbols"]``.
+``ion["sij_k"][i, j]`` selects :math:`S_{ij}(k)`; for a pure element,
+``i = j = 0``. All like- and unlike-species pairs are included.
 
-Single-species density, form-factor and electron--ion arrays retain their
-historical one-dimensional layout. The portable NPZ interface below retains
-the species axis for these quantities, including when :math:`N_s=1`.
+Profiles use the same indexing for any composition:
+
+.. code-block:: python
+
+   for i, symbol in enumerate(result["species_symbols"]):
+       q_i = ion["q_k"][i]
+       f_i = ion["f_k"][i]
+       V_ie_i = ion["v_ie_k"][i]
+       Zbar_i = ion["zbar_partition"][i]
+       Zstar_i = ion["zstar"][i]
+       n_i_bulk = ion["n_i"][i]
+       n_i_cell = ion["n_i_aa"][i]
+
+``n_i`` contains bulk partial ion densities; ``n_i_aa`` contains the inverse
+AA-cell volumes. They need not coincide in a mixture. ``zstar`` uses the latter.
+Per-species charge-normalization diagnostics in ``charge_fix`` also have shape
+``(N_s,)``. Global HNC convergence flags and residuals remain scalars.
+
 ``v_ei_k`` and ``v_ei_r`` are aliases of ``v_ie_k`` and ``v_ie_r``.
 ``gee_k`` and ``g_ee_k`` are compatibility aliases of ``G_ee_k``.
+The older, single-component-only shortcuts ``vii_r``, ``vii_k``, ``hii_r`` and
+``cii_r`` remain one-dimensional. Use ``vij_r``, ``vij_k``, ``hij_r`` and
+``cij_r`` with two species indices in composition-independent code.
 
 Convergence and solver diagnostics are available in the same dictionary:
 ``hnc_converged``, ``hnc_output_residual``, ``closure_transform_max_abs`` and
 ``stage_meta``. Model-specific diagnostics are only provided by the solver
 that defines them; for example, the current VMHNC implementation supplies
 single-species bridge and hard-sphere reference parameters.
+
+Migration from 0.3.1
+~~~~~~~~~~~~~~~~~~~~
+
+The existing dictionary keys are retained, but single-species ionic profiles
+now have a leading axis of length one. Select that axis before plotting or
+applying a one-dimensional grid mask:
+
+.. code-block:: python
+
+   q_al = ion["q_k"][0]
+   Zbar_al = float(ion["zbar_partition"][0])
+   S_al = ion["sij_k"][0, 0]
+   mask = ion["k"] < 5.0
+   q_all_species = ion["q_k"][:, mask]
+
+Code that must read both old and new single-species results can use
+``np.atleast_2d(ion["q_k"])[0]`` and
+``np.asarray(ion["zbar_partition"]).item()``. The latter is only appropriate
+when exactly one species is expected. Multicomponent profile dimensions and
+common electron-response dimensions are unchanged. Native AA scalar fields,
+such as ``aa["zstar"]``, remain scalars.
+
+Portable NPZ arrays already retain the species axes and need no migration.
+The existing single-species scalar representation of charge-normalization
+diagnostics inside ``metadata_json`` is also preserved.
 
 Portable access
 ---------------
@@ -242,11 +296,7 @@ because species can have different level counts and native radial grids.
 Mean-ionization definitions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``partition`` identifies the charge defined by the ionic density partition.
-For this mean ionization, use ``Zbar = aa["zbar_partition"]`` directly;
-no additional integration or export is needed.
-
-These quantities are distinct:
+The AA result distinguishes three mean-ionization definitions:
 
 * In QM, ``aa["zbar"]`` and ``aa["zbar_ws"]`` are
   :math:`Z-\int_0^{R_{\rm WS}}4\pi r^2 n_{\rm ion}(r)\,dr`.
@@ -263,11 +313,10 @@ need not equal the AA WS diagnostic.
 TF preserves its historical ``aa["zbar"] = aa["zstar"]`` convention and
 does not supply a separate ``aa["zbar_ws"]`` field. Portable
 ``zbar_aa_ws`` falls back to that legacy ``zbar`` when ``zbar_ws`` is absent;
-it therefore represents background ionization for current TF results, despite
-its historical key name. Use ``zbar_partition`` or ``zstar`` for explicit,
-model-independent definitions.
+it represents background ionization for TF results. Use ``zbar_partition``
+or ``zstar`` for model-independent field definitions.
 
-New standard NPZ exports contain the species vector ``state["zstar"]`` in
+Standard NPZ exports contain the species vector ``state["zstar"]`` in
 every profile, including ``electronic_summary``. For one element:
 
 .. code-block:: python
@@ -279,9 +328,8 @@ every profile, including ``electronic_summary``. For one element:
 The direct AA field is available from Otter 0.3.1; the standard NPZ species
 vector already existed in 0.3.0.
 
-The explicit AA ``zstar`` field is used when exporting. Older AA results
-without it remain supported via the same density ratio. Existing user code
-can still calculate it directly:
+Exports use the explicit AA ``zstar`` field when present, with a density-ratio
+fallback for older results:
 
 .. code-block:: python
 
@@ -295,14 +343,14 @@ For an older portable file without ``zstar``, when both density vectors exist:
    Zstar = (state["zstar"] if "zstar" in state else
             state["n0_bohr3"] / state["n_i_bohr3"])
 
-The loader does not fabricate fields absent from an older file. A portable
-file uses ``metadata_json``; older electronic-only exports instead use
-``meta_json`` and are read with NumPy, not ``load_plasma_state``.
+The loader returns the fields stored in the file. Portable files use
+``metadata_json``. Older electronic-only exports use ``meta_json`` and require
+direct NumPy loading.
 
 Ion-orbital profiles and wavefunctions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For a quantum AA result, the existing ionic density components are
+For a quantum AA result, the ionic density components are
 
 .. math::
 
@@ -310,8 +358,7 @@ For a quantum AA result, the existing ionic density components are
    f_{\rm FD}(E_{nl}) M(E_{nl}) f_{\rm cut}(r) |R_{nl}(r)|^2.
 
 Their sum is ``aa["n_ion"]``. The unweighted radial wavefunctions use their
-own bound grid, which can differ from the density grid. Access them and
-transform the ionic components without running another solve:
+own bound grid, which can differ from the density grid:
 
 .. code-block:: python
 
@@ -333,10 +380,8 @@ only after transforming. For a mixture, pass each species' ``aa`` result
 with the same ionic grids.
 
 ``multiply_fd=True`` multiplies the wavefunction amplitude by the FD factor,
-not its square root. This is a display/analysis option, not a change of
-orbital normalization or a prescription for rebuilding the ionic density.
-It never changes the stored raw wavefunctions or the ionic components.
-Near-threshold status remains the one reported by the AA solve. For matched
+not its square root. It affects the returned wavefunctions only; stored
+wavefunctions, ionic densities and AA threshold status are unchanged. For matched
 shallow states, normalization includes the analytic exterior tail; the
 exported radial interval alone need not contain unit probability.
 
@@ -360,8 +405,7 @@ arrays or the input to the Fourier transform.
 Saving and reading orbital NPZ data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use the completed ``result`` from the workflow above. This standard export
-keeps basic state metadata and level tables, then adds orbital profiles:
+The ``orbital_densities`` group adds orbital profiles to the electronic summary:
 
 .. code-block:: python
 
@@ -377,9 +421,8 @@ keeps basic state metadata and level tables, then adds orbital profiles:
    )
    state = load_plasma_state("Al_orbitals.npz")
 
-The file stores raw :math:`R_{nl}`, not FD-weighted amplitudes and not
-:math:`4\pi r^2 R_{nl}`. The ionic densities already include FD, degeneracy,
-:math:`M(E)`, and :math:`f_{\rm cut}`. Saving never reruns the solver.
+The file stores unweighted :math:`R_{nl}`. Ionic densities include FD,
+degeneracy, :math:`M(E)`, and :math:`f_{\rm cut}`. Display factors are excluded.
 Per-level form factors are produced on the original full QOZ grid before
 any export window is applied; loading reads the stored values directly.
 
@@ -410,8 +453,7 @@ Each exported row corresponds to one bound level; unlike the in-memory
 
 The three profile shapes are ``(N_level, N_r_bound)``,
 ``(N_level, N_r_native)``, and ``(N_level, N_k)``. Use the matching grid for
-each array. For mixtures choose ``species_1_``, etc.; never assume different
-species have the same bound or native radial grid.
+each array. Mixture species use separate prefixes and may have different grids.
 
 By default, archives retain :math:`r<20\,a_B` and :math:`k<20\,a_B^{-1}`.
 To preserve all available samples for a single species, pass these additional
@@ -423,9 +465,8 @@ options to ``StateExportOptions`` (the endpoints are exclusive):
    k_max_bohr_inv = float(np.nextafter(ion["k"][-1], np.inf))
 
 For mixtures use the largest radial endpoint across species. Wavefunctions
-beyond the numerical bound grid are not invented by the export. TF does not
-produce orbital fields; a full-AA-only result without an ionic grid has no
-stored per-level form factors.
+are exported within their numerical bound grid. TF has no orbital fields;
+per-level form factors require an ionic grid.
 
 Plotting code is included in ``examples/bound_orbitals.py`` (in-memory arrays)
 and ``docs/examples/plot_al_full_workflow.py`` (standard NPZ export).
@@ -671,8 +712,8 @@ cropped grids need not form a complete DST lattice or have equal lengths.
        and :math:`Z^*=n_0/n_i^{\rm AA}` definitions.
    * - ``mu_ha``, ``r_ws_bohr``, ``n0_bohr3``, ``n_i_bohr3``
      - ``(N_s,)``
-     - Chemical potential, WS radius, background electron density, and ion
-       AA-cell ion density (not bulk partial density in a mixture).
+     - Chemical potential, WS radius, background electron density, and
+       AA-cell ion density (distinct from bulk partial density in a mixture).
 
 Pair access is direct. With ``ion_structure`` and ``pair_potential`` selected:
 
@@ -722,8 +763,8 @@ In TF, the compatibility fields ``n_bound`` and ``n_cont`` contain
 the ionic partition is not the same split.
 
 The direct positive-energy A3 density can have a shorter numerical domain.
-It therefore uses its own paired arrays ``species_i_n_free_r_bohr`` and
-``species_i_n_free_r`` instead of inserting NaNs on the full native grid.
+Its grid and values are stored in ``species_i_n_free_r_bohr`` and
+``species_i_n_free_r``.
 
 Bound levels and orbital densities
 ----------------------------------
@@ -786,9 +827,8 @@ Metadata and discovery
 snapshot, citation keys, units, thermodynamic state, model choices,
 electronic/common-chemical-potential/HNC convergence diagnostics, export
 profile and resolved groups, computed stages, windows, definitions, and the
-actual field list.  It also records that these analysis archives are not
-solver-restart checkpoints.  Programmatic discovery does not require a
-hard-coded list:
+actual field list. These archives support analysis, not solver restarts.
+Inspect the metadata with:
 
 .. code-block:: python
 

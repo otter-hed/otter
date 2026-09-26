@@ -63,11 +63,16 @@ def workflow_result():
 
 
 @pytest.mark.parametrize("temperatures", [(1.0, 1.0), (5.0, 10.0)])
+@pytest.mark.parametrize("uniform_axes", [False, True])
 def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
-    tmp_path, monkeypatch, temperatures, capsys,
+    tmp_path, monkeypatch, temperatures, capsys, uniform_axes,
 ):
     namespace, calls = {}, []
     result = workflow_result()
+    reference_ion = dict(result["ion"])
+    if uniform_axes:
+        from otter._workflow_results import ionic_species_axes
+        result["ion"] = ionic_species_axes(result["ion"], n_species=1, electronic_vectors={})
     monkeypatch.chdir(tmp_path)
 
     def solve(config):
@@ -128,7 +133,7 @@ def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
         )
         k_mask_orbital = result["ion"]["k"] <= 10.0
         np.testing.assert_allclose(
-            orbitals.axes[2].lines[-1].get_ydata(), result["ion"]["f_k"][k_mask_orbital],
+            orbitals.axes[2].lines[-1].get_ydata(), reference_ion["f_k"][k_mask_orbital],
         )
         assert [line.get_color() for line in electronic.axes[0].lines[:6]] == list(
             PALETTES["bing"][:6]
@@ -152,10 +157,10 @@ def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
         )
         for ax, key in zip(pipeline.axes + ionic.axes, ("q_k", "vii_k", "vii_r", "gii_r", "sii_k")):
             mask = result["ion"]["r"] <= 12.0 if key in ("vii_r", "gii_r") else result["ion"]["k"] <= 8.0
-            np.testing.assert_array_equal(ax.lines[0].get_ydata(), result["ion"][key][mask])
+            np.testing.assert_array_equal(ax.lines[0].get_ydata(), reference_ion[key][mask])
             assert ax.lines[0].get_color() == PALETTES["bing"][0]
         k_mask = result["ion"]["k"] <= 8.0
-        expected_weight = np.abs(result["ion"]["f_k"] + result["ion"]["q_k"])**2 * result["ion"]["sii_k"]
+        expected_weight = np.abs(reference_ion["f_k"] + reference_ion["q_k"])**2 * reference_ion["sii_k"]
         np.testing.assert_array_equal(ionic.axes[2].lines[0].get_ydata(), expected_weight[k_mask])
         if temperatures[0] != temperatures[1]:
             assert "T_e=T_i" not in electronic._suptitle.get_text()

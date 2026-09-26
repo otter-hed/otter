@@ -74,14 +74,18 @@
     "script_sha256": "6c217bd0d5ce7d639612a7e934d143be5145b0c6312a81e11f170040c22f82ab",
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "worktree_dirty": true,
-    "script_sha256_current": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+    "script_sha256_current": "0d93c8002aa2b6a55555d0f1f0b5fb342db6e3218dab0a56740849aaf1043acb",
     "current_controller_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
     "version": "0.2.4",
     "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
-    "script_sha256_at_generation": "6c217bd0d5ce7d639612a7e934d143be5145b0c6312a81e11f170040c22f82ab"
+    "script_sha256_at_generation": "6c217bd0d5ce7d639612a7e934d143be5145b0c6312a81e11f170040c22f82ab",
+    "species_axis_migration": {
+      "previous_current_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "configuration": {
     "aa_n_points": 4096,

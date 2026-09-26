@@ -39,7 +39,7 @@
   "producer": {
     "project": "Otter",
     "script_relative_path": "docs/examples/plot_al_rayleigh_weight.py",
-    "script_sha256_current": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
+    "script_sha256_current": "c71986ce47cc5aa6512792232d58395ae1e6db9be287da502024bb7c4ab28d83",
     "note": "All three states were freshly calculated by the standalone Otter example.",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "version": "0.2.4",
@@ -48,7 +48,11 @@
     "validation_source_set": "conditioned_scf_campaign",
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "worktree_dirty": true,
-    "script_sha256_at_generation": "85a7329ce59d58fe43e74377b6704eeb459051f27e2143b379d57e647ab58be7"
+    "script_sha256_at_generation": "85a7329ce59d58fe43e74377b6704eeb459051f27e2143b379d57e647ab58be7",
+    "species_axis_migration": {
+      "previous_current_sha256": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "state": {
     "data_file": "Al_Te10eV_rayleigh.npz",
