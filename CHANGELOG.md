@@ -5,6 +5,19 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+### 0.4.0
+
+- Add parallel parameter-grid calculations and optional HDF5 output, based on
+  Julian Lütgert's contribution in PR #2. Export spectra on a common physical
+  k axis without extrapolation; retain species fractions, units, solver
+  settings, code fingerprints and per-state convergence records.
+- Index orbitals by physical n and l, with no fixed ten-orbital limit.
+  Missing levels have zero form factor, NaN energy and an explicit presence
+  mask. Pending and failed states remain distinct from physical zero values.
+- Support resuming incomplete grids with configuration and source checks.
+  Each worker uses one CPU and writes its SCF progress to a separate log.
+  The parent process alone writes the HDF5 file.
+
 - **API change:** workflow ionic profiles retain a species axis for pure
   elements: q/f, radial densities and electron--ion channels use `(Ns, N)`;
   charges and ion number densities use `(Ns,)`; pair fields use `(Ns, Ns, N)`.

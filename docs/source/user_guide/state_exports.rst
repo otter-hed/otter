@@ -7,6 +7,8 @@ included in each result. :func:`otter.save_plasma_state` exports selected
 quantities to NPZ files containing numeric arrays and fixed-width strings,
 readable with ``allow_pickle=False``.
 
+For parameter scans with a shared output k axis, see :doc:`parameter_grids`.
+
 :math:`V_{Ie}` and :math:`V_{ee}` denote electron--ion and electron--electron
 channels. :math:`V_{ab}` denotes the effective ion--ion pair potential;
 both leading axes of ``vij_k`` and ``vij_r`` index ionic species.
@@ -33,7 +35,7 @@ stored in ``result["electronic"]["species"]``. The list contains one entry
 per species and preserves the order in ``result["species_symbols"]``.
 This convention includes pure elements (``N_s=1``).
 
-.. versionadded:: Unreleased
+.. versionadded:: 0.4.0
    The ``electronic["species"]`` access path.
 
 .. code-block:: python
@@ -170,7 +172,7 @@ species. The selected models are recorded in ``qoz_response_lfc_model`` and
 ``qoz_response_chi0_model``. These fields belong to the QOZ result, not to an
 individual species' AA dictionary.
 
-.. versionchanged:: Unreleased
+.. versionchanged:: 0.4.0
    Workflow species fields retain their species axis for a pure element.
 
 The in-memory dimensions are:

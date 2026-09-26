@@ -15,5 +15,10 @@ def test_current_release_versions_agree():
     for name in ("CITATIONS.md", "docs/source/citations.rst"):
         assert f"version {version}, computer software" in (root / name).read_text()
     changelog = (root / "CHANGELOG.md").read_text()
-    release_date = re.findall(r"^date-released: (\S+)$", citation, re.MULTILINE)[0]
-    assert f"## {version} — {release_date}" in changelog
+    dates = re.findall(r"^\s*date-released: (\S+)$", citation, re.MULTILINE)
+    if f"### {version}\n" in changelog.split("\n## ", 2)[1]:
+        # An unreleased candidate must not inherit the previous release date.
+        assert dates == []
+    else:
+        assert len(dates) == 2 and dates[0] == dates[1]
+        assert f"## {version} — {dates[0]}" in changelog

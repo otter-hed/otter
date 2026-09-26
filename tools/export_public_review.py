@@ -23,6 +23,7 @@ PUBLIC_TOOLS = frozenset({
     "tools/gallery_notebooks.py",
     "tools/diagnostics/bound_energy_partition_sensitivity.py",
     "tools/studies/carbon_xc_comparison.py",
+    "tools/grid_calculation.py",
 })
 PRIVATE_TESTS = frozenset({
     "tests/test_ch2_hnc_md_comparison.py",
@@ -41,13 +42,17 @@ PRIVATE_TESTS = frozenset({
 })
 
 
+PRIVATE_FILES = frozenset({"DEV_STATE.md", "teos_todos.md"})
+
+
 def in_public_tool_scope(name: str) -> bool:
     """Keep public tools and their tests, not private study dependencies."""
     private_study = (name.startswith("benchmarks/runners/diagnose_")
                      or name in {"benchmarks/runners/prepare_johnson_panel_d_sc_potential.py",
                                  "benchmarks/runners/compare_recomputed_to_baselines.py"}
                      or name.startswith("benchmarks/reference_data/Maximilian_et_al_2022_Al_Sii/"))
-    return (not private_study and (not name.startswith("tools/") or name in PUBLIC_TOOLS)
+    return (not name.startswith("applications/") and not private_study
+            and (not name.startswith("tools/") or name in PUBLIC_TOOLS)
             and name not in PRIVATE_TESTS)
 
 
@@ -63,9 +68,11 @@ def export_review(root: Path, destination: Path, *, public_tools: bool = False) 
         path = Path(name)
         if public_tools and not in_public_tool_scope(name):
             continue
-        if (not name or path.suffix in {".npz", ".pkl", ".pickle"}
-                or path.parts[0] in {"applications", ".codex", ".agents", ".private"}
-                or path.name == "DEV_STATE.md" or "_private" in path.parts):
+        if (not name or path.suffix in {".npz", ".h5", ".hdf5", ".pkl", ".pickle"}
+                or path.parts[0] in {"applications", "literature"}
+                or (path.parts[0].startswith(".")
+                    and path.parts[0] not in {".github", ".gitignore", ".gitattributes"})
+                or path.name in PRIVATE_FILES or "_private" in path.parts):
             continue
         # Six obsolete raster plots have been replaced by the recorded SVGs.
         # Preserve the animation and its poster, which remain linked in HTML.
@@ -81,7 +88,7 @@ def export_review(root: Path, destination: Path, *, public_tools: bool = False) 
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         count += 1
-    if list(destination.rglob("*.npz")):
+    if any(path.suffix in {".npz", ".h5", ".hdf5"} for path in destination.rglob("*")):
         raise AssertionError("Numerical archive escaped the export filter")
     return count
 

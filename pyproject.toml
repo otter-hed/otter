@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "otter-hed"
-version = "0.3.1"
+version = "0.4.0"
 description = "Average-atom, pseudoatom, and ionic-structure calculations for dense plasmas."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -39,10 +39,12 @@ dependencies = [
 
 [project.optional-dependencies]
 libxc = ["pylibxc7==7.0.0"]
+grid = ["h5py>=3.11,<4"]
 
 [tool.poetry.group.dev.dependencies]
 build = ">=1.2"
 pytest = ">=8"
+h5py = ">=3.11,<4"
 twine = ">=5"
 
 [tool.poetry]

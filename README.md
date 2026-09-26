@@ -166,6 +166,11 @@ manifest that reintroduces an unresolved public-release action.
 
 ## Development
 
+The 0.4.0 development version unifies single-species and mixture result axes.
+See the [migration guide](https://otter-hed.github.io/otter/user_guide/state_exports.html)
+before updating scripts written for 0.3.1. Parameter-grid calculations use
+the optional HDF5 dependency: `poetry install -E grid`.
+
 ```bash
 poetry install
 poetry run pytest -q
@@ -182,7 +187,7 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu and Dominik Kraus, *Otter*, version 0.3.1, computer software (2026),
+> Chongbing Qu and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
@@ -190,7 +195,7 @@ If you use Otter in a scientific publication, please cite:
   author  = {Qu, Chongbing and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
-  note    = {Computer software, version 0.3.1},
+  note    = {Computer software, version 0.4.0},
   url     = {https://github.com/otter-hed/otter}
 }
 ```
@@ -207,6 +212,9 @@ are not additional software-citation requirements. See
 
 The authors thank Zachary A. Johnson and C. E. Starrett for helpful
 discussions.
+
+Julian Lütgert contributed the parameter-grid calculation and HDF5 export
+tool for interpolation workflows.
 
 Chongbing Qu gratefully acknowledges financial support from HEDI and the China
 Scholarship Council (CSC).

@@ -6,8 +6,8 @@ from dataclasses import asdict
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
-import tomllib
 
 import matplotlib
 matplotlib.use("Agg", force=True)
@@ -204,7 +204,9 @@ def test_colab_configuration_matches_al_gallery(monkeypatch):
 def test_colab_has_no_repository_dependency_or_extra_overrides():
     notebook = json.loads(NOTEBOOK.read_text())
     assert notebook["nbformat"] == 4
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    # Colab installs the latest published version, never an unreleased candidate.
+    version = re.findall(r"^## (\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}",
+                         (ROOT / "CHANGELOG.md").read_text(), re.MULTILINE)[0]
     assert "".join(cells()["install"]["source"]) == f'%pip install -q "otter-hed=={version}"'
     sources = []
     for cell in notebook["cells"]:

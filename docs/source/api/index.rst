@@ -53,6 +53,20 @@ response and LFC, interaction channels, :math:`V_{ab}`, :math:`g_{ab}`, and
    build_state_arrays
    validate_state_arrays
 
+Parameter-grid calculations
+---------------------------
+
+Install the optional HDF5 dependency with ``poetry install -E grid``.
+See :doc:`../user_guide/parameter_grids` for the file layout and examples.
+
+.. currentmodule:: otter.grid
+
+.. autosummary::
+   :toctree: ../_autosummary
+
+   GridConfig
+   run_grid
+
 Scientific plotting
 -------------------
 
