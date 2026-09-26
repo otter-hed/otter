@@ -16,7 +16,7 @@ PACKAGE_ROOT = SOURCE_ROOT / "otter"
 sys.path[:0] = [str(SOURCE_ROOT), str(PROJECT_ROOT)]
 
 project = "Otter"
-author = "Chongbing Qu (瞿崇兵) and Dominik Kraus"
+author = "Chongbing Qu (瞿崇兵), Julian Lütgert, and Dominik Kraus"
 copyright = "2026, Chongbing Qu (瞿崇兵)"
 
 from otter import __version__

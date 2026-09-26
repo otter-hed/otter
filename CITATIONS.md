@@ -6,8 +6,8 @@ examples, benchmark manifests, and generated HTML.
 
 ## For users
 
-If you use Otter in a scientific publication, please cite Chongbing Qu
-and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
+If you use Otter in a scientific publication, please cite Chongbing Qu,
+Julian Lütgert, and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
 https://github.com/otter-hed/otter.
 
 Model references record scientific provenance; they are not additional

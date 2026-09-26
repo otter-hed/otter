@@ -187,12 +187,12 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
+> Chongbing Qu, Julian Lütgert, and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
 @misc{QuKraus2026Otter,
-  author  = {Qu, Chongbing and Kraus, Dominik},
+  author  = {Qu, Chongbing and Lütgert, Julian and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
   note    = {Computer software, version 0.4.0},

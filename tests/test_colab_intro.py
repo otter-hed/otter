@@ -241,4 +241,4 @@ def test_html_copyright_includes_chinese_name():
               and isinstance(node.targets[0], ast.Name)
               and node.targets[0].id in {"author", "copyright"}}
     assert values["copyright"] == "2026, Chongbing Qu (瞿崇兵)"
-    assert values["author"] == "Chongbing Qu (瞿崇兵) and Dominik Kraus"
+    assert values["author"] == "Chongbing Qu (瞿崇兵), Julian Lütgert, and Dominik Kraus"

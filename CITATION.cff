@@ -7,6 +7,8 @@ version: 0.4.0
 authors:
   - family-names: Qu
     given-names: Chongbing
+  - family-names: Lütgert
+    given-names: Julian
   - family-names: Kraus
     given-names: Dominik
 repository-code: https://github.com/otter-hed/otter
@@ -26,6 +28,8 @@ preferred-citation:
   authors:
     - family-names: Qu
       given-names: Chongbing
+    - family-names: Lütgert
+      given-names: Julian
     - family-names: Kraus
       given-names: Dominik
   repository-code: https://github.com/otter-hed/otter
