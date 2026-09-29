@@ -3009,18 +3009,18 @@ def _final_ion_gamma_for_reporting(result: dict[str, Any], cfg: FullExternalConf
     Returns
     -------
     float
-        Final gamma in Hartree used for post-SCF `n_ion` diagnostics. When the
-        runtime history does not expose the converged gamma, the configured
-        value is used as a stable fallback.
+        Final gamma in Hartree used for post-SCF `n_ion` diagnostics. Prefer
+        the refreshed final state over the pre-refresh iteration history.
+        Older results fall back to history, debug metadata or configuration.
     """
+    gamma_result = result.get("ion_gamma", np.nan)
+    if np.isfinite(gamma_result):
+        return float(gamma_result)
     history = result.get("history", [])
     if isinstance(history, list) and history:
         gamma_hist = history[-1].get("ion_gamma", np.nan)
         if np.isfinite(gamma_hist):
             return float(gamma_hist)
-    gamma_result = result.get("ion_gamma", np.nan)
-    if np.isfinite(gamma_result):
-        return float(gamma_result)
     gamma_debug = result.get("debug_ion_gamma", np.nan)
     if np.isfinite(gamma_debug):
         return float(gamma_debug)

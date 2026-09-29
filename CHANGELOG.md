@@ -7,6 +7,23 @@ have not yet been released are collected under “Unreleased”.
 
 ### 0.4.0
 
+- Use the final refreshed SCF broadening parameter for orbital densities and
+  form factors. The last iteration-history value could differ, breaking the
+  sum over orbitals. Energies, wavefunctions, total densities and total spectra
+  are unchanged; no orbital renormalization is applied.
+- Store HDF5 unit attributes as one-entry string arrays for compatibility
+  with existing readers. Resume validation also accepts legacy scalar unit
+  strings, but rejects altered coordinates, composition,
+  spectral units or k-axis references. Solver settings and spectra are unchanged.
+- Add regressions for four-species radial/angular orbital indexing beyond ten
+  levels, zero/out-of-range k rejection and cleanup after partial write failure.
+- Record each HDF5 spectrum's k-coordinate dataset explicitly. Validate stored
+  coordinates and units before resuming a grid; reject invalid native grids.
+  Test common-grid exports for different native lengths and state completion
+  orders, including multicomponent spectra and orbital sums.
+- Add optional native-grid spectra to HDF5 parameter exports. Retain each
+  state's original k, Sii, f and q arrays alongside the common interpolation
+  grid, including the smallest solver wave number and its f+q diagnostic.
 - Add parallel parameter-grid calculations and optional HDF5 output, based on
   Julian Lütgert's contribution in PR #2. Export spectra on a common physical
   k axis without extrapolation; retain species fractions, units, solver

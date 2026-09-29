@@ -34,6 +34,19 @@ def _axis(values, name):
     return tuple(float(x) for x in array)
 
 
+def _stored_unit(dataset):
+    """Read one-entry unit arrays or legacy scalar unit strings."""
+    value = np.asarray(dataset.attrs.get("unit", []))
+    if value.ndim > 1 or value.size != 1:
+        raise ValueError(f"Expected one unit for {dataset.name}.")
+    unit = value.reshape(-1)[0]
+    if isinstance(unit, bytes):
+        unit = unit.decode("utf-8")
+    if not isinstance(unit, str):
+        raise ValueError(f"Expected a unit string for {dataset.name}.")
+    return unit
+
+
 @dataclass(frozen=True)
 class GridConfig:
     """A fixed composition sampled over Te, rho and alpha=Ti/Te.
@@ -42,7 +55,8 @@ class GridConfig:
     ----------
     workflow : dict
         Unscanned PlasmaWorkflowConfig options, including the composition.
-        Diagnostic unconverged continuation and nested parallelism are rejected.
+        Unconverged-state continuation and parallelism within a state are
+        not supported.
     temperature_ev : sequence of float
         Positive, increasing electron temperatures in eV.
     rho_g_cc : sequence of float
@@ -54,6 +68,9 @@ class GridConfig:
         Positive, increasing Ti/Te ratios; the default is (1.0,).
     outputs : sequence of str, optional
         Selected names from OUTPUTS. Orbital fields require QM.
+    save_native_spectra : bool, optional
+        Also retain each state's original k and selected Sii, q and f arrays.
+        Default False; common-grid exports are unchanged.
 
     Notes
     -----
@@ -67,8 +84,11 @@ class GridConfig:
     k: tuple[float, ...]
     alpha: tuple[float, ...] = (1.0,)
     outputs: tuple[str, ...] = OUTPUTS
+    save_native_spectra: bool = False
 
     def __post_init__(self):
+        if not isinstance(self.save_native_spectra, bool):
+            raise ValueError("save_native_spectra must be a boolean.")
         for name in ("temperature_ev", "rho_g_cc", "k", "alpha"):
             object.__setattr__(self, name, _axis(getattr(self, name), name))
         outputs = tuple(self.outputs)
@@ -112,9 +132,11 @@ class GridConfig:
 
 
 def _resample(k_native, values, k):
-    native, values, target = np.asarray(k_native), np.asarray(values), np.asarray(k)
+    native, values = np.asarray(k_native, dtype=float), np.asarray(values, dtype=float)
+    target = np.asarray(_axis(k, "Output k"))
     if (native.ndim != 1 or native.size < 2 or not np.all(np.isfinite(native))
-            or np.any(np.diff(native) <= 0) or values.shape[-1] != native.size
+            or np.any(native <= 0) or np.any(np.diff(native) <= 0)
+            or values.ndim == 0 or values.shape[-1] != native.size
             or not np.all(np.isfinite(values))):
         raise ValueError("Invalid native spectrum or k grid.")
     if target[0] < native[0] or target[-1] > native[-1]:
@@ -133,9 +155,13 @@ def _pack_result(result, config):
     symbols, _ = config.composition()
     if list(result["species_symbols"]) != symbols:
         raise ValueError("Workflow species order differs from the requested composition.")
+    entries = result["electronic"]["species"]
+    if [entry["element"] for entry in entries] != symbols:
+        raise ValueError("Electronic species order differs from the requested composition.")
     ns, data = len(symbols), {}
     native_k = np.asarray(ion["k"])
     _resample(native_k, np.zeros_like(native_k), config.k)
+    native_spectra = {"k": native_k}
     for requested, key in (("Sii", "sij_k"), ("q", "q_k"), ("f", "f_k")):
         if requested in config.outputs:
             array = np.asarray(ion[key], dtype=float)
@@ -143,13 +169,15 @@ def _pack_result(result, config):
             if array.shape != expected:
                 raise ValueError(f"{key}: expected {expected}, got {array.shape}.")
             data[requested] = _resample(native_k, array, config.k)
+            if config.save_native_spectra:
+                native_spectra[{"Sii": "S_ii"}.get(requested, requested)] = array
     for requested, key in (("Zbar", "zbar"), ("Zstar", "zstar")):
         if requested in config.outputs:
             data[requested] = np.asarray(ion[key], dtype=float)
             if data[requested].shape != (ns,) or not np.all(np.isfinite(data[requested])):
                 raise ValueError(f"Invalid {key} vector.")
     orbitals = []
-    for entry in result["electronic"]["species"]:
+    for entry in entries:
         aa = entry["result"]
         if not {"f_nl", "E_nl"} & set(config.outputs):
             continue
@@ -161,7 +189,9 @@ def _pack_result(result, config):
         angular = l_values[li]
         block = {"n": ni + angular + 1, "l": angular, "E_nl": energy[li, ni]}
         if "f_nl" in config.outputs:
-            factors = ion_orbital_form_factors(aa, r=ion["r"], k=native_k)
+            factors = np.asarray(ion_orbital_form_factors(aa, r=ion["r"], k=native_k))
+            if factors.shape != (*energy.shape, native_k.size):
+                raise ValueError("Orbital form factors do not align with bound energies and k.")
             if not np.allclose(factors[li, ni].sum(axis=0), ion["f_k"][len(orbitals)],
                                rtol=1e-10, atol=1e-10):
                 raise ValueError("Orbital form factors do not sum to the total ion form factor.")
@@ -177,7 +207,13 @@ def _pack_result(result, config):
                      "full_converged": bool(e["result"].get("stage2_converged", False)),
                      "external_converged": bool(e["result"].get("ext_status", {}).get("converged", False)),
                      "threshold": str(e["result"].get("threshold_state_status", "unknown"))}
-                    for e in result["electronic"]["species"]]}
+                    for e in entries]}
+    if config.save_native_spectra:
+        data["native"] = native_spectra
+        diagnostics["native_first"] = {
+            name: values[..., 0].tolist() for name, values in native_spectra.items() if name != "k"}
+        if {"f", "q"} <= native_spectra.keys():
+            diagnostics["native_first"]["N"] = (native_spectra["f"][:, 0] + native_spectra["q"][:, 0]).tolist()
     return data, orbitals, diagnostics
 
 
@@ -227,11 +263,38 @@ class _GridFile:
             if resume:
                 if self.file.attrs.get("manifest_json") != manifest:
                     raise ValueError("Cannot resume: configuration, source or dependency versions differ.")
+                self._validate_axes()
             else:
                 self._create(manifest)
         except BaseException:
             self.file.close()
             raise
+
+    def _validate_axes(self):
+        """Check stored coordinates, not just the manifest, before resuming."""
+        cfg = self.config
+        symbols, counts = cfg.composition()
+        for name, values, unit in (("T_e", cfg.temperature_ev, "eV"),
+                                   ("rho", cfg.rho_g_cc, "g/cm^3"),
+                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0"),
+                                   ("number_fraction", np.asarray(counts) / np.sum(counts), "1")):
+            ds = self.file.get(f"axis/{name}")
+            if (ds is None or not np.array_equal(ds[:], values)
+                    or _stored_unit(ds) != unit):
+                raise ValueError(f"Cannot resume: stored axis/{name} or its unit differs from the configuration.")
+        for name, values in (("elements", symbols), ("counts", counts)):
+            ds = self.file.get(f"axis/{name}")
+            stored = None if ds is None else ds.asstr()[:] if name == "elements" else ds[:]
+            if not np.array_equal(stored, values):
+                raise ValueError(f"Cannot resume: stored axis/{name} differs from the composition.")
+        for key in cfg.outputs:
+            name = {"Sii": "S_ii", "Zbar": "Z_bar", "Zstar": "Z_star"}.get(key, key)
+            ds = self.file.get(name)
+            if ds is None or _stored_unit(ds) != ("Ha" if key == "E_nl" else "1"):
+                raise ValueError(f"Cannot resume: missing {name} or incompatible unit.")
+        for name in ("S_ii", "q", "f", "f_nl"):
+            if name in self.file and self.file[name].attrs.get("k_path") != "/axis/k":
+                raise ValueError(f"Cannot resume: {name} does not reference the common /axis/k grid.")
 
     def _create(self, manifest):
         import h5py
@@ -240,12 +303,16 @@ class _GridFile:
         symbols, counts = cfg.composition()
         ns, nk, shape, text = len(symbols), len(cfg.k), cfg.shape, h5py.string_dtype("utf-8")
         f.attrs.update(schema=SCHEMA, manifest_json=manifest, complete=False)
+        if cfg.save_native_spectra:
+            native = f.create_group("native")
+            native.attrs["layout"] = "One group per state, named Te-index_rho-index_alpha-index."
         axes = f.create_group("axis")
         for name, values, unit in (("T_e", cfg.temperature_ev, "eV"), ("rho", cfg.rho_g_cc, "g/cm^3"),
                                    ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0"),
                                    ("number_fraction", np.asarray(counts) / np.sum(counts), "1")):
-            axes.create_dataset(name, data=values).attrs["unit"] = unit
+            axes.create_dataset(name, data=values).attrs["unit"] = [unit]
         axes["alpha"].attrs["definition"] = "Ti/Te"
+        axes["k"].attrs["definition"] = "Fixed physical output coordinates; spectra are resampled without extrapolation."
         axes.create_dataset("elements", data=symbols, dtype=text)
         axes.create_dataset("counts", data=counts)
         fields = {"Sii": ("S_ii", (ns, ns, nk), ["i", "j", "k"]),
@@ -260,7 +327,9 @@ class _GridFile:
                                   dtype="f8", chunks=tuple(max(1, x) for x in prefix) + (1, 1, 1),
                                   compression="gzip", shuffle=True, fillvalue=np.nan)
             ds.attrs["axis"] = labels + ["T_e", "rho", "alpha"]
-            ds.attrs["unit"] = "Ha" if output == "E_nl" else "1"
+            ds.attrs["unit"] = ["Ha" if output == "E_nl" else "1"]
+            if "k" in labels:
+                ds.attrs["k_path"] = "/axis/k"
         if "Z_bar" in f:
             f["Z_bar"].attrs["definition"] = "ion/zbar: mean ionization used by QOZ"
         if "Z_star" in f:
@@ -314,8 +383,24 @@ class _GridFile:
         data, orbitals, diagnostics, elapsed = payload
         f = self.file
         for key, values in data.items():
+            if key == "native":
+                continue
             name = {"Sii": "S_ii", "Zbar": "Z_bar", "Zstar": "Z_star"}.get(key, key)
             f[name][(..., *index)] = values
+        if self.config.save_native_spectra:
+            group_name = "_".join(map(str, index))
+            root = f["native"]
+            if group_name in root:
+                del root[group_name]
+            state = root.create_group(group_name)
+            state.attrs["state_index"] = index
+            for name, values in data["native"].items():
+                ds = state.create_dataset(name, data=values, compression="gzip", shuffle=True)
+                ds.attrs["unit"] = ["1/a0" if name == "k" else "1"]
+                ds.attrs["axis"] = (["k"] if name == "k" else
+                                   ["i", "j", "k"] if name == "S_ii" else ["i", "k"])
+                if name != "k":
+                    ds.attrs["k_path"] = state.name + "/k"
         if orbitals:
             slots = [np.asarray(o["n"] * (o["n"] - 1) // 2 + o["l"], dtype=int) for o in orbitals]
             self._extend_orbitals(max((int(s.max()) + 1 for s in slots if s.size), default=0))
@@ -337,6 +422,10 @@ class _GridFile:
 
     def failure(self, index, error, elapsed):
         f = self.file
+        f.attrs["complete"] = False
+        native_path = "native/" + "_".join(map(str, index))
+        if native_path in f:
+            del f[native_path]
         for name in ("S_ii", "q", "f", "Z_bar", "Z_star", "f_nl", "E_nl"):
             if name in f:
                 f[name][(..., *index)] = np.nan
