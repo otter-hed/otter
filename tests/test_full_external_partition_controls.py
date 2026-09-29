@@ -391,8 +391,8 @@ def test_partition_controls_are_plumbed_to_ks_config() -> None:
     assert float(ks_cfg.bound_zero_tail_edge_rel_tol) == 0.4
 
 
-def test_final_ion_gamma_for_reporting_prefers_history_value() -> None:
-    """Post-SCF diagnostics should report the actual runtime ion gamma."""
+def test_final_ion_gamma_for_reporting_prefers_refreshed_state() -> None:
+    """Orbital reporting must use the same gamma as the final ion density."""
     cfg = FullExternalConfig(
         element="C",
         temperature_ev=10.0,
@@ -401,9 +401,24 @@ def test_final_ion_gamma_for_reporting_prefers_history_value() -> None:
         show_scf_progress=False,
         verbose=False,
     )
-    result = {"history": [{"ion_gamma": 0.173}]}
-    gamma = _final_ion_gamma_for_reporting(result, cfg)
-    assert abs(float(gamma) - 0.173) < 1.0e-14
+    result = {
+        "ion_gamma": 0.12,
+        "history": [{"ion_gamma": 0.173}],
+        "debug_ion_gamma": 0.19,
+    }
+    assert _final_ion_gamma_for_reporting(result, cfg) == 0.12
+    result["ion_gamma"] = 0.0
+    assert _final_ion_gamma_for_reporting(result, cfg) == 0.0
+    for invalid in (np.nan, np.inf):
+        result["ion_gamma"] = invalid
+        assert _final_ion_gamma_for_reporting(result, cfg) == 0.173
+    del result["ion_gamma"]
+    assert _final_ion_gamma_for_reporting(result, cfg) == 0.173
+    result["history"] = [{"ion_gamma": np.nan}]
+    assert _final_ion_gamma_for_reporting(result, cfg) == 0.19
+    result["history"] = []
+    result["debug_ion_gamma"] = np.nan
+    assert _final_ion_gamma_for_reporting(result, cfg) == 0.05
 
 
 def test_partition_control_validation_rejects_invalid_values() -> None:
@@ -483,6 +498,6 @@ def test_partition_control_validation_rejects_invalid_values() -> None:
 
 if __name__ == "__main__":
     test_partition_controls_are_plumbed_to_ks_config()
-    test_final_ion_gamma_for_reporting_prefers_history_value()
+    test_final_ion_gamma_for_reporting_prefers_refreshed_state()
     test_partition_control_validation_rejects_invalid_values()
     print("test_full_external_partition_controls: ok")

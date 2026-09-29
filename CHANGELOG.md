@@ -5,6 +5,12 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Use the final refreshed SCF broadening parameter for orbital pressure weights,
+  densities and form factors. The last iteration-history value could differ,
+  making the orbital sum inconsistent with the final total ionic density.
+  Energies, wavefunctions, total densities and total spectra are unchanged;
+  no orbital renormalization is applied. Legacy gamma fallbacks are retained.
+
 - Restore interactive figure windows in the example and benchmark scripts.
   Delegate display to Matplotlib instead of rejecting every backend whose
   name contains `agg` (including the interactive TkAgg and QtAgg backends).

@@ -10,7 +10,11 @@ import numpy as np
 import pytest
 
 from otter import bound_wavefunctions, ion_orbital_form_factors
-from otter.electronic.full_external import _build_bound_tables_and_dos
+from otter.electronic.full_external import (
+    FullExternalConfig,
+    _build_bound_tables_and_dos,
+    _final_ion_gamma_for_reporting,
+)
 from otter.electronic.ks_dft import _ion_density
 from otter.numerics.transforms import precompute_dst_lattice_transform_like, radial_forward
 
@@ -29,10 +33,16 @@ def orbital_state(monkeypatch):
     radial[1, 0] = -r_bound * np.exp(-0.8 * r_bound)
     vectors = np.moveaxis(radial * np.sqrt(r_bound), -1, 1)
     cutoff = 1 / (1 + np.exp((r_bound - 2) / 0.1))
+    # The final density refresh can change gamma after the last history entry.
+    # Both real-space and Fourier sums below must still match the final n_ion.
+    gamma = _final_ion_gamma_for_reporting(
+        {"ion_gamma": 0.05, "history": [{"ion_gamma": 0.2}]},
+        FullExternalConfig(element="C", temperature_ev=10.0, rho_g_cc=2.0),
+    )
     tables = _build_bound_tables_and_dos(
         r=r_bound, v_full=-np.exp(-r_bound) / r_bound,
         l_list=np.array([0, 1]), n_states=2, mu=0.1, temperature_ha=0.3,
-        energy_cut=0.0, gamma=0.05, n_jobs=1,
+        energy_cut=0.0, gamma=gamma, n_jobs=1,
         eigvals=energies, eigvecs=vectors, ion_cutoff=cutoff, r_target=r, r_ws=2.0,
         zero_tail_bound_meta={"states": [{"l": 0, "state_index": 1, "matched_energy_ha": -0.002}]},
     )
