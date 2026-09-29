@@ -5,12 +5,14 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Use the final refreshed SCF broadening parameter for orbital pressure weights,
+  densities and form factors. The last iteration-history value could differ,
+  making the orbital sum inconsistent with the final total ionic density.
+  Energies, wavefunctions, total densities and total spectra are unchanged;
+  no orbital renormalization is applied. Legacy gamma fallbacks are retained.
+
 ### 0.4.0
 
-- Use the final refreshed SCF broadening parameter for orbital densities and
-  form factors. The last iteration-history value could differ, breaking the
-  sum over orbitals. Energies, wavefunctions, total densities and total spectra
-  are unchanged; no orbital renormalization is applied.
 - Store HDF5 unit attributes as one-entry string arrays for compatibility
   with existing readers. Resume validation also accepts legacy scalar unit
   strings, but rejects altered coordinates, composition,
