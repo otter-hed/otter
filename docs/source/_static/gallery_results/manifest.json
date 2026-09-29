@@ -1,6 +1,10 @@
 {
   "docs/examples/plot_al_full_workflow.py": {
-    "rendering_source_sha256": "40c388d3ce549c82314efa03b57a03a9008076f4be5a27c7f0684d746801fbb3",
+    "rendering_source_sha256": "f6e5951479dee43fe17f5f0bc4f0e45c222d6742009c8df7b159271d856314c3",
+    "reader_documentation_update": {
+      "previous_source_sha256": "40c388d3ce549c82314efa03b57a03a9008076f4be5a27c7f0684d746801fbb3",
+      "change": "Clarify reproduction instructions. Calculation code, recorded values and figures are unchanged."
+    },
     "interface_documentation_update": {
       "previous_source_sha256": "fbc84181244ea59ada13b55cbec26bd7c4096c5bff05fa2e6905ebf53438973a",
       "change": "Revise interface documentation and link field dimensions and version compatibility. Executable code, figures, recorded output and calculation provenance are unchanged."
@@ -157,7 +161,12 @@
     }
   },
   "docs/examples/plot_ch136_mixture_workflow.py": {
-    "rendering_source_sha256": "2643dc33eaa0fe47a666db5c4bc0b345caa7a1a08653ac609e2be38a784b3682",
+    "rendering_source_sha256": "268d472dd2104cbc5835347a7625a92ebf3f6c45e00871cc8eac16e74043c86c",
+    "reader_documentation_update": {
+      "previous_source_sha256": "2643dc33eaa0fe47a666db5c4bc0b345caa7a1a08653ac609e2be38a784b3682",
+      "previous_results_sha256": "2fa267549d35ae7c6f3621e5dea37cb6ef3fd4c6b46b7a3d4d95b4657d409aac",
+      "change": "Clarify reproduction instructions and rename the wall-time label in the script and recorded output. Numerical values, figures and calculation provenance are unchanged."
+    },
     "interface_documentation_update": {
       "previous_source_sha256": "269793258f07e2b083833a85284a161edc94cfc010faba492882864ed2ed9623",
       "change": "Describe the species interface for arbitrary component counts. Executable code, figures, recorded output and calculation provenance are unchanged."
@@ -170,7 +179,7 @@
       "figure_001.svg": "dea7957b217ed1fd9d1b79d913a9e82bcf2a632077c3db9a7b894eee1b419dbd",
       "thumbnail.png": "23a1c492ae586e3aa235186b206dd704f8fd22e8bc629a01e54d28fd5aa0926a"
     },
-    "results_sha256": "2fa267549d35ae7c6f3621e5dea37cb6ef3fd4c6b46b7a3d4d95b4657d409aac",
+    "results_sha256": "218909c9ac2973bfbce4952a9e78439df31e250993d17096c532b3f742bd8b88",
     "role": "recorded_presentation_only_not_a_solver_input",
     "initial_html_capture": {
       "source_sha256_at_capture": "c28eb326d71d4c19f85a9b1c7819b32fe4fbe2a4f8c5096a2f3853ec8a9e5d51",

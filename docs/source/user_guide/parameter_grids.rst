@@ -33,7 +33,7 @@ Run the calculation with two independent workers:
 
    poetry run python tools/grid_calculation.py carbon_grid.json carbon_grid.h5 --workers 2
 
-The installed package also provides ``python -m otter.grid`` with the same
+The installed package also provides ``poetry run python -m otter.grid`` with the same
 arguments. The default is one worker. Each worker uses one CPU, including
 mixture calculations; memory use increases with the number of simultaneous
 states. Start with one or two workers and check available memory before
@@ -50,8 +50,9 @@ Use ``--resume`` to retry failed or unfinished states:
    poetry run python tools/grid_calculation.py carbon_grid.json carbon_grid.h5 --workers 2 --resume
 
 Completed states are retained. Resume requires identical configuration,
-Otter source and numerical dependency versions. An existing file is never
-overwritten without resuming it.
+Otter source and numerical dependency versions. Stored state coordinates,
+k coordinates, composition and units are also checked against the configuration.
+Use a new filename for a different configuration or Otter version.
 
 Composition and numerical settings
 ----------------------------------
@@ -71,7 +72,7 @@ strictly increasing values, including :math:`\alpha>1`.
 Physical models and numerical tolerances retain their workflow defaults.
 Do not place ``temperature_ev``, ``rho_g_cc`` or ``ion_temperature_ev``
 inside ``workflow``: these are determined by the scan axes.
-Diagnostic continuation of unconverged states is not accepted.
+``allow_unconverged_aa`` and ``allow_unconverged_root`` must remain ``False``.
 
 For a TF calculation, select observables without orbitals:
 
@@ -93,10 +94,17 @@ can therefore have different k coordinates even when they use the same
 number of points. The exporter linearly resamples every spectrum onto the
 requested physical k axis. It does not change the solver grids.
 
-The requested interval must lie inside every accepted native interval.
-Out-of-range states fail with their native interval recorded in the error;
-no extrapolation or fabricated k=0 value is used. To reach smaller k,
-increase ``workflow.qoz_pad_factor`` as described in :doc:`state_exports`.
+``axis/k`` is fixed when the file is created; worker completion order does
+not change it. Each spectral dataset has a ``k_path`` attribute naming its
+coordinate dataset. For ``S_ii``, ``q``, ``f`` and ``f_nl`` at the file root,
+this is ``/axis/k``. Native spectra must be paired with their own coordinates,
+even when arrays from different states have equal lengths.
+
+The requested k values must be positive and lie within every accepted native
+interval. Out-of-range states fail with their native interval recorded in
+the error. The exporter neither extrapolates spectra nor evaluates their
+k=0 limit. To reach smaller k, increase ``workflow.qoz_pad_factor`` as
+described in :doc:`state_exports`.
 Increasing ``qoz_linear_n_points`` improves radial resolution and increases
 the accessible maximum k.
 
@@ -104,11 +112,18 @@ The ``k`` value may also be an explicit list of positive, increasing
 coordinates in inverse Bohr. Resampling does not establish convergence:
 check the native QOZ and output resolutions for the intended interpolation.
 
+Set ``save_native_spectra=True`` in ``GridConfig`` (or
+``"save_native_spectra": true`` in JSON) to retain each state's original
+``k`` and selected ``S_ii``, ``q`` and ``f`` spectra as well. These arrays
+are not interpolated or truncated to the common interval. They include
+the smallest positive k produced by that state's solver, not k=0.
+This option does not change the calculation or the common-grid datasets;
+it increases the output size and is disabled by default.
+
 HDF5 layout
 -----------
 
-The schema is ``otter_grid_v1``. Spectra retain the axis order introduced
-by Julian's tool:
+The schema is ``otter_grid_v1``. Dataset dimensions are:
 
 .. list-table::
    :header-rows: 1
@@ -131,6 +146,10 @@ by Julian's tool:
 ``axis`` contains ``T_e``, ``rho``, ``alpha``, ``k``,
 ``elements``, ``counts`` and ``number_fraction``. Dataset attributes
 give axis labels and units. Energies are in Hartree.
+Read units with ``dataset.attrs["unit"][0]``; the attribute is a one-entry
+string array. For ``axis/k``, the unit is ``"1/a0"`` (inverse Bohr).
+The resume validator also accepts legacy scalar unit strings; configuration
+and source-fingerprint checks still apply.
 ``Z_bar`` is the workflow's QOZ ionization; ``Z_star=n0/n_i_aa``
 uses the AA-cell density, not a mixture's bulk partial ion density.
 
@@ -147,6 +166,31 @@ File attributes contain the schema and ``manifest_json``: the requested
 scan, effective workflow defaults, package version, source fingerprint and
 dependency versions. The original native k range and convergence summary
 are retained in each state's ``diagnostics_json``.
+
+When native spectra are enabled, ``native/t_r_a`` holds one state, with
+zero-based indices into ``T_e``, ``rho`` and ``alpha``. Its ``k`` is a
+one-dimensional array; ``f`` and ``q`` have shape ``(Ns, Nk_native)`` and
+``S_ii`` has shape ``(Ns, Ns, Nk_native)``. Only requested spectra are stored.
+Their ``k_path`` attributes reference ``/native/t_r_a/k``, not ``/axis/k``.
+``f_nl`` remains on the common k axis. The first native spectral values,
+including ``N=f+q`` when both are requested, are also recorded in
+``diagnostics_json``. Failed states have no native group.
+
+.. code-block:: python
+
+   with h5py.File("carbon_grid.h5", "r") as grid:
+       index = (0, 0, 0)
+       if grid["status"][index] != 2:
+           raise RuntimeError("The selected state is incomplete.")
+       native = grid["native/0_0_0"]
+       k_native = native["k"][:]
+       N_native = native["f"][:] + native["q"][:]
+       print(k_native[0], N_native[:, 0])
+
+Existing files with mismatched coordinates must be rebuilt from the original
+per-state coordinates and spectra. Changing a shared axis alone does not
+resample the data. If the original coordinates are unavailable, recalculate
+the affected states.
 
 Check completion before interpolation
 -------------------------------------
@@ -165,6 +209,7 @@ failures exits with a nonzero status.
        if not np.all(grid["status"][:] == 2):
            raise RuntimeError("The parameter grid contains unfinished states.")
        k = grid["axis/k"][:]
+       k_unit = grid["axis/k"].attrs["unit"][0]  # "1/a0"
        S_ab = grid["S_ii"][:]
        Zbar = grid["Z_bar"][:]
        q = grid["q"][:]

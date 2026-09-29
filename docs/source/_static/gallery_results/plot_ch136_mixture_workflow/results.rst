@@ -14,4 +14,4 @@ Recorded terminal output
     sp       mu[Ha]    Zbar(AA)   Zbar(part)   Zbar(QOZ)     Qnative    Qdst raw   Qdst used      scale
      C   0.96529316   4.0000318    4.0000290   4.0000290   4.0001087   4.0001202   4.0000290  0.9999772
      H   0.96529052   1.0000000    1.0000000   1.0000000   1.0004343   1.0004367   1.0000000  0.9995635
-   reviewed producer wall time = 40.68 s
+   Calculation wall time = 40.68 s

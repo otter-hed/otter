@@ -42,9 +42,8 @@ From the root of the complete Otter checkout, using Poetry, run::
 Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
 contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
 
-The script calculates the states from their input parameters and then plots
-the results. No bundled Otter NPZ is required. Numerical outputs are written
-locally; literature reference tables remain inputs to the comparison.
+The script calculates this state and saves numerical results and figures
+locally. No bundled Otter NPZ is required.
 
 Recorded results
 ----------------
@@ -313,7 +312,7 @@ def main() -> None:
             f"{q_native[index]:11.7f} {q_dst_raw[index]:11.7f} "
             f"{q_dst_used[index]:11.7f} {q_scale[index]:10.7f}"
         )
-    print(f"reviewed producer wall time = {float(result['producer_elapsed_s']):.2f} s")
+    print(f"Calculation wall time = {float(result['producer_elapsed_s']):.2f} s")
 
 
     # %%

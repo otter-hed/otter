@@ -4,9 +4,7 @@ API reference
 Stable high-level interface
 ---------------------------
 
-The public interface is intentionally smaller than the internal solver
-implementation.  Applications should begin with the unified workflow objects
-below.
+Use the workflow functions below to calculate electronic and ionic structure.
 
 .. currentmodule:: otter
 
