@@ -13,10 +13,19 @@ have not yet been released are collected under “Unreleased”.
 
 ### 0.4.0
 
-- Store HDF5 unit attributes as one-entry string arrays for compatibility
-  with existing readers. Resume validation also accepts legacy scalar unit
-  strings, but rejects altered coordinates, composition,
-  spectral units or k-axis references. Solver settings and spectra are unchanged.
+- Adopt Julian Lütgert's HDF5 layout revisions in `otter_grid_v2`: group
+  run records under `diagnostics`, store scalar unit strings, attach fixed
+  species fractions to `axis/elements`, and group paired orbital quantum
+  numbers under `axis/orbitals`. Retain an explicit `orbitals_present` mask
+  and each spectrum's `k_path`. Solver settings and spectra are unchanged.
+- Write the energy unit as `hartree` for unit-aware readers such as JaXRTS;
+  accept the legacy `Ha` label when reading units. Energy values are unchanged.
+- Validate species fractions, orbital dimensions and diagnostic records
+  before resuming. Document v1 reading and v2 paths; cross-version/source
+  resume remains disabled, and existing files are never migrated in place.
+- Document workflow overrides, the distinction between per-state solver grids
+  and the common HDF5 k axis, and unit-aware reading in a separate JaXRTS
+  environment.
 - Add regressions for four-species radial/angular orbital indexing beyond ten
   levels, zero/out-of-range k rejection and cleanup after partial write failure.
 - Record each HDF5 spectrum's k-coordinate dataset explicitly. Validate stored

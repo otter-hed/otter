@@ -1,4 +1,4 @@
-"""Parameter-grid calculations with HDF5 output, based on Julian Lütgert's PR #2."""
+"""Parameter-grid calculations with HDF5 output."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import numpy as np
 from otter import PlasmaWorkflowConfig, __version__, ion_orbital_form_factors, solve_plasma_workflow
 from otter.workflows import resolve_plasma_composition
 
-SCHEMA = "otter_grid_v1"
+SCHEMA = "otter_grid_v2"
 OUTPUTS = ("Sii", "q", "f", "Zbar", "Zstar", "f_nl", "E_nl")
 PENDING, RUNNING, COMPLETE, FAILED = range(4)
 
@@ -35,7 +35,7 @@ def _axis(values, name):
 
 
 def _stored_unit(dataset):
-    """Read one-entry unit arrays or legacy scalar unit strings."""
+    """Read scalar unit strings and legacy one-entry unit arrays."""
     value = np.asarray(dataset.attrs.get("unit", []))
     if value.ndim > 1 or value.size != 1:
         raise ValueError(f"Expected one unit for {dataset.name}.")
@@ -44,7 +44,7 @@ def _stored_unit(dataset):
         unit = unit.decode("utf-8")
     if not isinstance(unit, str):
         raise ValueError(f"Expected a unit string for {dataset.name}.")
-    return unit
+    return "hartree" if unit == "Ha" else unit
 
 
 @dataclass(frozen=True)
@@ -261,6 +261,9 @@ class _GridFile:
         self.file = h5py.File(path, "r+" if resume else "x")
         try:
             if resume:
+                if self.file.attrs.get("schema") != SCHEMA:
+                    raise ValueError(f"Cannot resume: expected schema {SCHEMA}. "
+                                     "Retain the existing file and use a new output filename.")
                 if self.file.attrs.get("manifest_json") != manifest:
                     raise ValueError("Cannot resume: configuration, source or dependency versions differ.")
                 self._validate_axes()
@@ -276,8 +279,7 @@ class _GridFile:
         symbols, counts = cfg.composition()
         for name, values, unit in (("T_e", cfg.temperature_ev, "eV"),
                                    ("rho", cfg.rho_g_cc, "g/cm^3"),
-                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0"),
-                                   ("number_fraction", np.asarray(counts) / np.sum(counts), "1")):
+                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0")):
             ds = self.file.get(f"axis/{name}")
             if (ds is None or not np.array_equal(ds[:], values)
                     or _stored_unit(ds) != unit):
@@ -287,14 +289,45 @@ class _GridFile:
             stored = None if ds is None else ds.asstr()[:] if name == "elements" else ds[:]
             if not np.array_equal(stored, values):
                 raise ValueError(f"Cannot resume: stored axis/{name} differs from the composition.")
+        fractions = self.file["axis/elements"].attrs.get("number_fraction")
+        if not np.array_equal(fractions, np.asarray(counts) / np.sum(counts)):
+            raise ValueError("Cannot resume: number_fraction differs from the composition.")
         for key in cfg.outputs:
             name = {"Sii": "S_ii", "Zbar": "Z_bar", "Zstar": "Z_star"}.get(key, key)
             ds = self.file.get(name)
-            if ds is None or _stored_unit(ds) != ("Ha" if key == "E_nl" else "1"):
+            if ds is None or _stored_unit(ds) != ("hartree" if key == "E_nl" else "1"):
                 raise ValueError(f"Cannot resume: missing {name} or incompatible unit.")
         for name in ("S_ii", "q", "f", "f_nl"):
             if name in self.file and self.file[name].attrs.get("k_path") != "/axis/k":
                 raise ValueError(f"Cannot resume: {name} does not reference the common /axis/k grid.")
+        for name in ("status", "error", "elapsed_s", "attempts", "convergence"):
+            ds = self.file.get(f"diagnostics/{name}")
+            if (ds is None or ds.shape != cfg.shape
+                    or list(ds.attrs.get("axis", [])) != ["T_e", "rho", "alpha"]):
+                raise ValueError(f"Cannot resume: invalid diagnostics/{name} dataset.")
+        status = self.file["diagnostics/status"]
+        if status.dtype.kind not in "iu" or not np.isin(status[:], [PENDING, RUNNING, COMPLETE, FAILED]).all():
+            raise ValueError("Cannot resume: invalid diagnostics/status values.")
+        if {"f_nl", "E_nl"} & set(cfg.outputs):
+            n = self.file.get("axis/orbitals/n")
+            l = self.file.get("axis/orbitals/l")
+            if (n is None or l is None or n.ndim != 1 or l.shape != n.shape
+                    or n.dtype.kind not in "iu" or l.dtype.kind not in "iu"
+                    or np.any(n[:] < 1) or np.any(l[:] < 0) or np.any(l[:] >= n[:])
+                    or not np.array_equal(n[:] * (n[:] - 1) // 2 + l[:], np.arange(n.size))):
+                raise ValueError("Cannot resume: invalid orbital quantum numbers.")
+            for name, prefix, labels in (
+                ("f_nl", (len(symbols), n.size, len(cfg.k)), ["i", "orbital", "k"]),
+                ("E_nl", (len(symbols), n.size), ["i", "orbital"]),
+                ("orbitals_present", (len(symbols), n.size), ["i", "orbital"]),
+            ):
+                if name != "orbitals_present" and name not in cfg.outputs:
+                    continue
+                ds = self.file.get(name)
+                if (ds is None or ds.shape != prefix + cfg.shape
+                        or list(ds.attrs.get("axis", [])) != labels + ["T_e", "rho", "alpha"]
+                        or ds.attrs.get("orbital_path") != "/axis/orbitals"):
+                    raise ValueError(f"Cannot resume: invalid {name} orbital dimensions.")
 
     def _create(self, manifest):
         import h5py
@@ -307,13 +340,13 @@ class _GridFile:
             native = f.create_group("native")
             native.attrs["layout"] = "One group per state, named Te-index_rho-index_alpha-index."
         axes = f.create_group("axis")
+        diagnostics = f.create_group("diagnostics")
         for name, values, unit in (("T_e", cfg.temperature_ev, "eV"), ("rho", cfg.rho_g_cc, "g/cm^3"),
-                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0"),
-                                   ("number_fraction", np.asarray(counts) / np.sum(counts), "1")):
-            axes.create_dataset(name, data=values).attrs["unit"] = [unit]
+                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0")):
+            axes.create_dataset(name, data=values).attrs["unit"] = unit
         axes["alpha"].attrs["definition"] = "Ti/Te"
-        axes["k"].attrs["definition"] = "Fixed physical output coordinates; spectra are resampled without extrapolation."
         axes.create_dataset("elements", data=symbols, dtype=text)
+        axes["elements"].attrs["number_fraction"] = np.asarray(counts) / np.sum(counts)
         axes.create_dataset("counts", data=counts)
         fields = {"Sii": ("S_ii", (ns, ns, nk), ["i", "j", "k"]),
                   "q": ("q", (ns, nk), ["i", "k"]), "f": ("f", (ns, nk), ["i", "k"]),
@@ -327,56 +360,58 @@ class _GridFile:
                                   dtype="f8", chunks=tuple(max(1, x) for x in prefix) + (1, 1, 1),
                                   compression="gzip", shuffle=True, fillvalue=np.nan)
             ds.attrs["axis"] = labels + ["T_e", "rho", "alpha"]
-            ds.attrs["unit"] = ["Ha" if output == "E_nl" else "1"]
+            ds.attrs["unit"] = "hartree" if output == "E_nl" else "1"
             if "k" in labels:
                 ds.attrs["k_path"] = "/axis/k"
+            if "orbital" in labels:
+                ds.attrs["orbital_path"] = "/axis/orbitals"
         if "Z_bar" in f:
             f["Z_bar"].attrs["definition"] = "ion/zbar: mean ionization used by QOZ"
         if "Z_star" in f:
-            f["Z_star"].attrs["definition"] = "n0 / n_i_aa; inverse AA-cell volume, not bulk partial density"
+            f["Z_star"].attrs["definition"] = "n0 / n_i_aa"
         if {"f_nl", "E_nl"} & set(cfg.outputs):
-            for name, dtype in (("orbitals", text), ("n", "i8"), ("l", "i8")):
-                axes.create_dataset(name, shape=(0,), maxshape=(None,), dtype=dtype)
-            ds = f.create_dataset("orbital_present", shape=(ns, 0, *shape),
+            for name in ("orbitals/n", "orbitals/l"):
+                axes.create_dataset(name, shape=(0,), maxshape=(None,), dtype="i8")
+            ds = f.create_dataset("orbitals_present", shape=(ns, 0, *shape),
                                   maxshape=(ns, None, *shape), chunks=(ns, 1, 1, 1, 1), dtype="bool")
             ds.attrs["axis"] = ["i", "orbital", "T_e", "rho", "alpha"]
+            ds.attrs["orbital_path"] = "/axis/orbitals"
         for name, dtype, fill in (("status", "u1", PENDING), ("attempts", "i4", 0),
                                   ("elapsed_s", "f8", np.nan), ("error", text, ""),
-                                  ("diagnostics_json", text, "")):
-            ds = f.create_dataset(name, shape=shape, dtype=dtype, fillvalue=fill)
+                                  ("convergence", text, "")):
+            ds = diagnostics.create_dataset(name, shape=shape, dtype=dtype, fillvalue=fill)
             ds.attrs["axis"] = ["T_e", "rho", "alpha"]
-        f["status"].attrs["values"] = "0=pending, 1=running, 2=complete, 3=failed"
+        diagnostics["status"].attrs["values"] = "0=pending, 1=running, 2=complete, 3=failed"
         f.flush()
 
     def _extend_orbitals(self, count):
-        f, previous = self.file, self.file["axis/n"].size
+        f, previous = self.file, self.file["axis/orbitals/n"].size
         if count <= previous:
             return
-        for name in ("f_nl", "E_nl", "orbital_present"):
+        for name in ("f_nl", "E_nl", "orbitals_present"):
             if name in f:
                 f[name].resize(count, axis=1)
-        labels, principal, angular = [], [], []
+        principal, angular = [], []
         for n in itertools.count(1):
             for l in range(n):
-                labels.append(f"n={n},l={l}")
                 principal.append(n)
                 angular.append(l)
-            if len(labels) >= count:
+            if len(principal) >= count:
                 break
-        for name, values in (("orbitals", labels), ("n", principal), ("l", angular)):
+        for name, values in (("orbitals/n", principal), ("orbitals/l", angular)):
             f[f"axis/{name}"].resize((count,))
             f[f"axis/{name}"][:] = values[:count]
         # Additional slots are absent in previously accepted states, not pending.
         if "f_nl" in f:
-            for index in np.argwhere(f["status"][:] == COMPLETE):
+            for index in np.argwhere(f["diagnostics/status"][:] == COMPLETE):
                 f["f_nl"][(slice(None), slice(previous, count), slice(None), *index)] = 0.0
 
     def start(self, index):
         f = self.file
         f.attrs["complete"] = False
-        f["status"][index] = RUNNING
-        f["attempts"][index] += 1
-        f["error"][index] = ""
+        f["diagnostics/status"][index] = RUNNING
+        f["diagnostics/attempts"][index] += 1
+        f["diagnostics/error"][index] = ""
         f.flush()
 
     def success(self, index, payload):
@@ -396,7 +431,7 @@ class _GridFile:
             state.attrs["state_index"] = index
             for name, values in data["native"].items():
                 ds = state.create_dataset(name, data=values, compression="gzip", shuffle=True)
-                ds.attrs["unit"] = ["1/a0" if name == "k" else "1"]
+                ds.attrs["unit"] = "1/a0" if name == "k" else "1"
                 ds.attrs["axis"] = (["k"] if name == "k" else
                                    ["i", "j", "k"] if name == "S_ii" else ["i", "k"])
                 if name != "k":
@@ -404,20 +439,20 @@ class _GridFile:
         if orbitals:
             slots = [np.asarray(o["n"] * (o["n"] - 1) // 2 + o["l"], dtype=int) for o in orbitals]
             self._extend_orbitals(max((int(s.max()) + 1 for s in slots if s.size), default=0))
-            for name, fill in (("f_nl", 0.), ("E_nl", np.nan), ("orbital_present", False)):
+            for name, fill in (("f_nl", 0.), ("E_nl", np.nan), ("orbitals_present", False)):
                 if name in f:
                     f[name][(..., *index)] = fill
             for species, (block, indices) in enumerate(zip(orbitals, slots, strict=True)):
                 for row, slot in enumerate(indices):
-                    f["orbital_present"][(species, slot, *index)] = True
+                    f["orbitals_present"][(species, slot, *index)] = True
                     if "E_nl" in f:
                         f["E_nl"][(species, slot, *index)] = block["E_nl"][row]
                     if "f_nl" in f:
                         f["f_nl"][(species, slot, slice(None), *index)] = block["f_nl"][row]
-        f["elapsed_s"][index] = elapsed
-        f["diagnostics_json"][index] = json.dumps(diagnostics, allow_nan=False)
+        f["diagnostics/elapsed_s"][index] = elapsed
+        f["diagnostics/convergence"][index] = json.dumps(diagnostics, allow_nan=False)
         f.flush()
-        f["status"][index] = COMPLETE
+        f["diagnostics/status"][index] = COMPLETE
         f.flush()
 
     def failure(self, index, error, elapsed):
@@ -429,10 +464,10 @@ class _GridFile:
         for name in ("S_ii", "q", "f", "Z_bar", "Z_star", "f_nl", "E_nl"):
             if name in f:
                 f[name][(..., *index)] = np.nan
-        if "orbital_present" in f:
-            f["orbital_present"][(..., *index)] = False
-        f["diagnostics_json"][index] = ""
-        f["error"][index], f["elapsed_s"][index], f["status"][index] = error, elapsed, FAILED
+        if "orbitals_present" in f:
+            f["orbitals_present"][(..., *index)] = False
+        f["diagnostics/convergence"][index] = ""
+        f["diagnostics/error"][index], f["diagnostics/elapsed_s"][index], f["diagnostics/status"][index] = error, elapsed, FAILED
         f.flush()
 
 
@@ -489,7 +524,7 @@ def run_grid(config: GridConfig, filename, *, workers: int = 1, resume: bool = F
     try:
         logs = path.with_suffix(path.suffix + ".logs")
         logs.mkdir(exist_ok=True)
-        pending = iter(index for index in np.ndindex(config.shape) if writer.file["status"][index] != COMPLETE)
+        pending = iter(index for index in np.ndindex(config.shape) if writer.file["diagnostics/status"][index] != COMPLETE)
         with _single_thread_workers(), ProcessPoolExecutor(
             max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
@@ -516,7 +551,7 @@ def run_grid(config: GridConfig, filename, *, workers: int = 1, resume: bool = F
                         print(f"[failed] {index}: {exc}", flush=True)
                     else:
                         print(f"[complete] {index}: {payload[-1]:.1f} s", flush=True)
-        status = writer.file["status"][:]
+        status = writer.file["diagnostics/status"][:]
         counts = {"complete": int(np.sum(status == COMPLETE)), "failed": int(np.sum(status == FAILED)),
                   "total": int(status.size)}
         writer.file.attrs["complete"] = counts["complete"] == counts["total"]

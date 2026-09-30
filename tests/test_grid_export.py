@@ -58,17 +58,17 @@ def test_species_orbital_mapping_and_sums(tmp_path, transform, ns):
         f = writer.file
         assert f["S_ii"].shape == (ns, ns, 3, 2, 1, 1)
         # (l=1,n_index=2) is 4p, slot 7, not the third principal shell.
-        np.testing.assert_array_equal(f["axis/n"][:], [1, 2, 2, 3, 3, 3, 4, 4])
-        np.testing.assert_array_equal(f["axis/l"][:], [0, 0, 1, 0, 1, 2, 0, 1])
+        np.testing.assert_array_equal(f["axis/orbitals/n"][:], [1, 2, 2, 3, 3, 3, 4, 4])
+        np.testing.assert_array_equal(f["axis/orbitals/l"][:], [0, 0, 1, 0, 1, 2, 0, 1])
         for species in range(ns):
             assert f["E_nl"][species, 0, 0, 0, 0] == -2 - species
             assert f["E_nl"][species, 7, 0, 0, 0] == -.2 - species
-            assert f["orbital_present"][species, 0, 0, 0, 0]
-            assert not f["orbital_present"][species, 1, 0, 0, 0]
+            assert f["orbitals_present"][species, 0, 0, 0, 0]
+            assert not f["orbitals_present"][species, 1, 0, 0, 0]
         np.testing.assert_allclose(f["f_nl"][:, :, :, 0, 0, 0].sum(axis=1), f["f"][:, :, 0, 0, 0])
         assert np.isnan(f["E_nl"][:, 1, 0, 0, 0]).all()
         assert np.isnan(f["f"][:, :, 1, 0, 0]).all()
-        assert f["status"][1, 0, 0] == grid.PENDING
+        assert f["diagnostics/status"][1, 0, 0] == grid.PENDING
         for name in ("Z_bar", "Z_star", "S_ii", "f_nl"):
             assert len(f[name].attrs["axis"]) == f[name].ndim
     finally:
@@ -92,9 +92,9 @@ def test_all_radial_and_angular_levels_for_four_species(tmp_path, transform):
                 for radial_index in range(4):
                     n = radial_index + l + 1
                     slot = n * (n - 1) // 2 + l
-                    assert saved["axis/n"][slot] == n and saved["axis/l"][slot] == l
+                    assert saved["axis/orbitals/n"][slot] == n and saved["axis/orbitals/l"][slot] == l
                     assert saved["E_nl"][i, slot, 0, 0, 0] == entry["result"]["bound_energy_ha"][l, radial_index]
-                    assert saved["orbital_present"][i, slot, 0, 0, 0]
+                    assert saved["orbitals_present"][i, slot, 0, 0, 0]
         np.testing.assert_allclose(saved["f_nl"][:, :, :, 0, 0, 0].sum(axis=1), saved["f"][:, :, 0, 0, 0])
     finally:
         writer.file.close()
@@ -111,32 +111,35 @@ def test_reject_misaligned_species_and_orbitals(transform, wrong):
         grid._pack_result(original, cfg)
 
 
-def test_julian_unit_attribute_reader(tmp_path, transform):
+def test_scalar_unit_attributes(tmp_path, transform):
     cfg = config(save_native_spectra=True)
     writer = grid._GridFile(tmp_path / "units.h5", cfg, resume=False)
     try:
         writer.success((0, 0, 0), (*grid._pack_result(result(), cfg), .1))
         expected = {"axis/k": "1/a0", "axis/rho": "g/cm^3", "axis/T_e": "eV",
-                    "axis/alpha": "1", "axis/number_fraction": "1", "E_nl": "Ha",
+                    "axis/alpha": "1", "E_nl": "hartree",
                     "native/0_0_0/k": "1/a0", "native/0_0_0/q": "1"}
         for name in ("q", "f", "f_nl", "S_ii", "Z_bar", "Z_star"):
             expected[name] = "1"
         for name, unit in expected.items():
             ds = writer.file[name]
-            assert np.asarray(ds.attrs["unit"]).shape == (1,)
-            # This is the exact indexing used by Julian's plotting script.
-            assert ds.attrs["unit"][0] == unit
+            assert isinstance(ds.attrs["unit"], str)
+            assert ds.attrs["unit"] == unit
             assert grid._stored_unit(ds) == unit
     finally:
         writer.file.close()
 
 
-@pytest.mark.parametrize("value", ["1/a0", ["1/a0"], np.bytes_("1/a0"), np.array([b"1/a0"])])
-def test_resume_accepts_scalar_and_array_unit_encodings(tmp_path, value):
+@pytest.mark.parametrize("field,value", [
+    ("axis/k", "1/a0"), ("axis/k", ["1/a0"]),
+    ("axis/k", np.bytes_("1/a0")), ("axis/k", np.array([b"1/a0"])),
+    ("E_nl", "hartree"), ("E_nl", "Ha"), ("E_nl", ["Ha"]),
+])
+def test_resume_accepts_scalar_and_array_unit_encodings(tmp_path, field, value):
     path, cfg = tmp_path / "unit.h5", config()
     grid._GridFile(path, cfg, resume=False).file.close()
     with h5py.File(path, "r+") as saved:
-        saved["axis/k"].attrs["unit"] = value
+        saved[field].attrs["unit"] = value
     grid._GridFile(path, cfg, resume=True).file.close()
 
 
@@ -150,7 +153,7 @@ def test_resume_rejects_malformed_units(tmp_path, value):
         grid._GridFile(path, cfg, resume=True)
 
 
-@pytest.mark.parametrize("name", ["axis/elements", "axis/counts", "axis/number_fraction", "E_nl", "q"])
+@pytest.mark.parametrize("name", ["axis/elements", "axis/counts", "E_nl", "q"])
 def test_resume_rejects_changed_composition_or_data_units(tmp_path, name):
     path, cfg = tmp_path / "composition.h5", config(3)
     grid._GridFile(path, cfg, resume=False).file.close()
@@ -160,7 +163,7 @@ def test_resume_rejects_changed_composition_or_data_units(tmp_path, name):
         elif name.startswith("axis/"):
             saved[name][:] *= 2
         else:
-            saved[name].attrs["unit"] = ["eV"]
+            saved[name].attrs["unit"] = "eV"
     with pytest.raises(ValueError, match="Cannot resume"):
         grid._GridFile(path, cfg, resume=True)
 
@@ -188,8 +191,8 @@ def test_no_bound_states_and_energy_only(tmp_path, transform):
         writer = grid._GridFile(tmp_path / (outputs[0] + ".h5"), cfg, resume=False)
         try:
             writer.success((0, 0, 0), (*grid._pack_result(res, cfg), .1))
-            assert writer.file["axis/n"].size == 0
-            assert writer.file["status"][0, 0, 0] == grid.COMPLETE
+            assert writer.file["axis/orbitals/n"].size == 0
+            assert writer.file["diagnostics/status"][0, 0, 0] == grid.COMPLETE
         finally:
             writer.file.close()
 
@@ -214,13 +217,13 @@ def test_partial_write_failure_clears_spectra_and_orbitals(tmp_path, transform):
         # A crash after writing the payload must not leave accepted numbers.
         writer.success(index, (*grid._pack_result(result(), cfg), .1))
         writer.failure(index, "write interrupted", .2)
-        assert writer.file["status"][index] == grid.FAILED
+        assert writer.file["diagnostics/status"][index] == grid.FAILED
         assert not writer.file.attrs["complete"]
         for name in ("q", "f", "S_ii", "Z_bar", "Z_star", "E_nl", "f_nl"):
             assert np.isnan(writer.file[name][(..., *index)]).all()
-        assert not writer.file["orbital_present"][(..., *index)].any()
+        assert not writer.file["orbitals_present"][(..., *index)].any()
         assert "native/0_0_0" not in writer.file
-        assert writer.file["diagnostics_json"].asstr()[index] == ""
+        assert writer.file["diagnostics/convergence"].asstr()[index] == ""
     finally:
         writer.file.close()
 
@@ -368,14 +371,14 @@ def test_no_overwrite_and_resume_checks(tmp_path, transform):
         grid._GridFile(path, replace(cfg, alpha=(1.2,)), resume=True)
     resumed = grid._GridFile(path, cfg, resume=True)
     try:
-        assert resumed.file["status"][0, 0, 0] == grid.COMPLETE
-        assert resumed.file["status"][1, 0, 0] == grid.FAILED
+        assert resumed.file["diagnostics/status"][0, 0, 0] == grid.COMPLETE
+        assert resumed.file["diagnostics/status"][1, 0, 0] == grid.FAILED
         assert np.isnan(resumed.file["q"][:, :, 1, 0, 0]).all()
-        assert resumed.file["error"].asstr()[1, 0, 0] == "test failure"
+        assert resumed.file["diagnostics/error"].asstr()[1, 0, 0] == "test failure"
         manifest = json.loads(resumed.file.attrs["manifest_json"])
         assert manifest["effective_workflow"]["species_parallel_jobs"] == 1
         assert manifest["source_sha256"]
-        np.testing.assert_array_equal(resumed.file["axis/number_fraction"][:], [1.])
+        np.testing.assert_array_equal(resumed.file["axis/elements"].attrs["number_fraction"], [1.])
     finally:
         resumed.file.close()
 
@@ -419,7 +422,7 @@ def test_fail_resume_skip_and_environment(tmp_path, monkeypatch, transform):
     assert calls == [(0, 0, 0), (1, 0, 0), (1, 0, 0)]
     with h5py.File(path) as f:
         assert f.attrs["complete"]
-        np.testing.assert_array_equal(f["attempts"][:, 0, 0], [1, 2])
+        np.testing.assert_array_equal(f["diagnostics/attempts"][:, 0, 0], [1, 2])
     grid.run_grid(cfg, path, resume=True)
     assert len(calls) == 3
 
@@ -452,7 +455,7 @@ def test_interrupted_states_are_retried(tmp_path, monkeypatch, transform, status
     cfg = replace(config(outputs=("q",)), temperature_ev=(10.,))
     path = tmp_path / "resume.h5"
     writer = grid._GridFile(path, cfg, resume=False)
-    writer.file["status"][0, 0, 0] = status
+    writer.file["diagnostics/status"][0, 0, 0] = status
     writer.file.close()
     monkeypatch.setattr(grid, "ProcessPoolExecutor", ImmediatePool)
     monkeypatch.setattr(grid, "_calculate_point",
@@ -518,7 +521,7 @@ def test_nonuniform_composition_is_recorded(tmp_path):
     cfg = replace(config(3), workflow={"elements": ["C", "H", "O"], "number_fraction": [.2, .6, .2]})
     writer = grid._GridFile(tmp_path / "composition.h5", cfg, resume=False)
     try:
-        np.testing.assert_allclose(writer.file["axis/number_fraction"][:], [.2, .6, .2])
+        np.testing.assert_allclose(writer.file["axis/elements"].attrs["number_fraction"], [.2, .6, .2])
     finally:
         writer.file.close()
 
@@ -537,8 +540,8 @@ def test_native_spectra_preserve_each_grid_and_first_charge(tmp_path, transform,
                 np.testing.assert_array_equal(state[exported][:], source["ion"][key])
                 assert len(state[exported].attrs["axis"]) == state[exported].ndim
             np.testing.assert_array_equal(state.attrs["state_index"], [t, 0, 0])
-            assert state["k"].attrs["unit"].tolist() == ["1/a0"]
-            diagnostics = json.loads(writer.file["diagnostics_json"][t, 0, 0])
+            assert state["k"].attrs["unit"] == "1/a0"
+            diagnostics = json.loads(writer.file["diagnostics/convergence"][t, 0, 0])
             np.testing.assert_array_equal(diagnostics["native_first"]["N"],
                                           source["ion"]["f_k"][:, 0] + source["ion"]["q_k"][:, 0])
         np.testing.assert_array_equal(writer.file["axis/k"][:], cfg.k)
@@ -569,3 +572,152 @@ def test_native_spectra_are_optional_and_respect_selection(tmp_path, transform):
             writer.file.close()
     with pytest.raises(ValueError, match="boolean"):
         config(save_native_spectra="False")
+
+
+@pytest.mark.parametrize("ns", [1, 2, 3, 4])
+def test_grouped_layout_and_single_orbital_axis(tmp_path, transform, ns):
+    cfg = config(ns, save_native_spectra=True)
+    writer = grid._GridFile(tmp_path / "layout.h5", cfg, resume=False)
+    try:
+        writer.success((0, 0, 0), (*grid._pack_result(result(ns), cfg), .1))
+        saved = writer.file
+        assert saved.attrs["schema"] == "otter_grid_v2"
+        assert set(saved["diagnostics"]) == {"status", "attempts", "error", "elapsed_s", "convergence"}
+        assert not {"status", "attempts", "error", "elapsed_s", "diagnostics_json", "orbital_present"} & set(saved)
+        assert set(saved["axis/orbitals"]) == {"n", "l"}
+        assert not {"n", "l", "number_fraction"} & set(saved["axis"])
+        for name in ("f_nl", "E_nl", "orbitals_present"):
+            ds = saved[name]
+            labels = list(ds.attrs["axis"])
+            assert labels == ["i", "orbital"] + (["k"] if name == "f_nl" else []) + ["T_e", "rho", "alpha"]
+            assert len(labels) == ds.ndim
+            orbital_axis = saved[ds.attrs["orbital_path"]]
+            assert orbital_axis["n"].size == orbital_axis["l"].size == ds.shape[1]
+        for name in ("q", "f", "S_ii", "f_nl", "native/0_0_0/q"):
+            ds = saved[name]
+            k = saved[ds.attrs["k_path"]][:]
+            assert k.size == ds.shape[list(ds.attrs["axis"]).index("k")]
+    finally:
+        writer.file.close()
+    grid._GridFile(tmp_path / "layout.h5", cfg, resume=True).file.close()
+
+
+@pytest.mark.parametrize("value", [None, [.2, .3, .5], [1.], [.2, np.nan, .8], [[1/3]*3]])
+def test_resume_validates_number_fraction_attribute(tmp_path, value):
+    cfg, path = config(3), tmp_path / "fractions.h5"
+    grid._GridFile(path, cfg, resume=False).file.close()
+    with h5py.File(path, "r+") as saved:
+        del saved["axis/elements"].attrs["number_fraction"]
+        if value is not None:
+            saved["axis/elements"].attrs["number_fraction"] = value
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="number_fraction"):
+        grid._GridFile(path, cfg, resume=True)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("change", ["missing_diagnostics", "status_values", "status_axis", "orbital_numbers", "orbital_axis", "orbital_path"])
+def test_resume_rejects_malformed_layout(tmp_path, transform, change):
+    cfg, path = config(), tmp_path / "layout.h5"
+    writer = grid._GridFile(path, cfg, resume=False)
+    writer.success((0, 0, 0), (*grid._pack_result(result(), cfg), .1))
+    writer.file.close()
+    with h5py.File(path, "r+") as saved:
+        if change == "missing_diagnostics":
+            del saved["diagnostics/attempts"]
+        elif change == "status_values":
+            saved["diagnostics/status"][0, 0, 0] = 4
+        elif change == "status_axis":
+            saved["diagnostics/status"].attrs["axis"] = ["T_e", "alpha", "rho"]
+        elif change == "orbital_numbers":
+            saved["axis/orbitals/l"][0] = 1
+        elif change == "orbital_axis":
+            saved["orbitals_present"].attrs["axis"] = ["i", "orbitals/n", "orbitals/lT_e", "rho", "alpha"]
+        else:
+            saved["f_nl"].attrs["orbital_path"] = "/axis/n"
+    with pytest.raises(ValueError, match="Cannot resume"):
+        grid._GridFile(path, cfg, resume=True)
+
+
+@pytest.mark.parametrize("schema", [None, "otter_grid_v1", "unknown"])
+def test_resume_rejects_other_schemas_without_rewriting(tmp_path, schema):
+    cfg, path = config(), tmp_path / "legacy.h5"
+    grid._GridFile(path, cfg, resume=False).file.close()
+    with h5py.File(path, "r+") as saved:
+        del saved.attrs["schema"]
+        if schema is not None:
+            saved.attrs["schema"] = schema
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="schema.*new output filename"):
+        grid._GridFile(path, cfg, resume=True)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("outputs", [("f_nl",), ("E_nl",), ("f_nl", "E_nl")])
+def test_orbital_presence_with_optional_energy_output(tmp_path, transform, outputs):
+    cfg, path = config(outputs=outputs), tmp_path / "orbitals.h5"
+    original = result()
+    # A zero-energy level is still present; zero form factor is not an absence test.
+    original["electronic"]["species"][0]["result"]["bound_energy_ha"][0, 0] = 0.
+    original["electronic"]["species"][0]["result"]["factors"][0, 0] = 0.
+    original["ion"]["f_k"][0] = original["electronic"]["species"][0]["result"]["factors"].sum(axis=(0, 1))
+    writer = grid._GridFile(path, cfg, resume=False)
+    try:
+        writer.success((0, 0, 0), (*grid._pack_result(original, cfg), .1))
+        assert writer.file["orbitals_present"][0, 0, 0, 0, 0]
+        assert not writer.file["orbitals_present"][0, 1, 0, 0, 0]
+    finally:
+        writer.file.close()
+    grid._GridFile(path, cfg, resume=True).file.close()
+
+
+def test_workflow_overrides_are_forwarded_and_recorded(tmp_path):
+    workflow = {"formula": "CH2", "qoz_linear_n_points": 8192,
+                "aa_overrides": {"n_points": 8192},
+                "species_overrides": {"C": {"bound_zero_tail_refine": True}}}
+    cfg = replace(config(), workflow=workflow, alpha=(.5, 1.2))
+    for index in np.ndindex(cfg.shape):
+        resolved = cfg.configuration(index)
+        assert resolved.aa_overrides == workflow["aa_overrides"]
+        assert resolved.species_overrides == workflow["species_overrides"]
+        assert resolved.qoz_linear_n_points == 8192
+        assert resolved.ion_temperature_ev == cfg.temperature_ev[index[0]] * cfg.alpha[index[2]]
+    writer = grid._GridFile(tmp_path / "overrides.h5", cfg, resume=False)
+    try:
+        effective = json.loads(writer.file.attrs["manifest_json"])["effective_workflow"]
+        assert effective["aa_overrides"] == workflow["aa_overrides"]
+        assert effective["species_overrides"] == workflow["species_overrides"]
+        assert workflow == {"formula": "CH2", "qoz_linear_n_points": 8192,
+                            "aa_overrides": {"n_points": 8192},
+                            "species_overrides": {"C": {"bound_zero_tail_refine": True}}}
+    finally:
+        writer.file.close()
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("complete", [False, True])
+def test_documented_legacy_reader(tmp_path, monkeypatch, version, complete):
+    import re
+    import textwrap
+    from pathlib import Path
+
+    guide = (Path(__file__).resolve().parents[1] /
+             "docs/source/user_guide/parameter_grids.rst").read_text()
+    blocks = re.findall(r"^\.\. code-block:: python\n\n((?: {3}[^\n]*\n|\n)+)", guide, re.M)
+    example = textwrap.dedent(next(block for block in blocks if "def unit_string" in block))
+    monkeypatch.chdir(tmp_path)
+    with h5py.File("carbon_grid.h5", "w") as saved:
+        saved.attrs["schema"] = f"otter_grid_v{version}"
+        saved.create_dataset("status" if version == 1 else "diagnostics/status",
+                             data=np.full((1, 1, 1), grid.COMPLETE if complete else grid.FAILED))
+        saved.create_dataset("axis/k", data=[.25, .5]).attrs["unit"] = ["1/a0"] if version == 1 else "1/a0"
+        saved.create_dataset("E_nl", data=[-1.]).attrs["unit"] = ["Ha"] if version == 1 else "hartree"
+    namespace = {}
+    if complete:
+        exec(compile(example, "parameter_grids.rst", "exec"), namespace)
+        assert namespace["k_unit"] == "1/a0"
+        with h5py.File("carbon_grid.h5") as saved:
+            assert namespace["unit_string"](saved["E_nl"]) == "hartree"
+    else:
+        with pytest.raises(RuntimeError, match="unfinished"):
+            exec(compile(example, "parameter_grids.rst", "exec"), namespace)
