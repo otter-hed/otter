@@ -3,11 +3,12 @@ message: >-
   If you use Otter in a scientific publication, please cite this software.
 title: Otter
 type: software
-version: 0.3.1
-date-released: 2026-09-10
+version: 0.4.0
 authors:
   - family-names: Qu
     given-names: Chongbing
+  - family-names: Lütgert
+    given-names: Julian
   - family-names: Kraus
     given-names: Dominik
 repository-code: https://github.com/otter-hed/otter
@@ -23,11 +24,12 @@ keywords:
 preferred-citation:
   type: software
   title: Otter
-  version: 0.3.1
-  date-released: 2026-09-10
+  version: 0.4.0
   authors:
     - family-names: Qu
       given-names: Chongbing
+    - family-names: Lütgert
+      given-names: Julian
     - family-names: Kraus
       given-names: Dominik
   repository-code: https://github.com/otter-hed/otter

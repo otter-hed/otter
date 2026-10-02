@@ -6,27 +6,31 @@ single-state walk-through for Al at ``rho=8.1 g/cc`` and
 ``Te=Ti=1 eV``.  It includes:
 
 * the finite-temperature bound-level table;
+* unweighted bound-state wavefunctions, ionic densities and form factors
+  resolved by level;
 * full, continuum/free, external, ionic, pseudoatom, and screening densities;
 * full/external effective potentials and their nuclear, Hartree, and
   exchange-correlation components;
 * :math:`q(k)=n_{\rm scr}(k)` and
   :math:`f(k)=n_{\rm ion}(k)`;
 * :math:`V_{ii}(k)` and its inverse transform :math:`V_{ii}(r)`;
-* the final :math:`g_{ii}(r)` and :math:`S_{ii}(k)`.
+* the final :math:`g_{ii}(r)`, :math:`S_{ii}(k)` and Rayleigh weight
+  :math:`|f(k)+q(k)|^2 S_{ii}(k)`.
 
 Running the source calculates this state from physical inputs by default
 (``RECOMPUTE_WITH_OTTER=True``), then saves local results and figures. No
-bundled Otter NPZ is required. The checksummed local-archive mode is only for
-maintainer review. HNC residuals and the independent finite-DST
+bundled Otter NPZ is required. HNC residuals and the independent finite-DST
 :math:`g\leftrightarrow S` closure error are checked separately.
 
-For slides, the same script also writes three single-purpose figures (PNG and
+The gallery displays four figure groups: bound orbitals, electronic densities
+and potentials, screening and pair interactions, and ionic correlations with
+Rayleigh weight.
+
+Set ``EXPORT_SLIDE_FIGURES = True`` to save three additional figures (PNG and
 vector PDF) to ``benchmarks/outputs/al_full_workflow_1ev/figures``:
 ``al_full_workflow_electronic_densities``, ``al_full_workflow_gii``, and
-``al_full_workflow_sii``.  They are generated directly from the state used by
-the composite gallery figures, so no second calculation or data-export script
-is required.  These slide-only exports are intentionally hidden from the HTML
-gallery; the page displays only the two overview figures above.
+``al_full_workflow_sii``. These exports use the same calculated state and are
+disabled by default.
 
 Confirming QM SCF convergence
 -----------------------------

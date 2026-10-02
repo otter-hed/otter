@@ -349,14 +349,14 @@ def _pack_structure_result(
     k_mask = k <= K_RETAIN_MAX_BOHR_INV
     return {
         "r_bohr": r[r_mask],
-        "gii_r": np.asarray(ion["gii_r"], dtype=float)[r_mask],
+        "gii_r": np.asarray(ion["gij_r"][0, 0], dtype=float)[r_mask],
         "vii_r_ha": np.asarray(ion["vii_r"], dtype=float)[r_mask],
         "k_bohr_inv": k[k_mask],
-        "sii_k": np.asarray(ion["sii_k"], dtype=float)[k_mask],
-        "ion_density_bohr3": np.asarray(float(ion["n_i"])),
+        "sii_k": np.asarray(ion["sij_k"][0, 0], dtype=float)[k_mask],
+        "ion_density_bohr3": np.asarray(np.asarray(ion["n_i"]).item()),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
         "bound_charge": np.asarray(
             4.0
             * np.pi

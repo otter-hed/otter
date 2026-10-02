@@ -11,6 +11,57 @@ have not yet been released are collected under “Unreleased”.
   Energies, wavefunctions, total densities and total spectra are unchanged;
   no orbital renormalization is applied. Legacy gamma fallbacks are retained.
 
+### 0.4.0
+
+- Adopt Julian Lütgert's HDF5 layout revisions in `otter_grid_v2`: group
+  run records under `diagnostics`, store scalar unit strings, attach fixed
+  species fractions to `axis/elements`, and group paired orbital quantum
+  numbers under `axis/orbitals`. Retain an explicit `orbitals_present` mask
+  and each spectrum's `k_path`. Solver settings and spectra are unchanged.
+- Write the energy unit as `hartree` for unit-aware readers such as JaXRTS;
+  accept the legacy `Ha` label when reading units. Energy values are unchanged.
+- Validate species fractions, orbital dimensions and diagnostic records
+  before resuming. Document v1 reading and v2 paths; cross-version/source
+  resume remains disabled, and existing files are never migrated in place.
+- Document workflow overrides, the distinction between per-state solver grids
+  and the common HDF5 k axis, and unit-aware reading in a separate JaXRTS
+  environment.
+- Add regressions for four-species radial/angular orbital indexing beyond ten
+  levels, zero/out-of-range k rejection and cleanup after partial write failure.
+- Record each HDF5 spectrum's k-coordinate dataset explicitly. Validate stored
+  coordinates and units before resuming a grid; reject invalid native grids.
+  Test common-grid exports for different native lengths and state completion
+  orders, including multicomponent spectra and orbital sums.
+- Add optional native-grid spectra to HDF5 parameter exports. Retain each
+  state's original k, Sii, f and q arrays alongside the common interpolation
+  grid, including the smallest solver wave number and its f+q diagnostic.
+- Add parallel parameter-grid calculations and optional HDF5 output, based on
+  Julian Lütgert's contribution in PR #2. Export spectra on a common physical
+  k axis without extrapolation; retain species fractions, units, solver
+  settings, code fingerprints and per-state convergence records.
+- Index orbitals by physical n and l, with no fixed ten-orbital limit.
+  Missing levels have zero form factor, NaN energy and an explicit presence
+  mask. Pending and failed states remain distinct from physical zero values.
+- Support resuming incomplete grids with configuration and source checks.
+  Each worker uses one CPU and writes its SCF progress to a separate log.
+  The parent process alone writes the HDF5 file.
+
+- **API change:** workflow ionic profiles retain a species axis for pure
+  elements: q/f, radial densities and electron--ion channels use `(Ns, N)`;
+  charges and ion number densities use `(Ns,)`; pair fields use `(Ns, Ns, N)`.
+  Common electron-response fields remain `(N,)`. Examples, benchmarks and
+  Colab support this layout; the state guide documents migration from 0.3.1.
+- Add electronic summary vectors and ionic `zstar`/`n_i_aa`. AA-cell densities
+  are distinct from bulk partial ion densities. Native AA returns, numerical
+  algorithms, defaults and NPZ v5 storage are unchanged. Tests cover one
+  through four species, shared array storage, continuation and NPZ equivalence.
+
+- Add a uniform `result["electronic"]["species"]` list for single-species and
+  multicomponent workflows, including cached continuation and SC feedback.
+  Each entry's `result` aliases the final native AA dictionary, so Zbar, Zstar,
+  n0 and profiles use the same access path without copying numerical arrays.
+  Legacy result paths remain supported.
+
 - Restore interactive figure windows in the example and benchmark scripts.
   Delegate display to Matplotlib instead of rejecting every backend whose
   name contains `agg` (including the interactive TkAgg and QtAgg backends).

@@ -37,9 +37,8 @@ From the root of the complete Otter checkout, using Poetry, run::
 Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
 contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
 
-The script calculates the states from their input parameters and then plots
-the results. No bundled Otter NPZ is required. Numerical outputs are written
-locally; literature reference tables remain inputs to the comparison.
+The script calculates this state and saves numerical results and figures
+locally. No bundled Otter NPZ is required.
 
 Recorded results
 ----------------
@@ -52,19 +51,22 @@ the source recalculates them with the installed Otter version.
 Orbital access and NPZ export
 ------------------------------------------------------------
 
-The completed workflow provides the raw orbital arrays without another solve:
+Access the bound orbitals from the completed workflow:
 
 .. code-block:: python
 
    from otter import bound_wavefunctions, ion_orbital_form_factors
 
-   aa = result["electronic"]["result"]
+   aa = result["electronic"]["species"][0]["result"]
    ion = result["ion"]
    Zbar = aa["zbar_partition"]
    Zstar = aa["zstar"]
    R_nl = bound_wavefunctions(aa)             # raw R_nl on aa["r_bound"]
    n_nl = aa["ion_orbital_density_r"]         # on aa["r"]
    f_nl = ion_orbital_form_factors(aa, r=ion["r"], k=ion["k"])
+
+For mixtures, select the corresponding entry in ``electronic["species"]``.
+See :doc:`/user_guide/state_exports` for field definitions and array dimensions.
 
 This script also saves ``benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz``
 with :func:`otter.save_plasma_state`. It contains unweighted wavefunctions,
@@ -217,7 +219,7 @@ def pack_workflow(
     elapsed_s: float,
 ) -> dict[str, np.ndarray]:
     """Pack the plotted fields without relying on an external producer."""
-    electronic = dict(workflow["electronic"]["result"])
+    electronic = dict(workflow["electronic"]["species"][0]["result"])
     ion = dict(workflow["ion"])
     portable = build_state_arrays(
         workflow,
@@ -235,10 +237,10 @@ def pack_workflow(
         str(electronic.get("threshold_state_status", "none")).strip().lower()
     )
     charge_fix = dict(ion["charge_fix"])
-    q_scale = float(charge_fix["scale_factor"])
+    q_scale = np.asarray(charge_fix["scale_factor"]).item()
     if not np.isfinite(q_scale) or q_scale <= 0.0:
         raise RuntimeError("The QOZ screening-charge scale is not physical.")
-    q_used = np.asarray(ion["n_scr_k"], dtype=float)
+    q_used = np.asarray(ion["n_scr_k"], dtype=float)[0]
     if threshold_status == "unresolved":
         raise RuntimeError("The final average atom has an unresolved threshold state.")
     if not bool(ion["hnc_converged"]):
@@ -292,11 +294,11 @@ def pack_workflow(
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "zbar_aa": np.asarray(float(electronic["zbar"])),
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
-        "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
-        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
-        "q_scr_grid_raw": np.asarray(float(charge_fix["q_scr_raw"])),
-        "q_scr_used": np.asarray(float(charge_fix["q_scr_used"])),
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
+        "zbar_qoz": np.asarray(np.asarray(ion["zbar_qoz"]).item()),
+        "q_scr_raw": np.asarray(np.asarray(ion["zbar_screening_integral_raw"]).item()),
+        "q_scr_grid_raw": np.asarray(np.asarray(charge_fix["q_scr_raw"]).item()),
+        "q_scr_used": np.asarray(np.asarray(charge_fix["q_scr_used"]).item()),
         "q_scr_scale_factor": np.asarray(q_scale),
         "threshold_state_status": np.asarray(
             str(electronic.get("threshold_state_status", "none"))
@@ -306,8 +308,8 @@ def pack_workflow(
         ),
         "r_bohr": r[r_mask],
         "k_bohr_inv": k[k_mask],
-        "gii_r": np.asarray(ion["gii_r"], dtype=float)[r_mask],
-        "sii_k": np.asarray(ion["sii_k"], dtype=float)[k_mask],
+        "gii_r": np.asarray(ion["gij_r"][0, 0], dtype=float)[r_mask],
+        "sii_k": np.asarray(ion["sij_k"][0, 0], dtype=float)[k_mask],
         "vii_r_ha": np.asarray(ion["vii_r"], dtype=float)[r_mask],
         "vii_k_ha_bohr3": np.asarray(ion["vii_k"], dtype=float)[k_mask],
         "n_scr_k_electrons": q_used[k_mask],

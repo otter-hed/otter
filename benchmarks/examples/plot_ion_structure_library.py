@@ -460,10 +460,10 @@ def pack_result(
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "r_bohr": r[r_mask],
-        "gii_r": np.asarray(ion["gii_r"])[r_mask],
+        "gii_r": np.asarray(ion["gij_r"][0, 0])[r_mask],
         "k_bohr_inv": k[k_mask],
-        "sii_k": np.asarray(ion["sii_k"])[k_mask],
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
+        "sii_k": np.asarray(ion["sij_k"][0, 0])[k_mask],
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
         "hnc_best_residual": np.asarray(float(ion["hnc_output_residual"])),
         "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
     }
@@ -488,8 +488,8 @@ def add_wunsch_vmhnc(
     r_mask, k_mask = r <= R_RETAIN_MAX_BOHR, k <= K_RETAIN_MAX_BOHR_INV
     payload.update(
         {
-            "vmhnc_gii_r": np.asarray(vmhnc["gii_r"])[r_mask],
-            "vmhnc_sii_k": np.asarray(vmhnc["sii_k"])[k_mask],
+            "vmhnc_gii_r": np.asarray(vmhnc["gij_r"][0, 0])[r_mask],
+            "vmhnc_sii_k": np.asarray(vmhnc["sij_k"][0, 0])[k_mask],
             "vmhnc_best_residual": np.asarray(float(vmhnc["hnc_output_residual"])),
             "vmhnc_closure_mismatch": np.asarray(
                 float(vmhnc["closure_transform_max_abs"])
@@ -524,8 +524,8 @@ def add_wunsch_md(
     omega_p = np.sqrt(
         4.0
         * np.pi
-        * float(ion["n_i"])
-        * float(ion["zbar_partition"]) ** 2
+        * np.asarray(ion["n_i"]).item()
+        * np.asarray(ion["zbar_partition"]).item() ** 2
         / (mass_u * mass_ratio)
     )
     state_id = str(payload["state_id"].item())
@@ -533,7 +533,7 @@ def add_wunsch_md(
         MDConfig(
             output_dir=OUTPUT_DIR / "md_work" / state_id,
             species=(MDSpecies("Be", mass_u, WUNSCH_MD_ATOMS),),
-            ion_density_bohr3=float(ion["n_i"]),
+            ion_density_bohr3=np.asarray(ion["n_i"]).item(),
             ion_temperature_ev=float(payload["ti_ev"]),
             timestep_ps=0.005 / omega_p * atomic_time_ps,
             thermostat_damp_ps=0.5 / omega_p * atomic_time_ps,

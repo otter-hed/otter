@@ -8,7 +8,26 @@ import tomllib
 
 import numpy as np
 
-from tools.export_public_review import in_public_tool_scope
+from tools.export_public_review import export_review, in_public_tool_scope
+
+
+def test_public_export_excludes_private_plan_and_reference_library(tmp_path, monkeypatch):
+    root = tmp_path / "source"
+    names = ["teos_todos.md", "literature/paper.md", "DEV_STATE.md",
+             ".local/settings.json", ".github/workflows/ci.yml", ".gitignore",
+             "src/otter/example.py", "applications/pamd_eos/example.py",
+             "applications/tests/test_example.py", "grid.h5", "grid.hdf5"]
+    for name in names:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("example\n")
+    monkeypatch.setattr("tools.export_public_review.subprocess.check_output",
+                        lambda *args, **kwargs: "\0".join(names).encode())
+    destination = tmp_path / "public"
+    assert export_review(root, destination, public_tools=True) == 3
+    assert sorted(p.relative_to(destination).as_posix()
+                  for p in destination.rglob("*") if p.is_file()) == [
+                      ".github/workflows/ci.yml", ".gitignore", "src/otter/example.py"]
 
 
 def test_readme_version_and_reproduction_entry_points_are_current():

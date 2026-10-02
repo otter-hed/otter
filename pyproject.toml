@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "otter-hed"
-version = "0.3.1"
+version = "0.4.0"
 description = "Average-atom, pseudoatom, and ionic-structure calculations for dense plasmas."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "BSD-3-Clause"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
-authors = [{name = "Chongbing Qu"}, {name = "Dominik Kraus"}]
+authors = [{name = "Chongbing Qu"}, {name = "Julian Lütgert"}, {name = "Dominik Kraus"}]
 keywords = [
   "average atom",
   "dense plasma",
@@ -39,10 +39,12 @@ dependencies = [
 
 [project.optional-dependencies]
 libxc = ["pylibxc7==7.0.0"]
+grid = ["h5py>=3.11,<4"]
 
 [tool.poetry.group.dev.dependencies]
 build = ">=1.2"
 pytest = ">=8"
+h5py = ">=3.11,<4"
 twine = ">=5"
 
 [tool.poetry]

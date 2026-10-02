@@ -214,10 +214,10 @@ def _extract_path(workflow: dict[str, Any]) -> dict[str, Any]:
     return {
         "r": r[r_mask],
         "k": k[k_mask],
-        "gii": np.asarray(ion["gii_r"], dtype=float)[r_mask],
-        "sii": np.asarray(ion["sii_k"], dtype=float)[k_mask],
+        "gii": np.asarray(ion["gij_r"][0, 0], dtype=float)[r_mask],
+        "sii": np.asarray(ion["sij_k"][0, 0], dtype=float)[k_mask],
         "mu": float(electronic["mu"]),
-        "zbar": float(ion["zbar_partition"]),
+        "zbar": np.asarray(ion["zbar_partition"]).item(),
         "hnc_residual": float(ion["hnc_output_residual"]),
         "levels": _finite_bound_levels(electronic),
     }

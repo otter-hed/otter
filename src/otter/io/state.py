@@ -38,6 +38,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from otter._workflow_results import aa_ion_density as _entry_n_i
 from otter.electronic.orbitals import ion_orbital_form_factors
 from otter.io._npz import save_npz_atomic
 from otter._version import __version__
@@ -331,28 +332,6 @@ def _finite_numeric(value: Any) -> np.ndarray | None:
     return array
 
 
-def _entry_n_i(entry: Mapping[str, Any]) -> float:
-    """Return one species ion density without evaluating an absent fallback."""
-    result = dict(entry["result"])
-    if "n_i" in result:
-        return float(result["n_i"])
-    if "n_i_bohr3" in result:
-        return float(result["n_i_bohr3"])
-    meta = result.get("meta", {})
-    if isinstance(meta, Mapping) and "n_i_bohr3" in meta:
-        return float(meta["n_i_bohr3"])
-    if "volume_bohr3" in entry:
-        return 1.0 / float(entry["volume_bohr3"])
-    r_ws = result.get("r_ws", entry.get("r_ws_bohr"))
-    if r_ws is not None:
-        r_ws_value = float(r_ws)
-        if np.isfinite(r_ws_value) and r_ws_value > 0.0:
-            return float(3.0 / (4.0 * np.pi * r_ws_value**3))
-    raise ValueError(
-        f"Species {entry.get('element', '?')!r} lacks n_i, volume, and Rws data."
-    )
-
-
 def _species_vector(
     ion: Mapping[str, Any],
     key: str,
@@ -630,6 +609,16 @@ def _metadata(
     if "ion_structure" in groups:
         analysis_complete_for.append("ion_structure")
     resolved_configuration = dict(workflow.get("configuration", {}))
+    charge_fix = ion.get("charge_fix")
+    if charge_fix is not None:
+        charge_fix = dict(charge_fix)
+        if len(entries) == 1:
+            # Preserve v5's single-species JSON scalars after workflow arrays
+            # acquire a species axis. Numerical archive arrays already have it.
+            for key, value in charge_fix.items():
+                array = np.asarray(value)
+                if array.shape == (1,) and array.dtype.kind in "biufc":
+                    charge_fix[key] = array.item()
     return {
         "schema_version": STATE_SCHEMA_VERSION,
         "producer": "otter",
@@ -726,7 +715,7 @@ def _metadata(
             "hnc_output_residual": ion.get("hnc_output_residual"),
             "closure_transform_max_abs": ion.get("closure_transform_max_abs"),
             "vmhnc_variational_residual": ion.get("vmhnc_variational_residual"),
-            "charge_fix": ion.get("charge_fix"),
+            "charge_fix": charge_fix,
         },
         "definitions": {
             "zbar": ("QOZ charge selected by qoz_zbar_mode" if ion else

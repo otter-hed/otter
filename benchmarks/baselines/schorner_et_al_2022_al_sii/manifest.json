@@ -1,7 +1,7 @@
 {
   "schema_version": "otter_benchmark_manifest_v1",
   "benchmark_id": "schorner_et_al_2022_al_sii",
-  "title": "Equilibrium aluminium Sii: HNC, VMHNC, and same-potential MD against Sch\u00f6rner et al. (2022)",
+  "title": "Equilibrium aluminium Sii: HNC, VMHNC, and same-potential MD against Schörner et al. (2022)",
   "status": "accepted",
   "data_rights": {
     "baseline_origin_type": "project_generated_numerical_output",
@@ -16,7 +16,7 @@
     "project_version": "0.2.4",
     "script_relative_path": "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py",
     "script_sha256": "a7b361b41455b064902b94714d0f36d7a9e89f5c9f1b5dffc164a98bdd97fc5f",
-    "script_sha256_current": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
+    "script_sha256_current": "2fc7d4a2f60213b913b4366ca631c60bda54634e45435df6b00a817459fe9442",
     "current_controller_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
     "version": "0.2.4",
     "packaging_version": "0.3.0",
@@ -25,7 +25,11 @@
     "git_commit": "cd0582639d6e5509cdd30475310e14d77db97e22",
     "worktree_dirty": true,
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
-    "script_sha256_at_generation": "a7b361b41455b064902b94714d0f36d7a9e89f5c9f1b5dffc164a98bdd97fc5f"
+    "script_sha256_at_generation": "a7b361b41455b064902b94714d0f36d7a9e89f5c9f1b5dffc164a98bdd97fc5f",
+    "species_axis_migration": {
+      "previous_current_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "method_publications": [
     {

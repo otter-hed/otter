@@ -238,7 +238,7 @@ def solve_state(state: dict[str, Any]) -> tuple[str, dict[str, np.ndarray]]:
         "producer_elapsed_s": np.asarray(float(elapsed_s)),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "zbar_aa": np.asarray(float(electronic["zbar"])),
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
         "threshold_state_status": np.asarray(
             str(electronic.get("threshold_state_status", "none"))
         ),
@@ -258,7 +258,7 @@ def solve_state(state: dict[str, Any]) -> tuple[str, dict[str, np.ndarray]]:
             float(electronic.get("bound_zero_tail_exterior_probability", np.nan))
         ),
         "k_bohr_inv": k[mask],
-        "sii_k": np.asarray(ion["sii_k"], dtype=float)[mask],
+        "sii_k": np.asarray(ion["sij_k"][0, 0], dtype=float)[mask],
         "hnc_output_residual": np.asarray(float(ion["hnc_output_residual"])),
         "closure_transform_max_abs": np.asarray(
             float(ion["closure_transform_max_abs"])

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import pickle
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from otter.numerics.constants import EV_TO_HA
-from otter.workflows import PlasmaWorkflowConfig, solve_plasma_workflow
+from otter.workflows import (
+    PlasmaWorkflowConfig,
+    continue_plasma_workflow_from_electronic_result,
+    solve_plasma_workflow,
+)
 import otter.experimental.sc_feedback as sc_feedback_module
 from otter.experimental.sc_feedback import (
     SCFeedbackConfig,
@@ -178,9 +183,14 @@ def test_mixture_sc_feedback_keeps_is_mu_and_uses_full_gij_background(
         }
 
     def fake_continue(cfg, *, electronic_kind, electronic_result):
+        # Exercise the real result assembly; only the ionic calculation is fake.
+        continued = continue_plasma_workflow_from_electronic_result(
+            replace(cfg, ion_temperature_ev=None, save_state_npz=False),
+            electronic_kind=electronic_kind, electronic_result=electronic_result,
+        )
         return {
             **is_workflow,
-            "electronic": {"kind": electronic_kind, "result": electronic_result},
+            "electronic": continued["electronic"],
             "ion": dict(ion),
         }
 
@@ -222,6 +232,8 @@ def test_mixture_sc_feedback_keeps_is_mu_and_uses_full_gij_background(
     assert result["sc_feedback"]["v_corr_r_bohr"] is not None
     assert result["sc_feedback"]["v_corr_species_ha"] is not None
     for idx, entry in enumerate(result["electronic"]["result"]["species"]):
+        assert result["electronic"]["species"][idx] is entry
+        assert entry["result"] is not is_workflow["electronic"]["result"]["species"][idx]["result"]
         np.testing.assert_allclose(
             entry["result"]["g_ii_background"],
             expected_background[idx],
@@ -251,6 +263,8 @@ def test_single_component_tf_sc_outer_iteration_uses_tf_backend() -> None:
     )
 
     electronic = sc_result["electronic"]["result"]
+    assert sc_result["electronic"]["species"][0]["result"] is electronic
+    assert electronic is not is_result["electronic"]["species"][0]["result"]
     assert electronic["meta"]["electronic_model"] == "thomas_fermi"
     assert electronic["meta"]["fixed_is_mu_used"] is True
     assert electronic["meta"]["analytic_ion_sphere_background"] is False

@@ -114,10 +114,10 @@ def _augment_v2_payload(
     output["n_ion_k_electrons"] = n_ion_k[0]
     if workflow is not None:
         charge_fix = dict(workflow["ion"]["charge_fix"])
-        q_scale = float(charge_fix["scale_factor"])
+        q_scale = np.asarray(charge_fix["scale_factor"]).item()
         q_used = np.asarray(portable["n_scr_k"], dtype=float)[0]
-        output["q_scr_grid_raw"] = np.asarray(float(charge_fix["q_scr_raw"]))
-        output["q_scr_used"] = np.asarray(float(charge_fix["q_scr_used"]))
+        output["q_scr_grid_raw"] = np.asarray(np.asarray(charge_fix["q_scr_raw"]).item())
+        output["q_scr_used"] = np.asarray(np.asarray(charge_fix["q_scr_used"]).item())
         output["q_scr_scale_factor"] = np.asarray(q_scale)
         output["n_scr_k_electrons"] = q_used
         output["n_scr_k_raw_electrons"] = q_used / q_scale
@@ -146,7 +146,7 @@ def _pack_gallery_result(
         ),
     )
     charge_fix = dict(ion["charge_fix"])
-    q_scale = float(charge_fix["scale_factor"])
+    q_scale = np.asarray(charge_fix["scale_factor"]).item()
     q_used = np.asarray(exported["q_k"], dtype=float)[0]
     prefix = "species_0_"
 
@@ -190,11 +190,11 @@ def _pack_gallery_result(
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "zbar_aa": np.asarray(float(electronic["zbar"])),
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
-        "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
-        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
-        "q_scr_grid_raw": np.asarray(float(charge_fix["q_scr_raw"])),
-        "q_scr_used": np.asarray(float(charge_fix["q_scr_used"])),
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
+        "zbar_qoz": np.asarray(np.asarray(ion["zbar_qoz"]).item()),
+        "q_scr_raw": np.asarray(np.asarray(ion["zbar_screening_integral_raw"]).item()),
+        "q_scr_grid_raw": np.asarray(np.asarray(charge_fix["q_scr_raw"]).item()),
+        "q_scr_used": np.asarray(np.asarray(charge_fix["q_scr_used"]).item()),
         "q_scr_scale_factor": np.asarray(q_scale),
         "threshold_state_status": np.asarray(
             str(electronic.get("threshold_state_status", "none"))

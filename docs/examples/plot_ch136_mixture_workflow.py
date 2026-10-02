@@ -2,8 +2,7 @@ r"""
 CH1.36: multicomponent electronic-to-ionic workflow
 ===================================================
 
-This example calculates one genuine two-species plasma with the public Otter
-workflow:
+This example calculates the electronic and ionic structure of CH1.36:
 
 .. math::
 
@@ -18,6 +17,21 @@ The full/external pseudoatom and QOZ construction follow
 :cite:t:`StarrettEtAl2014`; and the finite-temperature jellium local-field
 correction follows :cite:t:`Chabrier1990`.
 
+Electronic data access
+----------------------
+
+The electronic result contains one AA dictionary per species:
+
+.. code-block:: python
+
+   for entry in workflow["electronic"]["species"]:
+       aa = entry["result"]
+       print(entry["element"], aa["zbar_partition"], aa["zstar"])
+
+Each AA retains its native radial grid. This species-list interface applies
+to any number of components. Field definitions, array dimensions and version
+compatibility are documented in :doc:`/user_guide/state_exports`.
+
 Reproduction
 ------------
 
@@ -28,9 +42,8 @@ From the root of the complete Otter checkout, using Poetry, run::
 Downloads are optional: ``.ipynb`` launches this repository script; ``.zip``
 contains both formats. See :doc:`/user_guide/reproducing_galleries` for setup.
 
-The script calculates the states from their input parameters and then plots
-the results. No bundled Otter NPZ is required. Numerical outputs are written
-locally; literature reference tables remain inputs to the comparison.
+The script calculates this state and saves numerical results and figures
+locally. No bundled Otter NPZ is required.
 
 Recorded results
 ----------------
@@ -148,7 +161,7 @@ def strict_audit(
     ):
         raise RuntimeError("The final common-mu residual exceeds tolerance.")
 
-    species = [dict(entry) for entry in electronic["species"]]
+    species = [dict(entry) for entry in electronic_block["species"]]
     if tuple(str(entry["element"]) for entry in species) != ELEMENTS:
         raise RuntimeError("Unexpected species order.")
     for entry in species:
@@ -299,7 +312,7 @@ def main() -> None:
             f"{q_native[index]:11.7f} {q_dst_raw[index]:11.7f} "
             f"{q_dst_used[index]:11.7f} {q_scale[index]:10.7f}"
         )
-    print(f"reviewed producer wall time = {float(result['producer_elapsed_s']):.2f} s")
+    print(f"Calculation wall time = {float(result['producer_elapsed_s']):.2f} s")
 
 
     # %%

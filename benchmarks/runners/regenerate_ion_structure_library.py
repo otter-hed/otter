@@ -244,21 +244,21 @@ def _pack_result(
         "r_ws_bohr": np.asarray(float(electronic["r_ws"])),
         "mu_ha": np.asarray(float(electronic["mu"])),
         "zbar_aa": np.asarray(float(electronic["zbar"])),
-        "zbar_partition": np.asarray(float(ion["zbar_partition"])),
-        "zbar_qoz": np.asarray(float(ion["zbar_qoz"])),
-        "ion_density_bohr3": np.asarray(float(ion["n_i"])),
+        "zbar_partition": np.asarray(np.asarray(ion["zbar_partition"]).item()),
+        "zbar_qoz": np.asarray(np.asarray(ion["zbar_qoz"]).item()),
+        "ion_density_bohr3": np.asarray(np.asarray(ion["n_i"]).item()),
         "threshold_state_status": np.asarray(
             str(electronic.get("threshold_state_status", "none"))
         ),
         "threshold_state_representation": np.asarray(
             str(electronic.get("threshold_state_representation", "none"))
         ),
-        "q_scr_raw": np.asarray(float(ion["zbar_screening_integral_raw"])),
+        "q_scr_raw": np.asarray(np.asarray(ion["zbar_screening_integral_raw"]).item()),
         "q_scr_raw_measure": np.asarray("native_radial_trapezoid"),
         "r_bohr": r_i[ion_mask],
         "k_bohr_inv": k[k_mask],
-        "gii_r": np.asarray(ion["gii_r"], dtype=float)[ion_mask],
-        "sii_k": np.asarray(ion["sii_k"], dtype=float)[k_mask],
+        "gii_r": np.asarray(ion["gij_r"][0, 0], dtype=float)[ion_mask],
+        "sii_k": np.asarray(ion["sij_k"][0, 0], dtype=float)[k_mask],
         "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),
         "hnc_closure_mismatch": np.asarray(float(ion["closure_transform_max_abs"])),
         "hnc_closure_tolerance": np.asarray(float(ion["closure_transform_tol"])),
@@ -301,8 +301,8 @@ def _add_wunsch_vmhnc(
     k_mask = k <= K_RETAIN_MAX_BOHR_INV
     payload.update(
         {
-            "vmhnc_gii_r": np.asarray(vmhnc["gii_r"], dtype=float)[r_mask],
-            "vmhnc_sii_k": np.asarray(vmhnc["sii_k"], dtype=float)[k_mask],
+            "vmhnc_gii_r": np.asarray(vmhnc["gij_r"][0, 0], dtype=float)[r_mask],
+            "vmhnc_sii_k": np.asarray(vmhnc["sij_k"][0, 0], dtype=float)[k_mask],
             "vmhnc_best_residual": np.asarray(float(vmhnc["hnc_output_residual"])),
             "vmhnc_closure_mismatch": np.asarray(
                 float(vmhnc["closure_transform_max_abs"])
@@ -328,8 +328,8 @@ def _wunsch_md_config(
         / physical_constants["electron mass"][0]
     )
     atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
-    n_i = float(ion["n_i"])
-    zbar = float(ion["zbar_partition"])
+    n_i = np.asarray(ion["n_i"]).item()
+    zbar = np.asarray(ion["zbar_partition"]).item()
     omega_p = np.sqrt(4.0 * np.pi * n_i * zbar**2 / (mass_u * mass_ratio))
     return MDConfig(
         output_dir=output_dir,

@@ -342,17 +342,17 @@ def test_solve_plasma_workflow_runs_one_component_ion_structure_when_ti_is_given
 
     assert result["ion"] is not None
     assert result["ion"]["kind"] == "one_component"
-    assert result["ion"]["gii_r"].ndim == 1
-    assert result["ion"]["sii_k"].ndim == 1
+    assert result["ion"]["gii_r"].shape == (1, result["ion"]["r"].size)
+    assert result["ion"]["sii_k"].shape == (1, result["ion"]["k"].size)
     assert result["ion"]["gij_r"].shape[0:2] == (1, 1)
     assert result["ion"]["sij_k"].shape[0:2] == (1, 1)
-    assert result["ion"]["v_ie_k"].ndim == 1
-    assert result["ion"]["v_ie_r"].shape == result["ion"]["r"].shape
+    assert result["ion"]["v_ie_k"].shape == (1, result["ion"]["k"].size)
+    assert result["ion"]["v_ie_r"].shape == (1, result["ion"]["r"].size)
     assert result["ion"]["v_ee_r"].shape == result["ion"]["r"].shape
-    assert result["ion"]["c_ie_r"].shape == result["ion"]["r"].shape
+    assert result["ion"]["c_ie_r"].shape == (1, result["ion"]["r"].size)
     assert result["ion"]["c_ee_r"].shape == result["ion"]["r"].shape
-    assert result["ion"]["n_ion_r"].shape == result["ion"]["r"].shape
-    assert result["ion"]["f_k"].shape == result["ion"]["k"].shape
+    assert result["ion"]["n_ion_r"].shape == (1, result["ion"]["r"].size)
+    assert result["ion"]["f_k"].shape == (1, result["ion"]["k"].size)
     np.testing.assert_array_equal(result["ion"]["f_k"], result["ion"]["n_ion_k"])
     np.testing.assert_array_equal(result["ion"]["q_k"], result["ion"]["n_scr_k"])
     np.testing.assert_array_equal(result["ion"]["G_ee_k"], result["ion"]["gee_k"])

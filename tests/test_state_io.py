@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 from otter import __version__
+from otter._workflow_results import ionic_species_axes
+from otter.data import element
 from otter.io.state import (
     STATE_SCHEMA_VERSION,
     StateExportOptions,
@@ -20,7 +22,36 @@ from otter.numerics.transforms import (
     precompute_dst_lattice_transform_like,
     radial_forward,
 )
-from otter.workflows import PlasmaWorkflowConfig
+from otter.workflows import (
+    PlasmaWorkflowConfig,
+    continue_plasma_workflow_from_electronic_result,
+)
+
+
+@pytest.mark.parametrize("n_species", [1, 2, 3, 4])
+@pytest.mark.parametrize("profile", ["complete", "electronic_summary", "ion_structure"])
+def test_unified_access_does_not_change_portable_export(tmp_path, n_species, profile):
+    workflow = _synthetic_workflow(n_species)
+    options = StateExportOptions(profile=profile)
+    before = build_state_arrays(workflow, options=options)
+    continued = continue_plasma_workflow_from_electronic_result(
+        PlasmaWorkflowConfig(elements=workflow["species_symbols"],
+                             counts=workflow["species_counts"],
+                             temperature_ev=10.0, rho_g_cc=1.0,
+                             save_state_npz=False),
+        electronic_kind=workflow["electronic"]["kind"],
+        electronic_result=workflow["electronic"]["result"],
+    )
+    workflow["electronic"] = continued["electronic"]
+    workflow["ion"] = ionic_species_axes(
+        workflow["ion"], n_species=n_species,
+        electronic_vectors=continued["electronic"],
+    )
+    save_plasma_state(tmp_path / "state.npz", workflow, options=options)
+    after = load_plasma_state(tmp_path / "state.npz")
+    assert before.keys() == after.keys()
+    for key in before:
+        np.testing.assert_array_equal(before[key], after[key], err_msg=key)
 
 
 @pytest.mark.parametrize("n_species", [1, 2])
@@ -61,8 +92,8 @@ def _synthetic_workflow(n_species: int = 1) -> dict:
     transform = precompute_dst_lattice_transform_like(np.linspace(1.0e-4, 32.0, 257))
     r = np.asarray(transform.r)
     k = np.asarray(transform.k)
-    symbols = ["C"] if n_species == 1 else ["C", "H"]
-    counts = [1.0] if n_species == 1 else [1.0, 2.0]
+    symbols = ["C", "H", "O", "N"][:n_species]
+    counts = [float(i + 1) for i in range(n_species)]
 
     entries = []
     n_ion = np.empty((n_species, r.size))
@@ -72,7 +103,7 @@ def _synthetic_workflow(n_species: int = 1) -> dict:
         n_scr[idx] = (0.2 + 0.05 * idx) * np.exp(-(0.5 + idx) * r)
         result = {
             "element": symbol,
-            "Z": 6 if symbol == "C" else 1,
+            "Z": element(symbol).z,
             "r": r,
             "r_ws": 2.0 - 0.2 * idx,
             "mu": 0.2,
@@ -89,7 +120,7 @@ def _synthetic_workflow(n_species: int = 1) -> dict:
             "v_full": -np.exp(-r) / r,
             "v_scf": -np.exp(-r) / r,
             "v_ext": 0.05 * np.exp(-r),
-            "v_nuc": -(6 if symbol == "C" else 1) / r,
+            "v_nuc": -element(symbol).z / r,
             "v_H": np.exp(-r) / r,
             "v_xc": -0.01 * np.exp(-r),
             "zbar": 2.0 if symbol == "C" else 1.0,
@@ -168,8 +199,8 @@ def _synthetic_workflow(n_species: int = 1) -> dict:
         n_scr_k_out = q_k
         gij_out = gij
         sij_out = sij
-        zbar_out = np.asarray([2.0, 1.0])
-        n_i_out = np.asarray([0.02, 0.04])
+        zbar_out = np.asarray([entry["result"]["zbar"] for entry in entries])
+        n_i_out = 0.02 * np.arange(1, n_species + 1)
         v_ie_k_out = v_ie_k
         c_ie_k_out = c_ie_k
 

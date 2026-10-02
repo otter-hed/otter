@@ -6,8 +6,8 @@ from dataclasses import asdict
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
-import tomllib
 
 import matplotlib
 matplotlib.use("Agg", force=True)
@@ -63,11 +63,16 @@ def workflow_result():
 
 
 @pytest.mark.parametrize("temperatures", [(1.0, 1.0), (5.0, 10.0)])
+@pytest.mark.parametrize("uniform_axes", [False, True])
 def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
-    tmp_path, monkeypatch, temperatures, capsys,
+    tmp_path, monkeypatch, temperatures, capsys, uniform_axes,
 ):
     namespace, calls = {}, []
     result = workflow_result()
+    reference_ion = dict(result["ion"])
+    if uniform_axes:
+        from otter._workflow_results import ionic_species_axes
+        result["ion"] = ionic_species_axes(result["ion"], n_species=1, electronic_vectors={})
     monkeypatch.chdir(tmp_path)
 
     def solve(config):
@@ -128,7 +133,7 @@ def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
         )
         k_mask_orbital = result["ion"]["k"] <= 10.0
         np.testing.assert_allclose(
-            orbitals.axes[2].lines[-1].get_ydata(), result["ion"]["f_k"][k_mask_orbital],
+            orbitals.axes[2].lines[-1].get_ydata(), reference_ion["f_k"][k_mask_orbital],
         )
         assert [line.get_color() for line in electronic.axes[0].lines[:6]] == list(
             PALETTES["bing"][:6]
@@ -152,10 +157,10 @@ def test_colab_runs_outside_checkout_with_gallery_settings_and_redraws(
         )
         for ax, key in zip(pipeline.axes + ionic.axes, ("q_k", "vii_k", "vii_r", "gii_r", "sii_k")):
             mask = result["ion"]["r"] <= 12.0 if key in ("vii_r", "gii_r") else result["ion"]["k"] <= 8.0
-            np.testing.assert_array_equal(ax.lines[0].get_ydata(), result["ion"][key][mask])
+            np.testing.assert_array_equal(ax.lines[0].get_ydata(), reference_ion[key][mask])
             assert ax.lines[0].get_color() == PALETTES["bing"][0]
         k_mask = result["ion"]["k"] <= 8.0
-        expected_weight = np.abs(result["ion"]["f_k"] + result["ion"]["q_k"])**2 * result["ion"]["sii_k"]
+        expected_weight = np.abs(reference_ion["f_k"] + reference_ion["q_k"])**2 * reference_ion["sii_k"]
         np.testing.assert_array_equal(ionic.axes[2].lines[0].get_ydata(), expected_weight[k_mask])
         if temperatures[0] != temperatures[1]:
             assert "T_e=T_i" not in electronic._suptitle.get_text()
@@ -199,7 +204,9 @@ def test_colab_configuration_matches_al_gallery(monkeypatch):
 def test_colab_has_no_repository_dependency_or_extra_overrides():
     notebook = json.loads(NOTEBOOK.read_text())
     assert notebook["nbformat"] == 4
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    # Colab installs the latest published version, never an unreleased candidate.
+    version = re.findall(r"^## (\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}",
+                         (ROOT / "CHANGELOG.md").read_text(), re.MULTILINE)[0]
     assert "".join(cells()["install"]["source"]) == f'%pip install -q "otter-hed=={version}"'
     sources = []
     for cell in notebook["cells"]:
@@ -234,4 +241,4 @@ def test_html_copyright_includes_chinese_name():
               and isinstance(node.targets[0], ast.Name)
               and node.targets[0].id in {"author", "copyright"}}
     assert values["copyright"] == "2026, Chongbing Qu (瞿崇兵)"
-    assert values["author"] == "Chongbing Qu (瞿崇兵) and Dominik Kraus"
+    assert values["author"] == "Chongbing Qu (瞿崇兵), Julian Lütgert, and Dominik Kraus"

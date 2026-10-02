@@ -22,8 +22,8 @@ Change the input block in the corresponding repository script when needed.
 
 The script computes its states and writes local results beneath
 ``benchmarks/outputs/<benchmark-name>/``. Figures are saved as PNG/PDF where
-applicable; the electronic-level benchmark prints numerical tables. Failures
-raise an error instead of silently substituting previously accepted results.
+applicable; the electronic-level benchmark prints numerical tables.
+Failed calculations raise an error.
 
 On a desktop, plots open through Matplotlib's configured interactive backend
 (for example, TkAgg or QtAgg). On a headless server, run with ``MPLBACKEND=Agg``
@@ -51,7 +51,7 @@ in that environment; they are not required for the terminal commands.
 Edit parameters in the repository's ``.py`` input block, then run the notebook
 cell. The file-backed entry point avoids notebook-specific ``__file__`` and
 multiprocessing-import problems. Calculated figures are saved to the same
-locations as with terminal execution; the notebook is not a second solver.
+locations as with terminal execution.
 
 MD and other optional dependencies
 -----------------------------------

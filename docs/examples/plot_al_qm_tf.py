@@ -195,10 +195,10 @@ def combine_live_models(
     """Convert two live workflows to the same compact arrays used by plotting."""
     qm_ion = dict(solved["qm"]["ion"])
     r_ion, _ = trim_grid(
-        qm_ion["r"], qm_ion["gii_r"], R_RETAIN_MAX_BOHR
+        qm_ion["r"], qm_ion["gij_r"][0, 0], R_RETAIN_MAX_BOHR
     )
     k, _ = trim_grid(
-        qm_ion["k"], qm_ion["sii_k"], K_RETAIN_MAX_BOHR_INV
+        qm_ion["k"], qm_ion["sij_k"][0, 0], K_RETAIN_MAX_BOHR_INV
     )
     payload: dict[str, np.ndarray] = {
         "schema_version": np.asarray("otter_gallery_al_qm_tf_v1"),
@@ -219,9 +219,9 @@ def combine_live_models(
         ion = dict(entry["ion"])
         source_r = np.asarray(ion["r"], dtype=float)
         source_k = np.asarray(ion["k"], dtype=float)
-        gii.append(np.interp(r_ion, source_r, ion["gii_r"]))
-        sii.append(np.interp(k, source_k, ion["sii_k"]))
-        zbar.append(float(ion["zbar_partition"]))
+        gii.append(np.interp(r_ion, source_r, ion["gij_r"][0, 0]))
+        sii.append(np.interp(k, source_k, ion["sij_k"][0, 0]))
+        zbar.append(np.asarray(ion["zbar_partition"]).item())
         elapsed.append(float(entry["elapsed_s"]))
         n0.append(float(electronic["n0"]))
         r_e, n_full = trim_grid(

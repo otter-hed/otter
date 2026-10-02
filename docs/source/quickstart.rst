@@ -56,9 +56,7 @@ This is not IEMHNC: IEMHNC maps a simulation-derived OCP bridge onto a Yukawa
 one-component plasma (YOCP) along an isomorph
 :cite:p:`IyetomiOgataIchimaru1992,ToliasLuccoCastello2019`, whereas VMHNC
 determines a hard-sphere packing fraction variationally.
-Plain HNC remains the default.  The current implementation is one-component
-only; it deliberately rejects mixtures rather than applying a scalar bridge
-to unlike-species channels.
+Plain HNC is the default. VMHNC currently supports single-component systems only.
 
 Mixtures
 --------
@@ -86,16 +84,22 @@ The workflow returns electronic and ionic results in separate dictionaries:
 .. code-block:: python
 
    result = solve_plasma_workflow(config)
-   electronic = result["electronic"]["result"]
+   for entry in result["electronic"]["species"]:
+       aa = entry["result"]
+       print(entry["element"], aa["zbar_partition"], aa["zstar"])
    ion = result["ion"]
 
    k = ion["k"]
-   q_k = ion["q_k"]
-   f_k = ion["f_k"]
+   q_k = ion["q_k"][0]
+   f_k = ion["f_k"][0]
    G_k = ion["G_ee_k"]
-   v_ie_k = ion["v_ie_k"]
-   g_ii = ion["gii_r"]
-   s_ii = ion["sii_k"]
+   v_ie_k = ion["v_ie_k"][0]
+   g_ii = ion["gij_r"][0, 0]
+   s_ii = ion["sij_k"][0, 0]
+
+The electronic loop applies to any number of species. The ionic quantities
+above are for aluminium. Field definitions, array dimensions and version
+compatibility are documented in :doc:`user_guide/state_exports`.
 
 Set ``save_state_npz=True`` in :class:`otter.PlasmaWorkflowConfig` to save a
 portable ``.npz`` archive.  Array names, shapes, units, interaction channels,
@@ -110,9 +114,8 @@ function
 :func:`otter.continue_plasma_workflow_from_electronic_result` can reuse a
 validated electronic result while changing QOZ/HNC controls.
 
-Do not interpret solver completion alone as physical validation.  Inspect
-charge closure, SCF convergence, HNC residuals, and the model's applicability;
-the :doc:`benchmarks/index` pages show the expected reporting pattern.
+Assess charge closure, SCF convergence, HNC residuals and model applicability
+before using the results. See :doc:`benchmarks/index` for validation cases.
 
 Consistent PNG and PDF figures
 ------------------------------
@@ -126,7 +129,7 @@ Consistent PNG and PDF figures
 
    set_style("docs", palette="nature")
    fig, ax = plt.subplots()
-   ax.plot(ionic["k"], ionic["sii_k"])
+   ax.plot(ionic["k"], ionic["sij_k"][0, 0])
    ax.set(xlabel=r"$k$ [Bohr$^{-1}$]", ylabel=r"$S_{ii}(k)$")
 
    paths = save_figure(fig, "outputs/al_sii")

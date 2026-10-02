@@ -18,13 +18,17 @@
     "worktree_dirty": true,
     "current_controller_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
     "note": "All five displayed PA-HNC curves were computed with Otter and passed the AA stage-2, external-AA, threshold-state, HNC fixed-point, and transform-closure gates.",
-    "script_sha256_current": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
+    "script_sha256_current": "7df918341275f48ef526c0c586f8e67e9ff06cef282081df5b955447af2020f8",
     "source_inventory": "benchmarks/baselines/validation_20260909.json",
     "version": "0.2.4",
     "packaging_version": "0.3.0",
     "validation_inventory": "benchmarks/baselines/validation_20260909.json",
     "validation_source_set": "conditioned_scf_campaign",
-    "script_sha256_at_generation": "823b6e3d0c6c9722312b05513965229c862ae899e3d1506ac714b85ec6461cc1"
+    "script_sha256_at_generation": "823b6e3d0c6c9722312b05513965229c862ae899e3d1506ac714b85ec6461cc1",
+    "species_axis_migration": {
+      "previous_current_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
+      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
+    }
   },
   "configuration": {
     "per_state": {
