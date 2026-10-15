@@ -59,7 +59,8 @@ def test_external_loop_honours_confirmation_count(monkeypatch, steps):
     monkeypatch.setattr(fe, "effective_potential_external", lambda r, *a, **kw: np.zeros_like(r))
     r = np.linspace(.01, 3., 48)
     _, _, status = fe._external_fixed_mu_scf(r=r, mu=0., temperature_ha=.5, n0=.02,
-        g_ii=np.ones_like(r), ext_params_base=dict(source_closure=False),
+        g_ii=np.ones_like(r),
+        ext_params_base=dict(source_closure=False, match_min_points=3),
         mix=.2, dn_tol=1e-5, dv_tol=1e-5, max_iter=4, adaptive_mix=False,
         mixing_scheme="linear", mixing_m=2, mixing_w0=1e-4, ext_b3_tail_mode="off",
         verbose=False, print_every=1, convergence_steps=steps)
