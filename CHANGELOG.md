@@ -5,6 +5,12 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Guard standalone external SCF potential updates against loss of the
+  interacting-continuum matching window. Require valid evaluated and accepted
+  windows and an unmixed map residual below the existing potential tolerance,
+  preventing false convergence on a free-wave substitute or a blocked step.
+  Physical models, numerical defaults, and ionic charge checks are unchanged.
+
 - Use the final refreshed SCF broadening parameter for orbital pressure weights,
   densities and form factors. The last iteration-history value could differ,
   making the orbital sum inconsistent with the final total ionic density.

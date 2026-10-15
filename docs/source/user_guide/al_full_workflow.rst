@@ -45,9 +45,11 @@ This option does not change the separate TF solver's convergence policy.
 Any failed condition resets the count. Full KS SCF checks finite density and
 potential changes, the self-consistency map residual, and any requested B3
 charge constraint, after the screened preconditioning stage has ended.
-The dedicated fixed-chemical-potential external loop retains its existing
-density/potential and B3 checks; this option does not introduce a new external
-map-residual tolerance. The count is recorded in ``scf_convergence_steps`` and
+The dedicated fixed-chemical-potential external loop also requires a valid
+interacting-continuum matching window for both the evaluated input and the
+accepted potential. Its unmixed potential-map residual must satisfy the
+existing ``ext_scf_dv_tol``; a small damped step alone cannot establish
+self-consistency. The count is recorded in ``scf_convergence_steps`` and
 the running streak in each SCF history row. Reusing a full result with fewer
 recorded confirmations than requested is rejected.
 
@@ -77,7 +79,7 @@ negligible columns are excluded, and a failed finite solve falls back to
 linear mixing. Explicit values previously tuned for an absolute floor may
 need reassessment.
 
-Full-SCF step safeguards still reject a loss of the interacting-continuum
+Full and external SCF step safeguards reject a loss of the interacting-continuum
 matching window. History between valid, actually evaluated potentials survives
 a damped step; an invalid evaluated input clears it. A change from screened
 preconditioning to ordinary Poisson, or a new SCF invocation, also resets the

@@ -29,9 +29,11 @@ from otter.electronic.ks_dft import (
     _apply_charge_constrained_b3_tail,
     _apply_external_energy_floor,
     _bound_orbital_density_tables,
+    _continuum_matching_window_valid,
     _continuum_prefix_length,
     _electron_count,
     _enforce_source_charge_closure,
+    _guard_continuum_potential_mix,
     _rebuild_continuum_on_full_grid,
     _resolve_iteration_continuum_l_max,
     _source_electron_charge_target,
@@ -3450,8 +3452,9 @@ def _external_fixed_mu_scf(
     """
     External-only SCF loop with fixed (mu, n0).
 
-    The map follows Eq.(7)-style external source build:
-      n_ext -> V_ext -> mixed V_ext -> new n_ext
+    The external reference follows StarrettSaumon2014, Eq. (7) and Appendix A.
+    Matching-window backtracking and residual checks are Otter numerical
+    safeguards; they do not change the physical map or its tolerances.
     """
     from otter.electronic.ks_dft import _select_continuum_model, _require_density_domain_tail
 
@@ -3786,12 +3789,28 @@ def _external_fixed_mu_scf(
             t_stage = time.perf_counter()
 
         v_ext = v_ext - _tail_shift_value(r, v_ext, frac=0.05)
+        matching_input_valid = _continuum_matching_window_valid(r, v_prev, params_iter)
+        v_ext, matching_backtracks = _guard_continuum_potential_mix(
+            r, v_prev, v_new, v_ext, current_mix, params_iter
+        )
+        # Preserve secants between valid, evaluated inputs after backtracking.
+        # A density evaluated on free fallback cannot supply such a secant.
+        if not matching_input_valid:
+            dx_hist.clear()
+            df_hist.clear()
+            x_prev = f_prev = None
+        matching_output_valid = _continuum_matching_window_valid(r, v_ext, params_iter)
         n_ext = n_ext_new
         if perf_diag:
             perf["mix"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
 
         err = float(np.max(np.abs(v_new - v_ext)) / max(np.max(np.abs(v_ext)), 1e-12))
+        # Test F(V_in) - V_in, independently of the accepted mixing step.
+        # A damped or blocked update can have zero dv_rel far from a fixed point.
+        map_err = float(
+            np.max(np.abs(v_new - v_prev)) / max(np.max(np.abs(v_prev)), 1e-12)
+        )
         # Only V_ext is mixed in the external fixed-mu loop. The density is
         # rebuilt directly from the current potential, so dn_rel can plateau to
         # machine zero before the mixed potential has fully settled.
@@ -3811,7 +3830,9 @@ def _external_fixed_mu_scf(
             else:
                 print(
                     f"  [ext] it={it:2d}  dn_rel={dn_rel:.3e}  dv_rel={dv_rel:.3e}  "
-                    f"err={err:.3e}  mix={current_mix:.3f}  scheme={scheme}  "
+                    f"err={err:.3e}  map_err={map_err:.3e}  "
+                    f"match_valid={matching_input_valid and matching_output_valid}  "
+                    f"backtracks={matching_backtracks}  mix={current_mix:.3f}  scheme={scheme}  "
                     f"kappa={kappa_eff:.3e} Bohr^-1  "
                     f"cont_e_max={float(ext_params.get('e_max', np.nan)):.6f} Ha"
                 )
@@ -3840,6 +3861,10 @@ def _external_fixed_mu_scf(
         history.append({
             "iter": int(it),
             "err": float(err),
+            "map_err": float(map_err),
+            "continuum_matching_window_ext_valid": bool(matching_input_valid),
+            "continuum_matching_window_ext_output_valid": bool(matching_output_valid),
+            "continuum_mix_backtracks": int(matching_backtracks),
             "dn_rel": float(dn_rel),
             "dv_rel": float(dv_rel),
             "cont_e_max": float(ext_params.get("e_max", np.nan)),
@@ -3906,6 +3931,9 @@ def _external_fixed_mu_scf(
         passed = (
             (not in_ph_stage)
             and b3_constraint_ok
+            and matching_input_valid
+            and matching_output_valid
+            and map_err < float(dv_tol)
             and dn_rel < float(dn_tol)
             and dv_rel < float(dv_tol)
         )
@@ -3915,7 +3943,10 @@ def _external_fixed_mu_scf(
             status = {
                 "iters": it + 1,
                 "err": err,
+                "map_err": map_err,
                 "converged": True,
+                "continuum_matching_window_ext_valid": True,
+                "continuum_matching_window_ext_output_valid": True,
                 "scf_convergence_steps": int(convergence_steps),
                 "history": history,
                 "ph_kappa": float(ph_kappa_use),
@@ -3937,7 +3968,14 @@ def _external_fixed_mu_scf(
     status = {
         "iters": int(max_iter),
         "err": float(prev_err),
+        "map_err": float(history[-1]["map_err"]) if history else np.nan,
         "converged": False,
+        "continuum_matching_window_ext_valid": (
+            bool(history[-1]["continuum_matching_window_ext_valid"]) if history else False
+        ),
+        "continuum_matching_window_ext_output_valid": (
+            bool(history[-1]["continuum_matching_window_ext_output_valid"]) if history else False
+        ),
         "history": history,
         "scf_convergence_steps": int(convergence_steps),
         "ph_kappa": float(ph_kappa_use),
