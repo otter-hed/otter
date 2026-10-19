@@ -1,16 +1,7 @@
-"""
-otter/ionic/qoz.py
+"""Electron response, effective pair potentials, and one- and multicomponent HNC.
 
-Purpose
--------
-Reusable one- and multicomponent QOZ building blocks.
-
-Scope
------
-This module owns the core QOZ pieces:
-  - jellium response ingredients (`chi0`, `G_ee`, `chi_ee`)
-  - effective ion-ion potentials constructed from `n_scr`
-  - one- and multicomponent OZ + HNC solvers
+The QOZ construction combines the jellium response (`chi0`, `G_ee`, `chi_ee`)
+with the screening density `n_scr` to obtain effective ion-ion potentials.
 
 Physical references
 -------------------
@@ -30,8 +21,8 @@ finite-temperature Lindhard response.  Mermin's relaxation-time construction
 does not introduce Mermin's finite collision frequency.
 
 Anderson mixing, matrix-free Newton iterations, adaptive potential
-continuation, high-k tapering, and strict DST charge closure are Otter
-numerical methods.  They are not algorithms claimed by those papers.
+continuation, high-k tapering and discrete-transform charge closure are
+Otter numerical methods.
 """
 from __future__ import annotations
 
@@ -101,11 +92,7 @@ class QOZResponseOptions(CitationMixin):
 
 @dataclass(frozen=True)
 class QOZPotentialOptions(CitationMixin):
-    """
-    Controls for building the effective ion-ion potential from `n_scr`.
-
-    The default values match the currently working test configuration.
-    """
+    """Electron-response and high-k taper controls for the QOZ pair potential."""
 
     response: QOZResponseOptions = QOZResponseOptions()
     high_k_taper_start_frac: float | None = 0.9
@@ -117,12 +104,7 @@ class QOZPotentialOptions(CitationMixin):
 
 @dataclass(frozen=True)
 class EffectivePotentialResult:
-    """
-    Container for the Starrett-style QOZ potential assembly.
-
-    Exposing the intermediate arrays keeps the API usable for diagnostics and
-    later development without forcing users back into the test script.
-    """
+    """Single-species QOZ pair potential, screening density, and electron response."""
 
     vii_r: np.ndarray
     vii_k: np.ndarray
@@ -210,15 +192,10 @@ class MultiComponentEffectivePotentialResult:
 @njit(cache=True)
 def _high_k_cosine_taper_numba(k_arr: np.ndarray, start_frac: float) -> np.ndarray:
     """
-    Return one cosine taper that smoothly damps only the highest-k tail.
+    Return a cosine taper above ``start_frac * k_max``.
 
-    Notes
-    -----
-    The strict DST lattice makes the `V(k) -> V(r)` inverse transform very
-    efficient, but finite `k_max` can leave a visible Nyquist-scale ringing in
-    `V(r)` and, downstream, in `g(r)`. A gentle cosine taper on only the last
-    few percent of the reciprocal grid suppresses that artifact without
-    materially changing the physically relevant low-k content.
+    The taper suppresses finite-k-cutoff ringing in the inverse transform.
+    Values below the taper threshold remain unchanged.
     """
     out = np.ones_like(k_arr)
     if k_arr.size == 0:
@@ -355,11 +332,10 @@ def enforce_screening_charge_consistency(
 
     Notes
     -----
-    This helper does not invent new tail structure.  In production the target
-    is the all-space pseudoatom partition ``Z-Q_ion(all)``; this final scalar
-    factor repairs any pseudoatom-neutrality residual together with
-    interpolation and strict-DST quadrature differences.  The raw trap and DST
-    charges and the applied scale remain explicit diagnostics.
+    The target is the all-space pseudoatom partition ``Z-Q_ion(all)``.
+    A scalar correction accounts for pseudoatom-neutrality, interpolation
+    and DST quadrature residuals. The raw trapezoidal and DST charges and
+    the applied scale are returned for comparison.
     """
     r = np.asarray(r, dtype=float)
     n_scr_arr = np.asarray(n_scr, dtype=float)
@@ -519,9 +495,7 @@ def mu_jellium_from_nbar(nbar_e0: float, temperature_ha: float) -> float:
     def _density_mismatch(mu: float) -> float:
         return ideal_unbound_density(mu, temperature, method="exact") - nbar
 
-    # Use a free-electron estimate as the center of the search bracket, then
-    # enlarge the interval until the finite-T density mismatch changes sign.
-    # This keeps the inversion robust over both degenerate and classical cases.
+    # Bracket the density root using the Fermi energy and thermal scale.
     kf = (3.0 * np.pi**2 * nbar) ** (1.0 / 3.0)
     ef = 0.5 * kf * kf
     mu_lo = -50.0 * temperature - 10.0
@@ -559,10 +533,9 @@ def chi0_lindhard_finite_t(
       chi0(k) = -(g_s/(2*pi^2*k)) * integral_0^inf
                 [ p f(p) ln|(k+2p)/(k-2p)| ] dp
 
-    The singular point p = k/2 is handled with a principal-value-friendly
-    change of variables on both sides of the logarithmic kernel. The k -> 0
-    limit is replaced by -dn/dmu from a finite-difference derivative of the
-    ideal-gas density.
+    A change of variables on either side of p = k/2 resolves the logarithmic
+    singularity. The k -> 0 limit uses -dn/dmu from a finite-difference
+    derivative of the ideal-gas density.
 
     References
     ----------
@@ -1124,10 +1097,9 @@ def build_effective_vij_from_nscr(
 def _invert_symmetric_oz_batch(a_batch: np.ndarray) -> np.ndarray:
     """Invert a batch of symmetric OZ matrices, specializing 1x1 and 2x2 cases.
 
-    Binary mixtures dominate current production use.  Their closed-form 2x2
-    inverse avoids thousands of tiny LAPACK calls per HNC map.  Modes close
-    enough to singularity for determinant cancellation use ``numpy.solve``;
-    this preserves the generic path precisely where robustness matters most.
+    The 2x2 inverse uses a closed form unless its determinant is susceptible
+    to cancellation. Near-singular 2x2 matrices and larger systems use
+    ``numpy.linalg.solve``.
     """
     matrices = np.asarray(a_batch, dtype=float)
     if matrices.ndim != 3 or matrices.shape[1] != matrices.shape[2]:
@@ -1590,7 +1562,7 @@ def hnc_solver_multicomponent(
         -----
         The raw species-space form `H = C + C D H` uses the non-symmetric
         matrix `D C`, which is poorly conditioned for unlike-species channels.
-        We instead work with
+        The symmetric form is
 
           C_tilde = sqrt(D) C sqrt(D)
           S       = (I - C_tilde)^(-1)
@@ -1622,11 +1594,9 @@ def hnc_solver_multicomponent(
 
         Notes
         -----
-        For multicomponent systems the diagonal-floor trick used in the
-        one-component solver is no longer enough. A tiny negative eigenvalue of
-        `S_ij(k)` can destabilize the whole OZ/HNC iteration. We therefore
-        project each symmetric `S(k)` onto the cone of positive-semidefinite
-        matrices with eigenvalues clipped to `[s_min_floor, s_max_ceil]`.
+        Bounding diagonal entries alone does not ensure a positive-semidefinite
+        multicomponent `S(k)`. Each symmetric matrix is projected by clipping
+        its eigenvalues to `[s_min_floor, s_max_ceil]`.
         """
         s_batch = np.moveaxis(_symmetrize_pair(s_k), -1, 0)
         eigval, eigvec = np.linalg.eigh(s_batch)
@@ -1737,7 +1707,7 @@ def hnc_solver_multicomponent(
         ] | None = None
 
         def _mapped_for_vec(vec: np.ndarray):
-            """Reuse the map that SciPy just evaluated at the same iterate."""
+            """Return the cached HNC map when the iterate is unchanged."""
             nonlocal cached_vec, cached_mapped
             vec_arr = np.asarray(vec, dtype=float)
             if (

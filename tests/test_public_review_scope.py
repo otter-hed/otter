@@ -4,9 +4,11 @@ from types import SimpleNamespace
 import ast
 import json
 import re
+import subprocess
 import tomllib
 
 import numpy as np
+import pytest
 
 from tools.export_public_review import export_review, in_public_tool_scope
 
@@ -23,11 +25,48 @@ def test_public_export_excludes_private_plan_and_reference_library(tmp_path, mon
         path.write_text("example\n")
     monkeypatch.setattr("tools.export_public_review.subprocess.check_output",
                         lambda *args, **kwargs: "\0".join(names).encode())
+    monkeypatch.setattr("tools.export_public_review.subprocess.run",
+                        lambda *args, **kwargs: SimpleNamespace(
+                            returncode=1, stdout=b"", stderr=b""))
     destination = tmp_path / "public"
     assert export_review(root, destination, public_tools=True) == 3
     assert sorted(p.relative_to(destination).as_posix()
                   for p in destination.rglob("*") if p.is_file()) == [
                       ".github/workflows/ci.yml", ".gitignore", "src/otter/example.py"]
+
+
+@pytest.mark.parametrize("public_tools", [False, True])
+def test_public_export_respects_local_exclusions_for_tracked_files(
+    tmp_path, public_tools,
+):
+    root = tmp_path / "source"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    (root / "README.md").write_text("Public documentation\n")
+    (root / "notes.local.md").write_text("Private development notes\n")
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    (root / ".git/info/exclude").write_text("/notes.local.md\n")
+
+    destination = tmp_path / "public"
+    assert export_review(root, destination, public_tools=public_tools) == 1
+    assert (destination / "README.md").is_file()
+    assert not (destination / "notes.local.md").exists()
+    tracked = subprocess.check_output(["git", "ls-files"], cwd=root).decode()
+    assert "notes.local.md" in tracked.splitlines()
+
+
+def test_public_export_stops_when_local_rules_cannot_be_checked(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr("tools.export_public_review.subprocess.check_output",
+                        lambda *args, **kwargs: b"README.md\0")
+    monkeypatch.setattr("tools.export_public_review.subprocess.run",
+                        lambda *args, **kwargs: SimpleNamespace(
+                            returncode=128, stdout=b"", stderr=b"Invalid repository"))
+    destination = tmp_path / "public"
+    with pytest.raises(RuntimeError, match="Cannot verify local exclusion rules"):
+        export_review(tmp_path, destination)
+    assert not destination.exists()
 
 
 def test_readme_version_and_reproduction_entry_points_are_current():

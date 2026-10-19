@@ -17,8 +17,9 @@ def config(ns=1, **kwargs):
                            rho_g_cc=(2.,), k=(.25, .5, 1.), **kwargs)
 
 
-def result(ns=1, *, native=None, l_count=2, radial_count=3):
+def result(ns=1, *, native=None, native_r=None, l_count=2, radial_count=3):
     k = np.array([.1, .3, .6, 1.2]) if native is None else np.asarray(native)
+    r = np.array([.02, .2, .5, 1., 2.]) if native_r is None else np.asarray(native_r)
     entries, factors = [], []
     for species in range(ns):
         energy = np.full((l_count, radial_count), np.inf)
@@ -34,11 +35,13 @@ def result(ns=1, *, native=None, l_count=2, radial_count=3):
         factors.append(profile.sum(axis=(0, 1)))
     return {"species_symbols": [e["element"] for e in entries],
             "electronic": {"species": entries},
-            "ion": {"k": k, "r": k, "hnc_converged": True, "hnc_output_residual": 1e-8,
+            "ion": {"k": k, "r": r, "hnc_converged": True, "hnc_output_residual": 1e-8,
                     "sij_k": np.broadcast_to(1 + k, (ns, ns, k.size)),
                     "q_k": np.broadcast_to(2 + k, (ns, k.size)),
                     "f_k": np.asarray(factors), "zbar": np.arange(ns) + 1.,
-                    "zstar": np.arange(ns) + .7}}
+                    "zstar": np.arange(ns) + .7,
+                    "v_ei_k": -(np.arange(ns) + 1)[:, None] * (1 + k),
+                    "v_ei_r": -(np.arange(ns) + 1)[:, None] * (2 + r)}}
 
 
 @pytest.fixture
@@ -118,7 +121,9 @@ def test_scalar_unit_attributes(tmp_path, transform):
         writer.success((0, 0, 0), (*grid._pack_result(result(), cfg), .1))
         expected = {"axis/k": "1/a0", "axis/rho": "g/cm^3", "axis/T_e": "eV",
                     "axis/alpha": "1", "E_nl": "hartree",
-                    "native/0_0_0/k": "1/a0", "native/0_0_0/q": "1"}
+                    "native/0_0_0/k": "1/a0", "native/0_0_0/q": "1",
+                    "v_ei_k": "hartree * a0 ** 3", "native/0_0_0/v_ei_k": "hartree * a0 ** 3",
+                    "native/0_0_0/r": "a0", "native/0_0_0/v_ei_r": "hartree"}
         for name in ("q", "f", "f_nl", "S_ii", "Z_bar", "Z_star"):
             expected[name] = "1"
         for name, unit in expected.items():
@@ -219,7 +224,7 @@ def test_partial_write_failure_clears_spectra_and_orbitals(tmp_path, transform):
         writer.failure(index, "write interrupted", .2)
         assert writer.file["diagnostics/status"][index] == grid.FAILED
         assert not writer.file.attrs["complete"]
-        for name in ("q", "f", "S_ii", "Z_bar", "Z_star", "E_nl", "f_nl"):
+        for name in ("q", "f", "S_ii", "Z_bar", "Z_star", "E_nl", "f_nl", "v_ei_k"):
             assert np.isnan(writer.file[name][(..., *index)]).all()
         assert not writer.file["orbitals_present"][(..., *index)].any()
         assert "native/0_0_0" not in writer.file
@@ -721,3 +726,159 @@ def test_documented_legacy_reader(tmp_path, monkeypatch, version, complete):
     else:
         with pytest.raises(RuntimeError, match="unfinished"):
             exec(compile(example, "parameter_grids.rst", "exec"), namespace)
+
+
+@pytest.mark.parametrize("ns", [1, 2, 3, 4])
+@pytest.mark.parametrize("common_r", [None, (.05, .4, 1.)])
+@pytest.mark.parametrize("native", [False, True])
+def test_potentials_use_state_coordinates_and_species_axes(tmp_path, transform, ns, common_r, native):
+    cfg = config(ns, r=common_r, save_native_spectra=native)
+    sources = [result(ns), result(ns, native=[.15, .4, .8, 1.4, 2.],
+                                 native_r=[.01, .15, .4, .8, 1.5, 3.])]
+    path = tmp_path / "potentials.h5"
+    writer = grid._GridFile(path, cfg, resume=False)
+    try:
+        for t in (1, 0):
+            writer.success((t, 0, 0), (*grid._pack_result(sources[t], cfg), .1))
+    finally:
+        writer.file.close()
+    with h5py.File(path) as saved:
+        assert saved["v_ei_k"].shape == (ns, len(cfg.k), *cfg.shape)
+        np.testing.assert_allclose(saved["v_ei_k"][:, :, 0, 0, 0],
+                                   -(np.arange(ns) + 1)[:, None] * (1 + np.asarray(cfg.k)))
+        np.testing.assert_allclose(saved["v_ei_k"][:, :, 1, 0, 0], saved["v_ei_k"][:, :, 0, 0, 0])
+        assert saved["v_ei_k"].attrs["k_path"] == "/axis/k"
+        assert ("v_ei_r" in saved) == (common_r is not None)
+        if common_r is not None:
+            ds = saved["v_ei_r"]
+            assert ds.shape == (ns, len(common_r), *cfg.shape)
+            assert list(ds.attrs["axis"]) == ["i", "r", "T_e", "rho", "alpha"]
+            assert ds.attrs["unit"] == "hartree" and ds.attrs["r_path"] == "/axis/r"
+            np.testing.assert_array_equal(saved[ds.attrs["r_path"]][:], common_r)
+            for t in (0, 1):
+                np.testing.assert_allclose(ds[:, :, t, 0, 0],
+                                           -(np.arange(ns) + 1)[:, None] * (2 + np.asarray(common_r)))
+        for t, source in enumerate(sources):
+            if common_r is None or native:
+                group = saved[f"native/{t}_0_0"]
+                ds = group["v_ei_r"]
+                assert ds.attrs["r_path"] == group.name + "/r"
+                assert list(ds.attrs["axis"]) == ["i", "r"]
+                np.testing.assert_array_equal(saved[ds.attrs["r_path"]][:], source["ion"]["r"])
+                np.testing.assert_array_equal(ds[:], source["ion"]["v_ei_r"])
+                assert ("k" in group) == native
+            if native:
+                np.testing.assert_array_equal(group["v_ei_k"][:], source["ion"]["v_ei_k"])
+    grid._GridFile(path, cfg, resume=True).file.close()
+
+
+def test_existing_output_selection_is_unchanged(tmp_path, transform):
+    outputs = ("Sii", "q", "f", "Zbar", "Zstar", "f_nl", "E_nl")
+    source = result(3)
+    before = grid._pack_result(source, config(3, outputs=outputs))
+    after = grid._pack_result(source, config(3))
+    for key in before[0]:
+        np.testing.assert_array_equal(before[0][key], after[0][key])
+    for old, new in zip(before[1], after[1], strict=True):
+        for key in old:
+            np.testing.assert_array_equal(old[key], new[key])
+    writer = grid._GridFile(tmp_path / "selected.h5", config(3, outputs=outputs), resume=False)
+    try:
+        writer.success((0, 0, 0), (*before, .1))
+        assert "native" not in writer.file and "v_ei_k" not in writer.file
+        assert "v_ei_r" not in writer.file and "r" not in writer.file["axis"]
+    finally:
+        writer.file.close()
+
+
+@pytest.mark.parametrize("field", ["v_ei_k", "v_ei_r"])
+@pytest.mark.parametrize("change", ["shape", "nan"])
+def test_invalid_potential_is_rejected(field, change):
+    source = result(3)
+    if change == "shape":
+        source["ion"][field] = source["ion"][field][0]
+    else:
+        source["ion"][field][0, 0] = np.nan
+    with pytest.raises(ValueError, match="expected|Invalid"):
+        grid._pack_result(source, config(3, outputs=(field,)))
+
+
+@pytest.mark.parametrize("r", [(0., .2), (.5, .2), (.1, np.inf), ()])
+def test_invalid_output_r_is_rejected(r):
+    with pytest.raises(ValueError, match="r"):
+        config(r=r)
+
+
+@pytest.mark.parametrize("r", [(.001, .2), (.2, 3.)])
+def test_radial_potential_is_not_extrapolated(r):
+    with pytest.raises(ValueError, match="Output r range.*extrapolation"):
+        grid._pack_result(result(), config(outputs=("v_ei_r",), r=r))
+
+
+@pytest.mark.parametrize("field,attribute", [
+    ("v_ei_k", "unit"), ("v_ei_k", "k_path"), ("v_ei_r", "r_path"),
+    ("axis/r", "unit"), ("native/0_0_0/v_ei_r", "r_path"),
+    ("native/0_0_0/v_ei_k", "unit"), ("native/0_0_0/r", "unit"),
+    ("native/0_0_0/v_ei_r", "axis"),
+])
+def test_resume_rejects_invalid_potential_metadata(tmp_path, transform, field, attribute):
+    cfg = config(r=(.05, .4, 1.), save_native_spectra=True)
+    path = tmp_path / "invalid.h5"
+    writer = grid._GridFile(path, cfg, resume=False)
+    writer.success((0, 0, 0), (*grid._pack_result(result(), cfg), .1))
+    writer.file.close()
+    with h5py.File(path, "r+") as saved:
+        saved[field].attrs[attribute] = "incorrect"
+    with pytest.raises(ValueError, match="Cannot resume"):
+        grid._GridFile(path, cfg, resume=True)
+
+
+@pytest.mark.parametrize("change", ["missing", "coordinates", "shape"])
+def test_resume_rejects_incomplete_native_potential(tmp_path, change):
+    cfg = config(outputs=("v_ei_r",))
+    path = tmp_path / "native.h5"
+    writer = grid._GridFile(path, cfg, resume=False)
+    writer.success((0, 0, 0), (*grid._pack_result(result(), cfg), .1))
+    writer.file.close()
+    with h5py.File(path, "r+") as saved:
+        group = saved["native/0_0_0"]
+        if change == "missing":
+            del group["v_ei_r"]
+        elif change == "coordinates":
+            group["r"][0] = group["r"][1]
+        else:
+            del group["v_ei_r"]
+            ds = group.create_dataset("v_ei_r", data=np.zeros((2, 5)))
+            ds.attrs.update(unit="hartree", axis=["i", "r"], r_path=group.name + "/r")
+    with pytest.raises(ValueError):
+        grid._GridFile(path, cfg, resume=True)
+
+
+def test_failed_potentials_are_cleared_before_retry(tmp_path):
+    cfg = config(outputs=("v_ei_k", "v_ei_r"), r=(.05, .4, 1.), save_native_spectra=True)
+    writer = grid._GridFile(tmp_path / "retry.h5", cfg, resume=False)
+    try:
+        payload = (*grid._pack_result(result(), cfg), .1)
+        writer.success((0, 0, 0), payload)
+        writer.failure((0, 0, 0), "interrupted", .2)
+        for name in ("v_ei_k", "v_ei_r"):
+            assert np.isnan(writer.file[name][:, :, 0, 0, 0]).all()
+        assert "native/0_0_0" not in writer.file
+        writer.success((0, 0, 0), payload)
+        assert writer.file["diagnostics/status"][0, 0, 0] == grid.COMPLETE
+        assert np.isfinite(writer.file["v_ei_r"][:, :, 0, 0, 0]).all()
+    finally:
+        writer.file.close()
+
+
+def test_cli_accepts_common_radial_grid(tmp_path, monkeypatch):
+    path = tmp_path / "grid.json"
+    path.write_text(json.dumps({"workflow": {"elements": ["C"]}, "temperature_ev": [10.],
+                               "rho_g_cc": [2.], "k": {"min": .2, "max": 2., "points": 3},
+                               "r": {"min": .1, "max": 5., "points": 7}}))
+    def run(cfg, *args, **kwargs):
+        np.testing.assert_array_equal(cfg.r, np.linspace(.1, 5., 7))
+        np.testing.assert_array_equal(cfg.k, np.linspace(.2, 2., 3))
+        return dict(complete=1, failed=0, total=1)
+    monkeypatch.setattr(grid, "run_grid", run)
+    assert grid.main([str(path), str(tmp_path / "grid.h5")]) == 0

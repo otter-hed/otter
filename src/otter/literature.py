@@ -1,14 +1,12 @@
 """Runtime literature registry and citation formatting helpers.
 
-The canonical bibliography is :mod:`otter`'s packaged ``literature.bib``.
-This module deliberately has no dependency on ``pybtex`` so installed Otter
-workflows can expose citations without installing the documentation extras.
+References come from the packaged ``literature.bib``; documentation extras
+are not required.
 
-The public :class:`CitationMixin` follows the small, explicit API used by
-JaXRTS model objects: ``plain`` returns readable references, ``bibtex``
-returns copyable entries, and ``cite`` returns unevaluated LaTeX citation
-keys.  Configuration classes use the same interface to make the references
-for a complete calculation auditable before it is run.
+:class:`CitationMixin` follows the JaXRTS citation interface: ``plain``
+returns formatted references, ``bibtex`` returns BibTeX entries, and ``cite``
+returns LaTeX citation commands. Configuration classes expose the references
+for their selected models before a calculation is run.
 """
 
 from __future__ import annotations

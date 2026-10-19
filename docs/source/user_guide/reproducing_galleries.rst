@@ -49,9 +49,23 @@ Jupyter and its Python kernel are optional and must be installed separately
 in that environment; they are not required for the terminal commands.
 
 Edit parameters in the repository's ``.py`` input block, then run the notebook
-cell. The file-backed entry point avoids notebook-specific ``__file__`` and
-multiprocessing-import problems. Calculated figures are saved to the same
-locations as with terminal execution.
+cell. The notebook launches that script in a separate process and saves figures
+to the same locations as terminal execution.
+
+Batch recalculation
+-------------------
+
+The batch tool runs the maintained dataset producers:
+
+.. code-block:: bash
+
+   poetry run python tools/recompute_all_data.py --list
+   poetry run python tools/recompute_all_data.py --only al_full_workflow
+
+Omit ``--only`` to run all listed datasets. Results go to
+``benchmarks/outputs``; existing baselines are retained. This batch excludes
+MD by default. Run the page's gallery script to calculate and plot a full
+comparison, including MD where required.
 
 MD and other optional dependencies
 -----------------------------------

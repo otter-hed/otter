@@ -20,6 +20,8 @@ finite-temperature jellium local-field correction follows
 The first figure shows unweighted bound-state wavefunctions, ionic electron
 densities, and form factors by level. The following figures show the electronic
 structure, screening cloud and pair interactions, and ionic correlations.
+The potential panels compare :math:`V_{ii}` and :math:`V_{ei}` on symmetric
+logarithmic axes, retaining both signs without rescaling the data.
 The Rayleigh weight per ion is
 :math:`W_R(k)=|f(k)+q(k)|^2 S_{ii}(k)`.
 Only the element, density and temperatures are set; numerical controls use
@@ -312,6 +314,8 @@ def pack_workflow(
         "sii_k": np.asarray(ion["sij_k"][0, 0], dtype=float)[k_mask],
         "vii_r_ha": np.asarray(ion["vii_r"], dtype=float)[r_mask],
         "vii_k_ha_bohr3": np.asarray(ion["vii_k"], dtype=float)[k_mask],
+        "vei_r_ha": np.asarray(ion["v_ei_r"], dtype=float)[0, r_mask],
+        "vei_k_ha_bohr3": np.asarray(ion["v_ei_k"], dtype=float)[0, k_mask],
         "n_scr_k_electrons": q_used[k_mask],
         "n_ion_k_electrons": np.asarray(portable["n_ion_k"], dtype=float)[0],
         "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),
@@ -610,20 +614,27 @@ def main() -> None:
             ylabel="electrons",
         )
 
-        ax_vk.plot(k[k_mask], np.asarray(state["vii_k_ha_bohr3"])[k_mask])
+        ax_vk.plot(k[k_mask], np.asarray(state["vii_k_ha_bohr3"])[k_mask], label=r"$V_{ii}$")
+        ax_vk.plot(k[k_mask], np.asarray(state["vei_k_ha_bohr3"])[k_mask], ls="--", label=r"$V_{ei}$")
+        ax_vk.set_yscale("symlog", linthresh=10.0)
         ax_vk.set(
-            title=r"$V_{ii}(k)$",
+            title=r"$V_{ii}(k),\ V_{ei}(k)$",
             xlabel=r"$k$ [$a_B^{-1}$]",
             ylabel=r"Ha $a_B^3$",
         )
 
-        ax_vr.plot(r[r_mask], np.asarray(state["vii_r_ha"])[r_mask])
+        ax_vr.plot(r[r_mask], np.asarray(state["vii_r_ha"])[r_mask], label=r"$V_{ii}$")
+        ax_vr.plot(r[r_mask], np.asarray(state["vei_r_ha"])[r_mask], ls="--", label=r"$V_{ei}$")
+        ax_vr.set_yscale("symlog", linthresh=1.0)
         ax_vr.set(
-            title=r"$V_{ii}(r)$",
+            title=r"$V_{ii}(r),\ V_{ei}(r)$",
             xlabel=r"$r$ [$a_B$]",
             ylabel="Ha",
             xlim=(-0.5, 12.0),
         )
+        for ax in (ax_vk, ax_vr):
+            ax.axhline(0.0, color="0.5", lw=0.8, ls=":")
+            ax.legend()
 
         ax_g.plot(r[r_mask], np.asarray(state["gii_r"])[r_mask])
         ax_g.axhline(1.0, color="0.5", lw=0.8, ls=":")

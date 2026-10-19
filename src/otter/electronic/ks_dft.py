@@ -1,9 +1,4 @@
-"""
-otter/electronic/ks_dft.py
-
-Purpose
--------
-Provide a minimal quantum Kohn-Sham AA solver (full/external) for IS models.
+"""Quantum Kohn--Sham average-atom solver for full and external systems.
 
 Methods
 -------
@@ -35,8 +30,8 @@ References
   cutoff construction.
 
 Adaptive real-energy integration, phase-root resonance scouting,
-charge-constrained tail acceptance, and threshold-state reliability gates are
-Otter numerical methods.  They are not algorithms claimed by that reference.
+charge-constrained tails and threshold-state diagnostics are Otter numerical
+methods.
 """
 from __future__ import annotations
 
@@ -538,8 +533,8 @@ class KSDTFConfig(CitationMixin):
     store_scf_snapshots_last: int | None = None
     dn_tol: float | None = None
     dv_tol: float | None = None
-    # Consecutive passes of ALL existing SCF gates; one preserves legacy stops.
-    convergence_steps: int = 1
+    # Consecutive passes of all SCF gates, including density and potential.
+    convergence_steps: int = 3
     # Inner-neutral SCF only: return an UNCONVERGED state to a recovery-owning
     # caller if neither best nor typical residual improves over two windows.
     stop_on_stagnation: bool = False
@@ -2000,9 +1995,8 @@ def _audit_bound_spectrum(
         l_max=max(config.l_list), edge_rel_tol=min(.1, float(config.bound_zero_tail_edge_rel_tol)))
     missing = [dict(s, energy_ha=s["matched_energy_ha"])
                for s in probe["states"] if s["action"] == "added_pole_missed_by_finite_wall"]
-    # Rejected candidates have not passed the exterior-domain test. They must
-    # not be inserted as physical states, but neither can we call this spectrum
-    # resolved merely because the finite-wall search did not find them.
+    # Candidates that fail exterior-domain checks remain diagnostic records
+    # and prevent a resolved classification when the finite-box state is absent.
     angular = [int(l) for l in config.l_list]
     for candidate in probe.get("rejected_states", []):
         row = values[angular.index(candidate["l"])]
@@ -2879,9 +2873,8 @@ def _bound_ion_charge_table(
         values.shape[1],
         r_source.size,
     ):
-        # Some lightweight/legacy bound-solver test doubles retain the old
-        # (l, n, r) layout.  Canonicalize it even for the important n=0 edge
-        # case, for which the production (l, r, n) table is otherwise empty.
+        # Convert the legacy (l, n, r) layout, including empty level tables,
+        # to the canonical (l, r, n) layout.
         vectors = np.transpose(vectors, (0, 2, 1))
     if values.ndim != 2 or vectors.shape != (
         values.shape[0],
@@ -3306,6 +3299,8 @@ def _scf_fixed_mu(config: KSDTFConfig,
             temperature=float(config.temperature),
         )
         cont_params["e_max"] = float(cont_e_max_iter)
+        # Both density sources in the PA difference use the resolved spectrum.
+        cont_params_ext["e_max"] = float(cont_e_max_iter)
         if compute_external:
             # Keep external scattering well-posed when no |V| tail filter is used.
             cont_params_ext = _apply_external_energy_floor(cont_params_ext, r_cont, v_ext)
@@ -4105,6 +4100,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
 
         history.append({
             "iter": it,
+            "cont_e_max": float(cont_e_max_iter),
             "err": float(err),
             "continuum_matching_window_full_valid": bool(matching_full_valid),
             "continuum_matching_window_ext_valid": bool(matching_ext_valid),
@@ -4324,6 +4320,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
         "v_full": v_full,
         "v_ext": v_ext,
         "history": history,
+        "cont_e_max_final": float(cont_e_max_iter),
         "converged": bool(scf_converged),
         "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),
@@ -4645,6 +4642,8 @@ def _scf_neutral_inner(config: KSDTFConfig,
             ),
         )
         cont_params["e_max"] = float(cont_e_max_iter)
+        # Both density sources in the PA difference use the resolved spectrum.
+        cont_params_ext["e_max"] = float(cont_e_max_iter)
         if compute_external:
             cont_params_ext = _apply_external_energy_floor(cont_params_ext, r_cont, v_ext_current)
             cont_params_ext["v_eff"] = v_ext_current
@@ -6640,6 +6639,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
         "v_full": v_full,
         "v_ext": v_ext,
         "history": history,
+        "cont_e_max_final": float(cont_e_max_iter),
         "converged": bool(scf_converged),
         "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),

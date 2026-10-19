@@ -1,14 +1,7 @@
-"""
-otter/numerics/transforms.py
+"""Radial Fourier transforms for the OZ/QOZ workflow.
 
-Radial Fourier transforms for the OZ/QOZ workflow.
-
-Current policy
---------------
-The production QOZ/HNC path uses only the strict DST-I lattice transform. We
-do not keep alternative radial backends in this module because the OZ/HNC loop
-applies the transform repeatedly and therefore benefits from a single, exact
-discrete forward/inverse pair.
+The DST-I lattice provides a discrete forward/inverse pair for repeated
+transforms in the QOZ/HNC iteration.
 """
 from __future__ import annotations
 

@@ -56,7 +56,6 @@ Capabilities
    :caption: Reference
 
    api/index
-   development/index
    citations
    bibliography
 

@@ -1,10 +1,8 @@
 """Exchange-correlation models for spherical electronic-structure solvers.
 
-The historical Dirac model is implemented directly and remains the
-dependency-free default. LDA and GGA functionals from Libxc are available
-when its Python bindings (pylibxc) are installed. GGA potentials include the
-radial functional-derivative term, rather than returning Libxc's partial
-derivative with respect to density alone.
+Dirac exchange is the default. Additional LDA and GGA functionals require
+Libxc's Python bindings (pylibxc). GGA potentials include the radial
+gradient contribution to the functional derivative.
 
 References
 ----------
@@ -17,8 +15,8 @@ those references and the exact Libxc version/functional IDs in Otter results.
 The PBE alias follows J. P. Perdew, K. Burke, and M. Ernzerhof, Physical
 Review Letters 77, 3865 (1996), DOI 10.1103/PhysRevLett.77.3865, including
 its erratum, DOI 10.1103/PhysRevLett.78.1396.  The finite-core switch used by
-Otter is an explicitly documented Otter numerical regularization; it is not
-part of the cited PBE functional or of Libxc.
+Otter regularizes the nuclear region separately from the PBE functional
+provided by Libxc.
 """
 
 from __future__ import annotations
@@ -31,9 +29,7 @@ from typing import Any
 import numpy as np
 
 
-# These are exact Libxc API identifiers, not informal functional labels.
-# Primary references are queried from Libxc by ``xc_provenance`` so explicit
-# ``libxc:...`` combinations receive the same attribution as built-in aliases.
+# Libxc identifiers; xc_provenance retrieves each functional's references.
 _LIBXC_ALIASES: dict[str, tuple[str, ...]] = {
     "pbe": ("gga_x_pbe", "gga_c_pbe"),
     "lda_pw": ("lda_x", "lda_c_pw"),

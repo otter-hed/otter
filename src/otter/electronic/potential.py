@@ -23,9 +23,8 @@ References
 - :cite:`StarrettSaumon2014`, Eqs. (4) and (7), DOI
   10.1016/j.hedp.2013.12.001.
 
-The spherical quadrature, origin handling, and XC finite-core regularization
-are Otter numerical implementation choices; they are not attributed to the
-reference paper.
+Spherical quadrature, origin handling and XC finite-core regularization are
+Otter numerical choices.
 """
 from __future__ import annotations
 
@@ -159,14 +158,11 @@ def _require_sharp_ion_sphere_profile(
     g_ii: np.ndarray,
     radius: float,
 ) -> None:
-    """Fail closed if the analytic IS shortcut is paired with a non-IS g(r).
+    """Require a sharp ion-sphere profile for the analytic background integral.
 
-    The shortcut integrates ``-n0 Theta(r-R_ws)`` analytically.  It is
-    therefore mathematically equivalent to the sampled source only when the
-    supplied profile is that same sharp step.  In particular it must never be
-    used for the self-consistent ``g_II`` in Starrett--Saumon (2014),
-    Sec. 2.4, because doing so would silently discard the feedback in Eqs.
-    (4) and (7).
+    The analytic integral of ``-n0 Theta(r-R_ws)`` applies only to that step
+    profile. A self-consistent ``g_II`` requires the tabulated integral to
+    retain the feedback in Starrett--Saumon (2014), Sec. 2.4, Eqs. (4) and (7).
     """
     expected = (np.asarray(r, dtype=float) >= float(radius)).astype(float)
     if not np.array_equal(np.asarray(g_ii, dtype=float), expected):

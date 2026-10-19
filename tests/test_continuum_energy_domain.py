@@ -12,10 +12,14 @@ from otter.electronic.ks_dft import (
 
 
 @pytest.mark.parametrize("eta", [-100.0, -4.82, 0.0, 1.0, 10.0, 1000.0])
-def test_energy_cutoff_bounds_relative_ideal_density_tail(eta):
-    tol = 1e-5
+@pytest.mark.parametrize("temperature", [1e-3, 1.0, 100.0])
+@pytest.mark.parametrize("tol", [1e-5, 1e-8])
+def test_energy_cutoff_bounds_relative_ideal_density_tail(eta, temperature, tol):
     params = {"e_max_mode": "prev_mu_fd", "e_max_occ_tol": tol}
-    cutoff = _resolve_iteration_continuum_e_max(params, mu_ref=eta, temperature=1.0)
+    cutoff_ha = _resolve_iteration_continuum_e_max(
+        params, mu_ref=eta*temperature, temperature=temperature,
+    )
+    cutoff = cutoff_ha / temperature
     # Scale out Boltzmann suppression so the dilute integral does not underflow.
     scale = np.exp(-min(eta, 0.0))
     integrand = lambda e: np.sqrt(e)*expit(eta-e)*scale
@@ -224,3 +228,65 @@ def test_batched_wave_rows_preserve_scalar_origin_and_rescaling(rescale_limit, w
         # against the wave amplitude, not pointwise relative error at its nodes.
         scale = np.max(np.abs(single))
         np.testing.assert_allclose(rows[i]/scale, single/scale, rtol=0., atol=1e-12)
+
+
+@pytest.mark.parametrize("mode", ["fixed", "neutral"])
+def test_both_ks_paths_export_and_share_the_resolved_cutoff(monkeypatch, mode):
+    from otter.electronic import ks_dft as ks
+
+    cutoffs = []
+    class Continuum:
+        def density(self, r, mu, temperature, params):
+            cutoffs.append(params["e_max"])
+            return np.full_like(r, ks.ideal_unbound_density(mu, temperature))
+    monkeypatch.setattr(ks, "_select_continuum_model", lambda _: Continuum())
+    def resolve_cutoff(*args, **kwargs):
+        # Force the neutral final refresh onto a larger spectral domain.
+        return 7.7 + (10*len(cutoffs) if mode == "neutral" else 0.)
+
+    monkeypatch.setattr(ks, "_resolve_iteration_continuum_e_max", resolve_cutoff)
+    cfg = ks.KSDTFConfig(Z=1, temperature=.5, mu=0., mu_mode=mode,
+        r_ws=1., rmax=4., n_points=48, l_list=np.array([0]), n_states=1,
+        continuum_model="ideal", compute_external=True, mu_bounds=(-10., 10.),
+        max_iter=1, continuum_params={"e_max":.7})
+    state = ks.solve_ks_dft_is(cfg)
+    # Neutral-inner may exercise its existing same-iteration cutoff retries.
+    # The exported scalar must follow the spectrum actually evaluated last.
+    actual = state["cont_e_max_final"]
+    assert actual >= 7.7
+    assert state["history"][-1]["cont_e_max"] <= actual
+    assert cutoffs[-2:] == [actual, actual]
+    if mode == "fixed":
+        assert actual == 7.7
+    else:
+        assert actual > state["history"][-1]["cont_e_max"]
+
+
+def test_external_cutoff_uses_final_state_even_when_history_is_stale():
+    from otter.electronic.full_external import _full_continuum_cutoff
+    cfg = FullExternalConfig(element="H", temperature_ev=99., rho_g_cc=.946)
+    state = {"cont_e_max_final":73.2, "history":[{"cont_e_max":72.8}]}
+    assert _full_continuum_cutoff(state) == 73.2
+    assert cfg.cont_e_max < 73.2
+
+
+@pytest.mark.parametrize("state", [
+    {"history":[{"cont_e_max":73.2}]},
+    {"history":[{"dn_rel":1e-8}], "cont_phase_energy_ha":np.array([.01,40.,73.2])},
+])
+def test_legacy_external_handoff_retains_its_actual_spectral_cutoff(state):
+    from otter.electronic.full_external import _full_continuum_cutoff
+    assert _full_continuum_cutoff(state) == 73.2
+
+
+def test_missing_cutoff_is_not_replaced_by_the_initial_cutoff():
+    from otter.electronic.full_external import _full_continuum_cutoff
+    with pytest.raises(ValueError, match="final continuum energy cutoff"):
+        _full_continuum_cutoff({"history":[{}]})
+
+
+@pytest.mark.parametrize("cutoff", [0., -1., np.nan, np.inf, "invalid", [73.2, 74.]])
+def test_invalid_final_cutoff_is_rejected(cutoff):
+    from otter.electronic.full_external import _full_continuum_cutoff
+    with pytest.raises(ValueError, match="final continuum energy cutoff"):
+        _full_continuum_cutoff({"cont_e_max_final": cutoff})

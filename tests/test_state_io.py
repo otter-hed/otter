@@ -289,6 +289,8 @@ def test_state_arrays_preserve_q_f_g_s_contract(n_species: int) -> None:
     assert metadata["model"]["lfc_model"] == "chabrier1990"
     assert metadata["units"]["q_k"] == "electron number"
     assert metadata["units"]["v_ie_k"] == "Hartree Bohr^3"
+    assert metadata["units"]["v_ei_k"] == metadata["units"]["v_ie_k"]
+    assert metadata["units"]["v_ei_r"] == metadata["units"]["v_ie_r"] == "Hartree"
     assert metadata["units"]["c_ee_k"] == "Bohr^3"
     assert metadata["units"]["G_ee_k"] == "dimensionless"
     assert metadata["configuration"]["rho_g_cc"] == 1.0
@@ -571,16 +573,22 @@ def test_electronic_summary_is_materially_smaller_than_complete(tmp_path) -> Non
     assert summary.stat().st_size < complete.stat().st_size / 4
 
 
-def test_state_file_round_trips_without_pickle(tmp_path) -> None:
+@pytest.mark.parametrize("n_species", [1, 2, 3, 4])
+def test_state_file_round_trips_without_pickle(tmp_path, n_species) -> None:
     path = save_plasma_state(
         tmp_path / "state.npz",
-        _synthetic_workflow(2),
+        _synthetic_workflow(n_species),
     )
     loaded = load_plasma_state(path)
     with np.load(path, allow_pickle=False) as raw:
         assert all(raw[key].dtype.kind != "O" for key in raw.files)
     np.testing.assert_allclose(loaded["q_k"], loaded["n_scr_k"])
     np.testing.assert_allclose(loaded["f_k"], loaded["n_ion_k"])
+    units = json.loads(loaded["metadata_json"].item())["units"]
+    for space, coordinate, unit in (("k", "k_bohr_inv", "Hartree Bohr^3"), ("r", "r_bohr", "Hartree")):
+        assert loaded[f"v_ei_{space}"].shape == (n_species, loaded[coordinate].size)
+        np.testing.assert_array_equal(loaded[f"v_ei_{space}"], loaded[f"v_ie_{space}"])
+        assert units[f"v_ei_{space}"] == units[f"v_ie_{space}"] == unit
 
 
 def test_state_export_preserves_vmhnc_bridge_and_variational_parameters() -> None:

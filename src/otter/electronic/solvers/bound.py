@@ -1,9 +1,4 @@
-"""
-otter/electronic/solvers/bound.py
-
-Purpose
--------
-Sparse Numerov solver for bound states using a generalized eigenproblem.
+"""Sparse Numerov bound-state solver using a generalized eigenproblem.
 
 Methods
 -------
@@ -27,8 +22,7 @@ References
 - :cite:`PillaiGoglioWalker2012`.
 - :cite:`StarrettSaumon2014`, Appendix A/B.
 
-The sparse shift-invert tolerances and origin safeguards are Otter numerical
-choices, not claims made by either reference.
+Shift-invert tolerances and origin regularization are Otter numerical choices.
 """
 from typing import Tuple, Optional
 import warnings
@@ -1008,10 +1002,9 @@ def solve_bound_states_sparse_numerov(v_eff: np.ndarray,
         Number of bound states per l. When an array is supplied it must match
         ``l_list`` and gives one radial-state cap per angular channel.
     boundary : str
-        Boundary condition (dirichlet only for now).
+        Boundary condition; only ``"dirichlet"`` is supported.
     n_jobs : int or None
-        Compatibility argument retained for older callers. The bound solver now
-        always runs serially.
+        Ignored compatibility argument. The bound solver runs serially.
     nuclear_charge : float or None
         Nuclear charge used by the Coulomb-cusp origin reconstruction. The
         legacy unconstrained repair is retained when omitted.

@@ -33,11 +33,9 @@ Run the calculation with two independent workers:
 
    poetry run python tools/grid_calculation.py carbon_grid.json carbon_grid.h5 --workers 2
 
-The installed package also provides ``poetry run python -m otter.grid`` with the same
-arguments. The default is one worker. Each worker uses one CPU, including
-mixture calculations; memory use increases with the number of simultaneous
-states. Start with one or two workers and check available memory before
-increasing this number.
+``poetry run python -m otter.grid`` accepts the same arguments.
+The default is one worker. Each worker uses one CPU, including mixture
+calculations; memory use grows with the number of simultaneous states.
 
 The terminal prints state indices, completion times and errors. Full SCF
 progress is written to ``carbon_grid.h5.logs/i_j_k.log``; the indices select
@@ -89,9 +87,7 @@ For example, a radial-resolution check for CH2 can use:
 ``aa_overrides`` applies to all species; ``species_overrides`` sets options
 for individual elements. These settings apply to every state in the file,
 not to additional scan axes. Omitted parameters retain their defaults.
-The requested overrides and effective workflow configuration are recorded
-in ``manifest_json``. Overrides are optional; the initial example uses
-the default numerical settings.
+``manifest_json`` records the overrides and effective workflow configuration.
 
 For a TF calculation, select observables without orbitals:
 
@@ -102,7 +98,7 @@ For a TF calculation, select observables without orbitals:
      "temperature_ev": [20.0],
      "rho_g_cc": [2.0],
      "k": {"min": 0.2, "max": 10.0, "points": 300},
-     "outputs": ["Sii", "q", "f", "Zbar", "Zstar"]
+     "outputs": ["Sii", "q", "f", "Zbar", "Zstar", "v_ei_k", "v_ei_r"]
    }
 
 Solver and output grids
@@ -122,7 +118,7 @@ lengths do not imply equal physical k coordinates.
 
 ``axis/k`` is fixed when the file is created; worker completion order does
 not change it. Each spectral dataset has a ``k_path`` attribute naming its
-coordinate dataset. For ``S_ii``, ``q``, ``f`` and ``f_nl`` at the file root,
+coordinate dataset. For ``S_ii``, ``q``, ``f``, ``f_nl`` and ``v_ei_k`` at the file root,
 this is ``/axis/k``. Native spectra must be paired with their own coordinates,
 even when arrays from different states have equal lengths.
 
@@ -140,11 +136,63 @@ check the native QOZ and output resolutions for the intended interpolation.
 
 Set ``save_native_spectra=True`` in ``GridConfig`` (or
 ``"save_native_spectra": true`` in JSON) to retain each state's original
-``k`` and selected ``S_ii``, ``q`` and ``f`` spectra as well. These arrays
+``k`` and selected ``S_ii``, ``q``, ``f`` and ``v_ei_k`` spectra as well. These arrays
 are not interpolated or truncated to the common interval. They include
 the smallest positive k produced by that state's solver, not k=0.
-This option does not change the calculation or the common-grid datasets;
-it increases the output size and is disabled by default.
+This optional export increases the file size and is disabled by default.
+
+Electron--ion potentials
+-----------------------------
+
+The default outputs include ``v_ei_k`` and ``v_ei_r`` for all species,
+including pure elements. They are the QOZ electron--ion potentials,
+:math:`V_{ei}(k)=q(k)/\chi_{ee}(k)` and its radial inverse transform.
+The AA Kohn--Sham potential is a separate quantity.
+
+``v_ei_k`` uses the common ``axis/k`` grid. By default, ``v_ei_r`` and its
+radial coordinates are stored under ``native/t_r_a/v_ei_r`` and
+``native/t_r_a/r`` for each completed state. This radial export is included
+even when ``save_native_spectra=False``. The radial grid is shared among
+species within one state and may differ between states.
+
+To export the radial potential on a common grid, add ``r`` to the JSON:
+
+.. code-block:: json
+
+   "r": {"min": 0.05, "max": 10.0, "points": 500}
+
+The Python interface accepts ``r=tuple(np.linspace(0.05, 10.0, 500))``.
+Radii are in Bohr and must be positive, increasing and within every accepted
+state's native radial interval. The exporter then writes ``axis/r`` and a
+root ``v_ei_r`` dataset, using linear interpolation without extrapolation.
+``save_native_spectra=True`` additionally retains the original radial
+potential and coordinates. Both output grids are independent of the solver
+grids; the radial potential is calculated on the full QOZ grid before export.
+It is not reconstructed from the cropped or resampled HDF5 k data.
+
+For the default radial export, select a species and state as follows:
+
+.. code-block:: python
+
+   import h5py
+
+   with h5py.File("carbon_grid.h5", "r") as grid:
+       index = (0, 0, 0)  # temperature, density, alpha
+       if grid["diagnostics/status"][index] != 2:
+           raise RuntimeError("The selected state is incomplete.")
+       species = 0
+       vk = grid["v_ei_k"]
+       k = grid[vk.attrs["k_path"]][:]
+       V_ei_k = vk[(species, slice(None), *index)]
+       state = "_".join(map(str, index))
+       vr = grid[f"native/{state}/v_ei_r"]
+       r = grid[vr.attrs["r_path"]][:]
+       V_ei_r = vr[species, :]
+
+With a common r grid, read ``grid["v_ei_r"]`` using the same state indexing
+as ``v_ei_k``; its ``r_path`` is ``/axis/r``. The species index follows
+``axis/elements`` for any composition. Units are ``hartree * a0 ** 3`` for
+``v_ei_k`` and ``hartree`` for ``v_ei_r``.
 
 HDF5 layout
 -----------
@@ -158,8 +206,12 @@ The schema is ``otter_grid_v2``. Dataset dimensions are:
      - Shape
    * - ``S_ii``
      - ``(Ns, Ns, Nk, NT, Nrho, Nalpha)``
-   * - ``q``, ``f``
+   * - ``q``, ``f``, ``v_ei_k``
      - ``(Ns, Nk, NT, Nrho, Nalpha)``
+   * - ``v_ei_r`` (when a common r grid is specified)
+     - ``(Ns, Nr, NT, Nrho, Nalpha)``
+   * - ``native/t_r_a/v_ei_r`` (native radial export)
+     - ``(Ns, Nr_native)``
    * - ``Z_bar``, ``Z_star``
      - ``(Ns, NT, Nrho, Nalpha)``
    * - ``f_nl``
@@ -171,13 +223,15 @@ The schema is ``otter_grid_v2``. Dataset dimensions are:
      - ``(NT, Nrho, Nalpha)``
 
 ``axis`` contains ``T_e``, ``rho``, ``alpha``, ``k``,
-``elements`` and ``counts``. The ``number_fraction`` attribute of
+``elements`` and ``counts``, plus ``r`` when specified. The ``number_fraction`` attribute of
 ``axis/elements`` gives the fixed species fractions in the same order
 as the elements. It is not a scan axis.
 
 Dataset attributes give axis labels and units. Read units with
 ``dataset.attrs["unit"]``; the attribute is a scalar string.
-Energies are in Hartree (``"hartree"``); k is in inverse Bohr (``"1/a0"``).
+Energies and radial potentials are in Hartree (``"hartree"``); k is in
+inverse Bohr (``"1/a0"``), r in Bohr (``"a0"``), and ``v_ei_k`` in
+``"hartree * a0 ** 3"``.
 For example, JaXRTS can read the coordinates as:
 
 .. code-block:: python
@@ -233,9 +287,10 @@ dependency versions. The original native k range and convergence summary
 are retained as JSON text in ``diagnostics/convergence``. This record
 also contains native-grid metadata; it is not a single convergence flag.
 
-When native spectra are enabled, ``native/t_r_a`` holds one state, with
-zero-based indices into ``T_e``, ``rho`` and ``alpha``. Its ``k`` is a
-one-dimensional array; ``f`` and ``q`` have shape ``(Ns, Nk_native)`` and
+``native/t_r_a`` holds the requested native data for one state, with
+zero-based indices into ``T_e``, ``rho`` and ``alpha``. When native spectra
+are enabled, its ``k`` is a one-dimensional array;
+``f``, ``q`` and ``v_ei_k`` have shape ``(Ns, Nk_native)`` and
 ``S_ii`` has shape ``(Ns, Ns, Nk_native)``. Only requested spectra are stored.
 Their ``k_path`` attributes reference ``/native/t_r_a/k``, not ``/axis/k``.
 ``f_nl`` remains on the common k axis. The first native spectral values,
@@ -262,7 +317,8 @@ Check completion before interpolation
 -------------------------------------
 
 Status codes are 0 (pending), 1 (running), 2 (complete) and 3 (failed).
-Uncomputed or failed numeric data are NaN. The file's ``complete``
+Uncomputed or failed common-grid data are NaN; native groups are absent.
+The file's ``complete``
 attribute becomes true only when every state is complete; a run with
 failures exits with a nonzero status.
 
@@ -281,12 +337,16 @@ failures exits with a nonzero status.
        q = grid["q"][:]
        f = grid["f"][:]
 
-This file is a parameter-grid export, not a replacement for
-:doc:`portable per-state NPZ files <state_exports>`.
-Native AA restart data and radial profiles are not stored here.
+For native AA densities, wavefunctions and Kohn--Sham potentials,
+use :doc:`portable per-state NPZ files <state_exports>`.
 
 Earlier HDF5 files
 ------------------
+
+The potential datasets are additions to ``otter_grid_v2``. Existing spectra,
+charges, orbital fields and their coordinates retain their names and shapes.
+Older files may lack the potential datasets. Explicit ``outputs`` selections
+remain supported; add ``v_ei_k`` and ``v_ei_r`` to export them.
 
 Files using ``otter_grid_v1`` remain readable with h5py.
 The physical datasets and their dimensions are unchanged; metadata paths
@@ -342,12 +402,11 @@ A reader supporting both layouts should select paths using the file's
            raise RuntimeError("The parameter grid contains unfinished states.")
        k_unit = unit_string(grid["axis/k"])
 
-Old code using ``attrs["unit"][0]`` must be updated: with a scalar string,
-that expression returns only its first character. No file is migrated
-in place. Resuming requires v2 and the same source, configuration and
+Read scalar units with ``attrs["unit"]``; indexing with ``[0]`` returns
+only the first character. No file is migrated in place.
+Resuming requires v2 and the same source, configuration and
 numerical dependency versions; continue an older run with the code that
-created it, or start a new file with the current code. The source check
-is not relaxed for a layout change.
+created it, or start a new file with the current code.
 
 Python interface
 ----------------

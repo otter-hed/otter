@@ -116,6 +116,7 @@ def test_real_workflow_forwards_background_policy(
         cfg = replace(cfg, g_ii_override=g, g_ii_override_r=r)
     cfg = replace(cfg, full_result_init=dict(
         r=r, r_ws=1.3, mu=0.1, n0=0.02, g_ii=g,
+        cont_e_max_final=float(cfg.cont_e_max),
         n_full=np.full_like(r, 0.02), n_ion=np.zeros_like(r),
         v_full=-6*np.exp(-r)/r, converged=True, stage2_converged=True,
         threshold_state_status="resolved", scf_convergence_steps=cfg.scf_convergence_steps,

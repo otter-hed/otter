@@ -142,6 +142,7 @@ def _pack_gallery_result(
                 "electronic_profiles",
                 "electronic_potentials",
                 "pair_potential",
+                "qoz_response",
             ),
         ),
     )
@@ -208,6 +209,8 @@ def _pack_gallery_result(
         "sii_k": np.asarray(exported["sij_k"])[0, 0],
         "vii_r_ha": np.asarray(exported["vij_r"])[0, 0],
         "vii_k_ha_bohr3": np.asarray(exported["vij_k"])[0, 0],
+        "vei_r_ha": np.asarray(exported["v_ei_r"])[0],
+        "vei_k_ha_bohr3": np.asarray(exported["v_ei_k"])[0],
         "n_scr_k_electrons": q_used,
         "n_ion_k_electrons": np.asarray(exported["f_k"])[0],
         "hnc_best_residual": np.asarray(float(ion["hnc_best_residual"])),

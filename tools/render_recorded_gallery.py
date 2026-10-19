@@ -1,8 +1,6 @@
-"""Render compact presentation assets from explicitly selected local archives.
+"""Render website figures and tables from reviewed local numerical archives.
 
-This maintainer-only plotting command never calculates new AA or MD states.
-Public gallery entry points remain compute-first. Review local numerical
-archives before using this command to update the recorded website results.
+This command reads accepted baselines without running AA or MD calculations.
 """
 from __future__ import annotations
 
@@ -98,7 +96,7 @@ def main():
     parser.add_argument("--from-local-archives", action="store_true", required=True)
     parser.parse_args()
     manifest = json.loads((DESTINATION / "manifest.json").read_text())
-    # Hashes identify the data actually plotted, not a claimed fresh solve.
+    # Record the source archives for the rendered figures and tables.
     archives = {str(p.relative_to(ROOT)): digest(p)
                 for p in sorted((ROOT / "benchmarks/baselines").glob("*/*.npz"))}
     if not archives:

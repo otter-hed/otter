@@ -25,7 +25,9 @@ Run the :download:`single-species workflow
 The default state is Al at :math:`8.1\,\mathrm{g\,cm^{-3}}` and
 :math:`T_e=T_i=15\,\mathrm{eV}`.  The input block controls the state and output.
 The script plots the electronic density, effective potential,
-:math:`g_{ii}(r)`, and :math:`S_{ii}(k)`.
+:math:`g_{ii}(r)`, :math:`S_{ii}(k)`, and :math:`V_{ii}`/:math:`V_{ei}` in
+real and reciprocal space. The pair-potential panels use symmetric logarithmic
+axes to display both signs over their full range.
 
 To reproduce the four figure groups in the Al gallery and Colab instead,
 including the bound-orbital panels and Rayleigh weight, run::

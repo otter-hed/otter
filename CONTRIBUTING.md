@@ -1,8 +1,7 @@
 # Contributing to Otter
 
-Thank you for helping improve Otter. Numerical plasma models can produce
-smooth-looking but incorrect curves, so every change should be reviewable at
-three levels: implementation, numerical invariants, and physical validation.
+Contributions are reviewed for implementation, numerical consistency and
+physical validity.
 
 ## Development setup
 
@@ -44,8 +43,7 @@ On Windows without `make`, use
   `docs/source/_static/gallery_results` are presentation assets: refresh them
   together from accepted calculations and verify their source fingerprints.
 
-The validation policy and architecture notes are in `docs/source/benchmarks`
-and `docs/source/development`.
+The validation policy is in `docs/source/benchmarks/validation_policy.rst`.
 
 ## Pull requests
 
@@ -58,6 +56,5 @@ Keep each pull request focused. In the description, state:
 5. known validity limits.
 
 Changes to public result schemas or model defaults require a changelog entry.
-Before creating any public artifact, run
-`python tools/check_public_release.py`; a nonzero result is a hard release
-blocker, not an informational warning.
+Before publishing, run `poetry run python tools/check_public_release.py`
+and resolve any reported errors.

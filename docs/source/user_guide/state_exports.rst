@@ -241,6 +241,10 @@ Per-species charge-normalization diagnostics in ``charge_fix`` also have shape
 ``(N_s,)``. Global HNC convergence flags and residuals remain scalars.
 
 ``v_ei_k`` and ``v_ei_r`` are aliases of ``v_ie_k`` and ``v_ie_r``.
+They have shapes ``(N_s, N_k)`` and ``(N_s, N_r)``, with units
+:math:`\mathrm{Ha}\,a_B^3` and :math:`\mathrm{Ha}`, respectively.
+The QOZ potential satisfies :math:`V_{ei}(k)=q(k)/\chi_{ee}(k)`;
+it is distinct from the AA Kohn--Sham potential ``aa["v_full"]``.
 ``gee_k`` and ``g_ee_k`` are compatibility aliases of ``G_ee_k``.
 The older, single-component-only shortcuts ``vii_r``, ``vii_k``, ``hii_r`` and
 ``cii_r`` remain one-dimensional. Use ``vij_r``, ``vij_k``, ``hij_r`` and
@@ -476,8 +480,8 @@ and ``docs/examples/plot_al_full_workflow.py`` (standard NPZ export).
 Export profiles
 ---------------
 
-The default profile is ``complete`` and preserves the previous full-state
-behaviour.  Smaller profiles retain the thermodynamic inputs, species order,
+The default profile, ``complete``, includes all public data groups.
+Smaller profiles retain the thermodynamic inputs, species order,
 convergence metadata, :math:`R_{\rm WS}`, chemical potential, background and
 ion densities, and the relevant mean-ionization definitions, while omitting
 large arrays that the selected analysis does not use.
@@ -507,7 +511,7 @@ large arrays that the selected analysis does not use.
      - Every public group, including electronic profiles and potentials,
        orbital densities, response channels, pair potentials, and solver
        history.
-     - Completed QOZ/HNC calculation; this is the backward-compatible default.
+     - Completed QOZ/HNC calculation.
 
 Optional groups can be added without switching to ``complete``.  For example,
 the following stores ion structure and the pair potential used to obtain it,
@@ -645,6 +649,11 @@ The table lists possible fields, not fields present in every profile:
 * ``pair_potential`` supplies ``vij_k`` and ``vij_r``.
 * ``solver_history`` supplies ``hij_r``, ``cij_r`` and HNC residual history.
 
+The default ``complete`` profile includes both ``v_ei_k`` and ``v_ei_r``.
+Their units are recorded in ``metadata_json["units"]``. For a smaller
+profile, include ``qoz_response`` to retain these potentials.
+HDF5 parameter scans also support both quantities; see :doc:`parameter_grids`.
+
 All profiles keep the scalar species vectors such as ``zstar`` and
 ``zbar_partition``. ``zbar_qoz`` and the common r/k grids require an ion-stage
 export group. The r and k windows are independent, so an exported pair of
@@ -678,7 +687,7 @@ cropped grids need not form a complete DST lattice or have equal lengths.
    * - ``G_ee_k``
      - ``(N_k,)``
      - Selected local-field correction :math:`G_{ee}(k)`.
-       ``gee_k`` and ``g_ee_k`` are temporary compatibility aliases.
+       ``gee_k`` and ``g_ee_k`` are compatibility aliases.
    * - ``v_ie_k`` / ``v_ei_k``
      - ``(N_s, N_k)``
      - Electron--ion potential; the two names are explicit aliases.

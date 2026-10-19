@@ -1,7 +1,6 @@
-"""Create an NPZ-free source snapshot for review, without touching Git history.
+"""Export a source snapshot without numerical archives or private applications.
 
-This is a build/reproduction artifact, NOT an automatic publication allowlist.
-Existing destinations are rejected and local calculation outputs are untouched.
+The destination must be a new directory. Review the exported files before publication.
 """
 from __future__ import annotations
 
@@ -11,10 +10,9 @@ import shutil
 import subprocess
 
 
-# Explicitly reviewed tool scope: the existing public tools plus gallery
-# reproduction/presentation helpers. Private studies and campaign controllers
-# are not dependencies of the public package or benchmark producers.
+# Tools included by --public-tools.
 PUBLIC_TOOLS = frozenset({
+    "tools/README.md",
     "tools/check_public_release.py", "tools/otter_lammps_md.py",
     "tools/promote_recomputed_data.py", "tools/recompute_all_data.py",
     "tools/update_citations.py", "tools/reproduce_ch2_hnc_md.py",
@@ -62,13 +60,24 @@ def export_review(root: Path, destination: Path, *, public_tools: bool = False) 
     names = subprocess.check_output(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root,
     ).decode().split("\0")
+    # Local exclusions also apply to tracked private-development files.
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-z", "--stdin"],
+        input=b"".join(name.encode() + b"\0" for name in names if name),
+        cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if ignored.returncode not in (0, 1):
+        raise RuntimeError("Cannot verify local exclusion rules: "
+                           + ignored.stderr.decode().strip())
+    excluded = set(ignored.stdout.decode().split("\0"))
     destination.mkdir(parents=True)
     count = 0
     for name in sorted(set(names)):
         path = Path(name)
         if public_tools and not in_public_tool_scope(name):
             continue
-        if (not name or path.suffix in {".npz", ".h5", ".hdf5", ".pkl", ".pickle"}
+        if (not name or name in excluded
+                or path.suffix in {".npz", ".h5", ".hdf5", ".pkl", ".pickle"}
                 or path.parts[0] in {"applications", "literature"}
                 or (path.parts[0].startswith(".")
                     and path.parts[0] not in {".github", ".gitignore", ".gitattributes"})

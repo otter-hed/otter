@@ -5,6 +5,40 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Separate the external Hartree and ion--electron correlation potentials in
+  QM SC result reporting. Use the resampled correlation potential applied by
+  the solver, including when reusing a full result. Total potentials,
+  densities and SCF updates are unchanged.
+- Compare electron--ion and ion--ion potentials in real and reciprocal space
+  in the single-species example and Al gallery. Symmetric logarithmic axes
+  preserve both signs and the unscaled potential values.
+
+- Add an optional bitmap layout for LAMMPS pair tables, keeping the existing
+  linear layout as the default. Preserve the exported potential and analytic
+  Coulomb contribution. Document separate timestep, trajectory-duration and
+  active-table convergence checks, with the published C and CH DFT-MD
+  timesteps as reference values.
+
+- Tighten the external QM SCF density and potential tolerances to the full
+  branch defaults of 1e-5. Require three consecutive passes of all existing
+  QM SCF gates by default, including the direct KS interface. Preserve the
+  separate TF stopping policy and reject reuse of full states with too few
+  recorded confirmations. The continuum cutoff and radial defaults are
+  unchanged.
+
+- Pass the actual final full-system continuum energy cutoff to the external
+  AA solve, including fixed-chemical-potential calculations and cutoff retries.
+  Record it in KS results and fixed-mu histories; reject retained states
+  without a recorded cutoff instead of substituting the initial value,
+  including fixed mode when charge recovery may have raised that value.
+  Validate scalar metadata and document the evaluated limits and their
+  distinction from radial and global-charge convergence.
+
+- Preserve the shared infinite-radius potential zero in the fixed-chemical-
+  potential external AA solve. Subtracting the finite-box tail potential
+  changed occupations relative to the full system and biased pseudoatom
+  charge. Numerical defaults and charge acceptance thresholds are unchanged.
+
 - Guard standalone external SCF potential updates against loss of the
   interacting-continuum matching window. Require valid evaluated and accepted
   windows and an unmixed map residual below the existing potential tolerance,
@@ -19,6 +53,12 @@ have not yet been released are collected under “Unreleased”.
 
 ### 0.4.0
 
+- Export electron--ion potentials `v_ei_k` and `v_ei_r` in HDF5 parameter
+  grids with species axes, units and coordinate references. Reciprocal-space
+  potentials use the common k grid; radial potentials retain per-state r
+  grids by default, with an optional common r grid. Preserve existing output
+  selections and validate potential coordinates on resume. Add the missing
+  `v_ei_r` unit to portable NPZ metadata.
 - Adopt Julian Lütgert's HDF5 layout revisions in `otter_grid_v2`: group
   run records under `diagnostics`, store scalar unit strings, attach fixed
   species fractions to `axis/elements`, and group paired orbital quantum

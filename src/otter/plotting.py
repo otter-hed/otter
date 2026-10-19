@@ -1,12 +1,9 @@
 """Consistent Matplotlib styling for Otter figures.
 
-Matplotlib is an optional Otter dependency.  This module therefore imports it
-only inside functions, and :mod:`otter.__init__` deliberately does not import
-this module.  Install ``otter[plot]`` before using these helpers.
+Matplotlib is imported only when a plotting function is called.
 
-The ``thesis`` profile is the project-wide default for the example and
-benchmark galleries, academic slides, and publication-ready figures.  The
-``docs`` and ``paper`` profiles provide progressively more compact typography.
+The ``thesis`` profile is the default for example and benchmark galleries.
+The ``docs`` and ``paper`` profiles provide more compact typography.
 All profiles use the same semantic colours and line conventions.
 
 Examples

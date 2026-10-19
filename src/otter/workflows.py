@@ -1,22 +1,9 @@
-"""
-otter/workflows.py
+"""Electronic and ionic structure from composition, temperature, and density.
 
-Unified composition-driven plasma workflow.
-
-This module provides one high-level entry point that accepts only the minimal
-plasma state:
-
-  composition + T_e + rho [+ optional T_i]
-
-and dispatches to the existing validated electronic-structure solvers:
-
-  - single species: `FullExternalConfig` / `solve_full_then_external`
-  - multicomponent mixture: `MixtureConfig` / `solve_mixture_full_then_ext`
-
-When `T_i` is provided, the workflow continues to the current QOZ/HNC ion
-structure stage using the screening densities returned by the electronic solve.
-Composition can be specified either explicitly with `elements + counts` or via
-one compact chemical `formula` convenience string.
+Single-species calculations use `solve_full_then_external`; mixtures use
+`solve_mixture_full_then_ext`. Supplying `T_i` adds QOZ/HNC ionic structure
+from the electronic screening densities. Composition accepts a chemical
+`formula`, `elements + counts`, or `elements + number_fraction`.
 
 The single-component pseudoatom/QOZ construction follows C. E. Starrett and
 D. Saumon, High Energy Density Physics 10, 35--42 (2014),
@@ -265,7 +252,7 @@ def _qoz_electron_channels(
     electron_temperature_ha: float,
     ion_temperature_ha: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Read public QOZ electron channels, reconstructing legacy test doubles."""
+    """Return electron potentials and temperature-scaled direct correlations."""
     if all(hasattr(qoz, key) for key in ("v_ie_k", "v_ee_k")):
         v_ie_k = np.asarray(qoz.v_ie_k, dtype=float)
         v_ee_k = np.asarray(qoz.v_ee_k, dtype=float)
@@ -1361,7 +1348,7 @@ def _one_component_ion_structure(
         "chi_ee_k": np.asarray(qoz.chi_ee_k, dtype=float),
         "chi0_k": np.asarray(qoz.chi0_k, dtype=float),
         "G_ee_k": np.asarray(qoz.gee_k, dtype=float),
-        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
+        # Compatibility aliases for G_ee_k.
         "gee_k": np.asarray(qoz.gee_k, dtype=float),
         "g_ee_k": np.asarray(qoz.gee_k, dtype=float),
         "qoz_build_s": float(qoz_build_s),
@@ -1815,7 +1802,7 @@ def _multicomponent_ion_structure(
         "chi_ee_k": np.asarray(qoz.chi_ee_k, dtype=float),
         "chi0_k": np.asarray(qoz.chi0_k, dtype=float),
         "G_ee_k": np.asarray(qoz.gee_k, dtype=float),
-        # Temporary compatibility aliases.  New code should use ``G_ee_k``.
+        # Compatibility aliases for G_ee_k.
         "gee_k": np.asarray(qoz.gee_k, dtype=float),
         "g_ee_k": np.asarray(qoz.gee_k, dtype=float),
         "qoz_build_s": float(qoz_build_s),
@@ -2098,8 +2085,8 @@ def continue_plasma_workflow_from_electronic_result(
 
     Notes
     -----
-    This helper exists so expensive AA/full+ext results can be cached and then
-    reused while iterating only on the downstream QOZ/HNC controls.
+    Reuses the electronic result while recalculating QOZ/HNC with the
+    requested ionic controls.
     """
     symbols, counts = resolve_plasma_composition(
         formula=cfg.formula,

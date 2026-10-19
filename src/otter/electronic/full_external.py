@@ -1,17 +1,13 @@
-"""
-otter/electronic/full_external.py
-
-User-facing runner for the electronic-structure workflow:
+"""Full and external average-atom electronic structure.
 
     full SCF (ion-sphere neutral) -> external SCF (fixed mu, fixed n0)
 
 The full/external construction, pseudoatom density, Appendix-A continuum,
 and Appendix-B far-field continuation follow C. E. Starrett and D. Saumon,
 :cite:`StarrettSaumon2014`, High Energy Density Physics 10, 35--42 (2014),
-DOI 10.1016/j.hedp.2013.12.001.  Root bracketing, warm starts, charge-closure
-guards, threshold-state reliability tests, and fail-closed handoff rules are
-Otter numerical methods; they not be attributed to that paper. The
-pressure-ionization M(e) partition and cutoff are based on
+DOI 10.1016/j.hedp.2013.12.001. Otter adds root bracketing, warm starts,
+charge-closure checks and threshold-state diagnostics. The
+pressure-ionization M(E) partition and cutoff are based on
 :cite:`StarrettSaumon2013`.
 """
 from __future__ import annotations
@@ -75,13 +71,7 @@ from otter.electronic.solvers.bound import solve_bound_states_sparse_numerov
 
 
 def _default_b3_geometry_from_density(rho_g_cc: float) -> tuple[float, float, float]:
-    """
-    Return the current default A3+B3 geometry for a given mass density.
-
-    The public default is currently density-independent. The validated
-    production geometry is the same for low-, moderate-, and high-density
-    states unless the user overrides it explicitly.
-    """
+    """Return the density-independent A3/B3 radius multipliers."""
     rho = float(rho_g_cc)
     return 7.0, 5.0, 4.0
 
@@ -1156,9 +1146,9 @@ class FullExternalConfig(CitationMixin):
     # Density change tolerance for full SCF convergence.
     scf_dv_tol: float = 1e-5
     # Potential change tolerance for full SCF convergence.
-    scf_convergence_steps: int = 1
-    # QM full/external: consecutive passes of the branch's existing gates.
-    # Three rejects isolated passes; one retains historical stopping behavior.
+    scf_convergence_steps: int | None = None
+    # Consecutive passes of the branch's existing gates. None selects three
+    # for QM full/external SCF and retains the separate TF stopping policy.
     scf_mixing_scheme: str = "eyert"
     # "eyert" (recommended) or "linear".
     scf_mixing_m: int = 5
@@ -1196,9 +1186,9 @@ class FullExternalConfig(CitationMixin):
     ext_scf_mix: float = 0.25
     # Base mixing factor in external SCF. With Eyert mixing this slightly
     # larger fixed value converges faster than the older 0.2 default.
-    ext_scf_dn_tol: float = 1e-4
+    ext_scf_dn_tol: float = 1e-5
     # Density tolerance for external SCF convergence.
-    ext_scf_dv_tol: float = 1e-4
+    ext_scf_dv_tol: float = 1e-5
     # Potential tolerance for external SCF convergence.
     ext_scf_adaptive_mix: bool = False
     # Adapt external mixing strength based on iteration stability. Disabled by
@@ -1290,6 +1280,8 @@ class FullExternalConfig(CitationMixin):
         if electronic_model not in {"qm", "tf"}:
             raise ValueError("electronic_model must be 'qm' or 'tf'.")
         self.electronic_model = electronic_model
+        if self.scf_convergence_steps is None:
+            self.scf_convergence_steps = 3 if electronic_model == "qm" else 1
         _validate_scf_convergence_steps(self.scf_convergence_steps)
         if electronic_model == "tf" and self.scf_convergence_steps != 1:
             raise ValueError("scf_convergence_steps is currently supported only for QM SCF.")
@@ -1572,10 +1564,8 @@ class FullExternalConfig(CitationMixin):
 
         Notes
         -----
-        The public default is now ``bound_basis_mode="auto"``. To preserve the
-        historical manual path without adding more boilerplate for users, any
-        explicit ``l_list`` or non-default ``n_states`` is treated as a manual
-        override even when the mode is left at ``"auto"``.
+        An explicit ``l_list`` or non-default ``n_states`` selects the manual
+        basis even when ``bound_basis_mode="auto"``.
         """
         mode = str(self.bound_basis_mode).strip().lower()
         if mode == "manual":
@@ -1588,10 +1578,8 @@ class FullExternalConfig(CitationMixin):
         """
         Return the resolved bound basis as ``(l_list, n_states_by_l)``.
 
-        In auto mode the default basis is inferred from the neutral-shell
-        filling of the selected element. In manual mode, or whenever the user
-        explicitly supplies ``l_list`` / a non-default ``n_states``, we fall
-        back to the historical rectangular basis.
+        Auto mode derives per-channel limits from neutral-shell filling.
+        Manual mode uses the same radial-state limit for every angular channel.
         """
         if not self._use_manual_bound_basis():
             z_nuc = int(element_info(self.element).z)
@@ -1665,16 +1653,6 @@ def _ws_charge(
         * np.pi
         * trapz_integral((r_ws_slice**2) * n_ws_slice, r_ws_slice)
     )
-
-
-def _tail_shift_value(r: np.ndarray, v: np.ndarray, frac: float = 0.05) -> float:
-    """Estimate a constant tail gauge shift using the outer radial fraction."""
-    frac = min(max(float(frac), 1e-6), 0.5)
-    r_cut = (1.0 - frac) * float(r[-1])
-    mask = r >= r_cut
-    if not np.any(mask):
-        return float(v[-1])
-    return float(np.median(v[mask]))
 
 
 def _close_to_n0(
@@ -1945,6 +1923,35 @@ def _resolve_b3_tail_controls(
         "auto_signal_rel_tol": float(cfg.b3_tail_auto_signal_rel_tol),
         "fallback_on_error": bool(cfg.b3_fallback_on_error and cfg.cont_tail_fallback_on_error),
     }
+
+
+def _full_continuum_cutoff(full: dict[str, Any]) -> float:
+    """Read the actual full-system cutoff before solving the external system.
+
+    Fixed-mu and neutral-inner KS paths use different iteration histories.
+    Prefer the final-state scalar, including any final-refresh refinement.
+    Legacy states can supply their history or recorded spectral endpoint.
+    Cutoff recovery can raise even a fixed limit, so the initial configuration
+    cannot reconstruct the final integration domain.
+    """
+    value = full.get("cont_e_max_final")
+    if value is None:
+        history = full.get("history", [])
+        value = history[-1].get("cont_e_max") if history else None
+    if value is None:
+        energies = np.asarray(full.get("cont_phase_energy_ha", []), dtype=float)
+        if energies.ndim == 1 and energies.size:
+            value = float(np.max(energies))
+    try:
+        cutoff = float(value) if np.ndim(value) == 0 else np.nan
+    except (TypeError, ValueError):
+        cutoff = np.nan
+    if not np.isfinite(cutoff) or cutoff <= 0:
+        raise ValueError(
+            "Full AA state lacks a valid final continuum energy cutoff; "
+            "recompute it before adding the external system."
+        )
+    return cutoff
 
 
 _DIFFUSE_THRESHOLD_B3_FIT_RMS_RATIO_MAX = 100.0
@@ -3447,7 +3454,7 @@ def _external_fixed_mu_scf(
     gga_core_zr: float = 0.05,
     g_ii: np.ndarray | None = None,
     v_corr_ext: np.ndarray | None = None,
-    convergence_steps: int = 1,
+    convergence_steps: int = 3,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """
     External-only SCF loop with fixed (mu, n0).
@@ -3738,7 +3745,9 @@ def _external_fixed_mu_scf(
             perf["continuum"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
 
-        # 3) Rebuild V_ext and remove finite-box gauge.
+        # 3) Rebuild V_ext in the shared V(infinity)=0 convention of
+        # Starrett--Saumon (2014), Eq. (7). At fixed mu, subtracting a
+        # finite-radius tail value changes occupations rather than the gauge.
         v_new = effective_potential_external(
             r,
             n_ext_new,
@@ -3752,7 +3761,6 @@ def _external_fixed_mu_scf(
             gga_core_zr=gga_core_zr,
         )
         v_new = v_new + v_corr_use
-        v_new = v_new - _tail_shift_value(r, v_new, frac=0.05)
         if perf_diag:
             perf["closure"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
@@ -3788,7 +3796,6 @@ def _external_fixed_mu_scf(
             perf["potential"] = time.perf_counter() - t_stage
             t_stage = time.perf_counter()
 
-        v_ext = v_ext - _tail_shift_value(r, v_ext, frac=0.05)
         matching_input_valid = _continuum_matching_window_valid(r, v_prev, params_iter)
         v_ext, matching_backtracks = _guard_continuum_potential_mix(
             r, v_prev, v_new, v_ext, current_mix, params_iter
@@ -4640,16 +4647,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         r_full = np.asarray(full["r"], dtype=float)
         mu_fix = float(full["mu"])
         n0_fix = float(full["n0"])
-        stage2_hist = list(full.get("history", []))
-        stage2_e_max_final = float(cfg.cont_e_max)
-        if stage2_hist:
-            e_last = stage2_hist[-1].get("cont_e_max", stage2_e_max_final)
-            try:
-                e_last = float(e_last)
-            except Exception:
-                e_last = float(cfg.cont_e_max)
-            if np.isfinite(e_last):
-                stage2_e_max_final = e_last
+        stage2_e_max_final = _full_continuum_cutoff(full)
         # External branch reuses the stage-2 continuum integration settings,
         # but its B3 activation is still controlled independently from the
         # full solver so users can fall back to a pure-A3 external branch
@@ -4730,7 +4728,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         result["ext_status"] = {"enabled": False}
         result["ext_history"] = []
         result["perf_summary_ext"] = {"n_iter": 0, "n_perf": 0}
-        result["stage2_cont_e_max_final"] = float(cfg.cont_e_max)
+        result["stage2_cont_e_max_final"] = _full_continuum_cutoff(full)
 
     result, pseudoatom_charge_closure = _apply_paired_pseudoatom_b3_charge_closure(
         result,
@@ -4809,10 +4807,13 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         gga_core_radius_bohr=gga_core_radius,
     )
     result["v_xc_ext"] = np.asarray(v_xc_ext, dtype=float)
+    # Use the resampled potential actually passed to the external solve.
+    # The SC wrapper attaches v_corr_ext to the result only after this return;
+    # a cached full result can instead carry an obsolete external annotation.
     result["v_H_ext"] = (
         np.asarray(result["v_ext"], dtype=float)
         - np.asarray(v_xc_ext, dtype=float)
-        - np.asarray(result.get("v_corr_ext", 0.0), dtype=float)
+        - (v_corr_ext if do_external and v_corr_ext is not None else 0.0)
     )
     core_diagnostics = radial_core_diagnostics(
         r,
@@ -4908,11 +4909,9 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
     result["bound_basis_angular_saturated"] = bool(
         bound_basis_diag["angular_saturated"]
     )
-    # Source closure may deliberately use a tail-corrected density only for
-    # assembling V_eff while preserving the physical/output n_full profile.
-    # The final-refresh branch stores a fixed-point source candidate associated
-    # with the returned potential, rather than claiming that the last mixed
-    # potential was generated from that density exactly.
+    # Source closure supplies a tail-corrected potential source separately
+    # from n_full. After the final refresh, this source is a fixed-point
+    # candidate; its Poisson map may differ from the last mixed potential.
     veff_source_density_key = (
         "n_full_source" if "n_full_source" in result else "n_full"
     )
@@ -4951,9 +4950,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
             temperature_ha=float(temperature_ha),
         )
     )
-    # Ionization-state and WS-integral diagnostics. These are useful both
-    # for direct inspection and for lightweight post-processing of saved
-    # NPZ files, so we compute them once here and store them explicitly.
+    # Store ionization and WS charge integrals with the final state.
     n_ion = np.asarray(result["n_ion"], dtype=float)
     exact_ws_boundary = bool(cfg.exact_ws_boundary_quadrature)
     q_full_ws = _ws_charge(

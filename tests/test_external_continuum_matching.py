@@ -70,6 +70,31 @@ def test_blocked_external_step_cannot_pass_on_stationary_density_and_potential(
         assert row["convergence_streak"] == 0
 
 
+@pytest.mark.parametrize("scheme", ["linear", "eyert"])
+def test_fixed_mu_external_preserves_coulomb_boundary_value(
+    monkeypatch, external_loop, scheme,
+):
+    """A finite source has V(R)=Q/R, even though V(infinity)=0.
+
+    The potential convention in Starrett--Saumon (2014), Eq. (7), shares
+    the full system's chemical potential; it cannot be reset at the box edge.
+    """
+    r, _, evaluated, run = external_loop
+    radius, charge = 1., .02
+    potential = np.where(
+        r < radius,
+        charge * (3 - (r / radius) ** 2) / (2 * radius),
+        charge / r,
+    )
+    monkeypatch.setattr(fe, "effective_potential_external",
+                        lambda *a, **kw: potential.copy())
+    _, v, status = run(mixing_scheme=scheme, dv_tol=1e-9, max_iter=80)
+    assert status["converged"]
+    np.testing.assert_allclose(v, potential, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(evaluated[-1], potential, rtol=1e-9, atol=1e-12)
+    assert v[-1] == pytest.approx(charge / r[-1], rel=1e-9)
+
+
 @pytest.mark.parametrize("invalid_check", [0, 1])
 def test_invalid_input_or_output_window_resets_external_confirmation(
     monkeypatch, external_loop, invalid_check,

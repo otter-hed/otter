@@ -11,9 +11,8 @@ electronic partition convention:
 
 The script prints the levels and integrated density changes, then saves NPZ,
 PNG, and PDF diagnostics under
-``benchmarks/outputs/bound_energy_partition_sensitivity``.  It is deliberately
-not a normal pytest because three orbital continuum SCF calculations are too
-expensive for routine CI.
+``benchmarks/outputs/bound_energy_partition_sensitivity``. Run it separately
+from the unit tests; it performs three continuum SCF calculations.
 
 The positive-energy continuum remains the Appendix-A3 integral in every run.
 Consequently, a deliberately negative fixed cut leaves ``E_cut < E < 0`` in

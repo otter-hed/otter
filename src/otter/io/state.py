@@ -1,9 +1,8 @@
 r"""Portable, machine-readable plasma-state exports.
 
-The public state format can store selected converged average-atom,
-pseudoatom, and QOZ/HNC quantities needed for analysis or downstream XRTS
-calculations.  The default ``complete`` profile preserves the historical
-full-state behaviour; smaller profiles omit unrelated arrays:
+The state format stores converged average-atom, pseudoatom, and QOZ/HNC
+quantities for analysis and XRTS calculations. The default ``complete``
+profile includes all public data groups; smaller profiles select a subset:
 
 ``q(k)``
     The charge-closed pseudoatom screening cloud
@@ -18,8 +17,8 @@ full-state behaviour; smaller profiles omit unrelated arrays:
     channels used by the QOZ construction.
 ``chi0_k``, ``chi_ee_k``, ``G_ee_k``
     Ideal and interacting electron responses and the selected local-field
-    correction :math:`G_{ee}(k)`.  ``gee_k`` and ``g_ee_k`` are temporary
-    compatibility aliases for ``G_ee_k``.
+    correction :math:`G_{ee}(k)`. ``gee_k`` and ``g_ee_k`` are compatibility
+    aliases for ``G_ee_k``.
 ``species_<i>_*``
     Native-grid electronic densities, potential components, mean-ionization
     definitions, bound levels, and per-level density contributions.
@@ -650,6 +649,7 @@ def _metadata(
             "c_ie_k": "Bohr^3",
             "c_ee_k": "Bohr^3",
             "v_ie_r": "Hartree",
+            "v_ei_r": "Hartree",
             "v_ee_r": "Hartree",
             "c_ie_r": "dimensionless",
             "c_ee_r": "dimensionless",

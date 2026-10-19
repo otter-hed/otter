@@ -1,8 +1,7 @@
-"""Capture reviewed HTML figures/output for documentation without numerical caches.
+"""Capture figures and terminal output from an executed Sphinx-Gallery build.
 
-Run after reviewing a calculation-backed documentation build. This command
-copies presentation assets only; it never runs a solver or manufactures data.
-The Python gallery programs remain the source for independent calculations.
+Run after reviewing the calculations. Captured assets and hashes are stored
+under docs/source/_static/gallery_results.
 """
 from __future__ import annotations
 

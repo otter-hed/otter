@@ -2,13 +2,12 @@ r"""
 Starrett--Saumon electronic levels and ionization
 ==================================================
 
-This benchmark compares current Otter ion-sphere (IS) and experimental
+This benchmark compares Otter ion-sphere (IS) and experimental
 self-consistent (SC) diagnostics with Tables I--III of
 :cite:t:`StarrettSaumon2013` (doi:
 `10.1103/PhysRevE.87.013104
-<https://doi.org/10.1103/PhysRevE.87.013104>`__).  It was added specifically
-to make pressure ionization auditable before interpreting the
-:math:`\bar Z` difference in Johnson *et al.* (2025).
+<https://doi.org/10.1103/PhysRevE.87.013104>`__). It covers bound energies,
+pressure-ionization weights and mean ionization.
 
 The article's reported results are **not** isolated ion-sphere calculations.
 Its average-atom and two-component-plasma (QTCP or TFTCP) equations are
@@ -24,10 +23,9 @@ For a bound level of energy :math:`E<0`, Otter uses Eq. (81),
 
 where :math:`\gamma` is obtained from the continuum phase shifts through the
 transport-cross-section, Ziman-conductivity, and Drude relaxation-time path.
-These sparse diagnostics are clearer as tables than as plots, so this gallery
-uses direct numerical comparisons throughout.  Otter values are rounded to
-three significant digits; published values retain the precision of the
-article.  Every :math:`E` and :math:`\gamma` entry uses Hartree, while
+The tables give Otter values to three significant digits and published
+values at the article's precision. Every :math:`E` and :math:`\gamma`
+entry uses Hartree, while
 :math:`M(E)` and both ionization definitions are dimensionless.
 
 .. raw:: html
@@ -78,12 +76,10 @@ article.  Every :math:`E` and :math:`\gamma` entry uses Hartree, while
    <tr><td>15</td><td>0.174</td><td>0.111</td><td>0.171</td></tr>
    </tbody></table>
 
-As a formula-only audit, evaluating Otter's Eq. (81) with the *published*
+Evaluating Eq. (81) with the published
 15-eV 3s inputs :math:`E=-0.0125` Ha and :math:`\gamma=0.174` Ha gives
-:math:`M=0.1343`, consistent with the published 0.134.  This is not a fourth
-physical model, so it is reported as an audit rather than an extra table model.
-Local numerical output retains full precision; the executable summary follows the
-same three-significant-digit presentation.  Tables II and III use two distinct
+:math:`M=0.1343`, consistent with the published 0.134.
+Saved numerical results retain full precision. Tables II and III use two
 ionization definitions:
 
 .. math::
@@ -93,8 +89,7 @@ ionization definitions:
 
 The following tables compare both definitions directly.  The
 :math:`\Gamma_{\rm OCP}` and :math:`\Gamma_{\rm TCP}` columns are transcribed
-paper parameters, not Otter observables; this benchmark does not manufacture
-nominally corresponding Otter values.
+parameters from the paper.
 
 .. raw:: html
 
@@ -151,16 +146,15 @@ nominally corresponding Otter values.
 Otter-IS is the converged production ion-sphere workflow.  Otter-SC is the
 experimental feedback path based on Sec. 2.4 of
 :cite:t:`StarrettSaumon2014`: it feeds QOZ/HNC ion structure back into the
-average atom while holding the converged IS chemical potential fixed.  This
-is a useful controlled comparison, but it is not claimed to reproduce every
-detail of the simultaneous 2013 QTCP/TFTCP solver.  Al uses quantum orbitals;
+average atom while holding the converged IS chemical potential fixed.
+This fixed-chemical-potential iteration differs from the simultaneous 2013
+QTCP/TFTCP solver. Al uses quantum orbitals;
 Fe uses Thomas--Fermi electrons, matching the model named for Table III.
 
-The refreshed QM SC feedback uses zero-tail shallow-state matching by default,
+QM SC feedback uses zero-tail shallow-state matching by default,
 adaptive full-AA precision and the unmixed correlation-potential residual.
 Inner SCF and outer SC acceptance are distinct; the numerical output records
 both the outer residual and whether QM precision refinement was performed.
-This is a numerical accuracy safeguard, not a change to Eq. (81).
 
 Reproduction
 ------------

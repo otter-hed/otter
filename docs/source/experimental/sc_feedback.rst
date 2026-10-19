@@ -3,9 +3,8 @@ Self-consistent ion-structure feedback
 
 .. warning::
 
-   The AA :math:`\leftrightarrow` QOZ/HNC feedback implementation is
-   **experimental and not a production workflow**.  The production default is
-   the ion-sphere (IS) construction.
+   AA :math:`\leftrightarrow` QOZ/HNC feedback is experimental.
+   The default workflow uses the ion-sphere (IS) construction.
 
 The module :mod:`otter.experimental.sc_feedback` implements an outer iteration
 inspired by the self-consistent construction of
@@ -54,7 +53,7 @@ by the IS source.
 The electronic payload retains ``g_ii_background``, ``v_corr_full`` and
 ``v_corr_ext`` on its radial grid.  The final ``sc_feedback`` metadata also
 retains the mixed correlation potential and grid used by the last outer
-iteration, making Eq. (19) auditable.
+iteration, for comparison with Eq. (19).
 
 Minimal diagnostic use
 ----------------------
@@ -89,11 +88,9 @@ Minimal diagnostic use
 
    history = sc_result["sc_feedback"]["history"]
 
-Keep ``is_result`` as the comparison reference.  The experimental API fails
-closed by default when the outer iteration is unconverged.  Set
-``require_converged=False`` only to inspect an explicitly labelled
-best-effort diagnostic; the portable production state writer rejects such a
-result.
+``is_result`` provides the comparison reference. An unconverged outer iteration
+raises an error by default. ``require_converged=False`` returns the unconverged
+result for diagnosis; the portable state writer rejects it.
 
 Numerical convergence and inner accuracy
 ------------------------------------------

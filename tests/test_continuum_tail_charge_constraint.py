@@ -1230,6 +1230,7 @@ def _synthetic_full_result(cfg: KSDTFConfig) -> dict[str, object]:
     n_pa = n_full - n_ext
     return {
         "Z": float(cfg.Z),
+        "cont_e_max_final": float(cfg.continuum_params["e_max"]),
         "r": r,
         "r_bound": r.copy(),
         "g_ii": (r >= float(cfg.r_ws)).astype(float),
@@ -1248,6 +1249,7 @@ def _synthetic_full_result(cfg: KSDTFConfig) -> dict[str, object]:
         "n_full_pre_tail": n_full.copy(),
         "n_full_source": n_full.copy(),
         "n_full_source_provenance": "synthetic_fixed_point_candidate",
+        "scf_convergence_steps": int(cfg.convergence_steps),
         "n_full_tail_meta": {
             "charge_constraint_requested": True,
             "charge_constraint_applied": True,
@@ -1390,13 +1392,18 @@ def test_full_external_can_reuse_a_converged_full_result(
 ) -> None:
     """Adding the external branch must not rerun an accepted full-AA state."""
     full_calls = 0
+    resolved_cutoffs = []
 
     def fake_full(cfg):
         nonlocal full_calls
         full_calls += 1
-        return _synthetic_full_result(cfg)
+        state = _synthetic_full_result(cfg)
+        state["cont_e_max_final"] += 1.25
+        resolved_cutoffs.append(state["cont_e_max_final"])
+        return state
 
     def fake_external(**kwargs):
+        assert kwargs["ext_params_base"]["e_max"] == resolved_cutoffs[-1]
         r = np.asarray(kwargs["r"], dtype=float)
         n0 = float(kwargs["n0"])
         return (
@@ -1433,6 +1440,7 @@ def test_full_external_can_reuse_a_converged_full_result(
         FullExternalConfig(**common, run_mode="full", ext_scf_enabled=False)
     )
     calls_after_root = full_calls
+    assert full["scf_convergence_steps"] == 3
     result = solve_full_then_external(
         FullExternalConfig(
             **common,
@@ -1447,6 +1455,18 @@ def test_full_external_can_reuse_a_converged_full_result(
     assert result["full_result_reused"] is True
     assert result["stage2_converged"] is True
     assert result["ext_status"]["converged"] is True
+
+    # Fixed mode can also raise the cutoff during neutral-inner recovery.
+    # Its initial configuration is not a substitute for missing actual data.
+    missing_cutoff = {**full, "history": []}
+    missing_cutoff.pop("cont_e_max_final", None)
+    missing_cutoff.pop("cont_phase_energy_ha", None)
+    with pytest.raises(ValueError, match="final continuum energy cutoff"):
+        solve_full_then_external(FullExternalConfig(
+            **common, cont_stage2_e_max_mode="fixed",
+            full_result_init=missing_cutoff,
+        ))
+    assert full_calls == calls_after_root
 
     # Changing a discretization policy is not an external-only continuation.
     # Never reinterpret a saved full state as if it used the new WS boundary.

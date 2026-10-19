@@ -22,7 +22,9 @@ from otter import PlasmaWorkflowConfig, __version__, ion_orbital_form_factors, s
 from otter.workflows import resolve_plasma_composition
 
 SCHEMA = "otter_grid_v2"
-OUTPUTS = ("Sii", "q", "f", "Zbar", "Zstar", "f_nl", "E_nl")
+OUTPUTS = ("Sii", "q", "f", "Zbar", "Zstar", "f_nl", "E_nl", "v_ei_k", "v_ei_r")
+FIELD_UNITS = {"E_nl": "hartree", "v_ei_k": "hartree * a0 ** 3", "v_ei_r": "hartree",
+               "k": "1/a0", "r": "a0"}
 PENDING, RUNNING, COMPLETE, FAILED = range(4)
 
 
@@ -69,8 +71,11 @@ class GridConfig:
     outputs : sequence of str, optional
         Selected names from OUTPUTS. Orbital fields require QM.
     save_native_spectra : bool, optional
-        Also retain each state's original k and selected Sii, q and f arrays.
+        Retain native coordinates and selected Sii, q, f and potential arrays.
         Default False; common-grid exports are unchanged.
+    r : sequence of float or None, optional
+        Positive, increasing output radii in Bohr for v_ei_r. If omitted,
+        v_ei_r is saved on each state's native radial grid.
 
     Notes
     -----
@@ -85,12 +90,15 @@ class GridConfig:
     alpha: tuple[float, ...] = (1.0,)
     outputs: tuple[str, ...] = OUTPUTS
     save_native_spectra: bool = False
+    r: tuple[float, ...] | None = None
 
     def __post_init__(self):
         if not isinstance(self.save_native_spectra, bool):
             raise ValueError("save_native_spectra must be a boolean.")
         for name in ("temperature_ev", "rho_g_cc", "k", "alpha"):
             object.__setattr__(self, name, _axis(getattr(self, name), name))
+        if self.r is not None:
+            object.__setattr__(self, "r", _axis(self.r, "r"))
         outputs = tuple(self.outputs)
         if not outputs or len(set(outputs)) != len(outputs) or set(outputs) - set(OUTPUTS):
             raise ValueError(f"outputs must be a nonempty subset of {OUTPUTS} without duplicates.")
@@ -131,17 +139,19 @@ class GridConfig:
             key: self.workflow.get(key) for key in ("formula", "elements", "counts", "number_fraction")})
 
 
-def _resample(k_native, values, k):
-    native, values = np.asarray(k_native, dtype=float), np.asarray(values, dtype=float)
-    target = np.asarray(_axis(k, "Output k"))
+def _resample(native_coordinates, values, output_coordinates, *, coordinate="k"):
+    native, values = np.asarray(native_coordinates, dtype=float), np.asarray(values, dtype=float)
+    target = np.asarray(_axis(output_coordinates, f"Output {coordinate}"))
     if (native.ndim != 1 or native.size < 2 or not np.all(np.isfinite(native))
             or np.any(native <= 0) or np.any(np.diff(native) <= 0)
             or values.ndim == 0 or values.shape[-1] != native.size
             or not np.all(np.isfinite(values))):
-        raise ValueError("Invalid native spectrum or k grid.")
+        raise ValueError(f"Invalid native profile or {coordinate} grid.")
     if target[0] < native[0] or target[-1] > native[-1]:
-        raise ValueError(f"Output k range [{target[0]:g}, {target[-1]:g}] lies outside "
+        raise ValueError(f"Output {coordinate} range [{target[0]:g}, {target[-1]:g}] lies outside "
                          f"native range [{native[0]:g}, {native[-1]:g}]; extrapolation is disabled.")
+    if np.array_equal(native, target):
+        return values
     rows = values.reshape((-1, native.size))
     return np.asarray([np.interp(target, native, row) for row in rows]).reshape(
         (*values.shape[:-1], target.size))
@@ -161,8 +171,8 @@ def _pack_result(result, config):
     ns, data = len(symbols), {}
     native_k = np.asarray(ion["k"])
     _resample(native_k, np.zeros_like(native_k), config.k)
-    native_spectra = {"k": native_k}
-    for requested, key in (("Sii", "sij_k"), ("q", "q_k"), ("f", "f_k")):
+    native_spectra = {"k": native_k} if config.save_native_spectra else {}
+    for requested, key in (("Sii", "sij_k"), ("q", "q_k"), ("f", "f_k"), ("v_ei_k", "v_ei_k")):
         if requested in config.outputs:
             array = np.asarray(ion[key], dtype=float)
             expected = (ns, ns, native_k.size) if requested == "Sii" else (ns, native_k.size)
@@ -171,6 +181,17 @@ def _pack_result(result, config):
             data[requested] = _resample(native_k, array, config.k)
             if config.save_native_spectra:
                 native_spectra[{"Sii": "S_ii"}.get(requested, requested)] = array
+    if "v_ei_r" in config.outputs:
+        native_r = np.asarray(ion["r"], dtype=float)
+        potential = np.asarray(ion["v_ei_r"], dtype=float)
+        if potential.shape != (ns, native_r.size):
+            raise ValueError(f"v_ei_r: expected {(ns, native_r.size)}, got {potential.shape}.")
+        sampled = _resample(native_r, potential, native_r if config.r is None else config.r,
+                            coordinate="r")
+        if config.r is not None:
+            data["v_ei_r"] = sampled
+        if config.r is None or config.save_native_spectra:
+            native_spectra.update(r=native_r, v_ei_r=potential)
     for requested, key in (("Zbar", "zbar"), ("Zstar", "zstar")):
         if requested in config.outputs:
             data[requested] = np.asarray(ion[key], dtype=float)
@@ -208,10 +229,14 @@ def _pack_result(result, config):
                      "external_converged": bool(e["result"].get("ext_status", {}).get("converged", False)),
                      "threshold": str(e["result"].get("threshold_state_status", "unknown"))}
                     for e in entries]}
-    if config.save_native_spectra:
+    if "v_ei_r" in config.outputs:
+        diagnostics.update(native_r_min=float(native_r[0]), native_r_max=float(native_r[-1]),
+                           native_r_points=int(native_r.size))
+    if native_spectra:
         data["native"] = native_spectra
+    if config.save_native_spectra:
         diagnostics["native_first"] = {
-            name: values[..., 0].tolist() for name, values in native_spectra.items() if name != "k"}
+            name: values[..., 0].tolist() for name, values in native_spectra.items() if name not in {"k", "r"}}
         if {"f", "q"} <= native_spectra.keys():
             diagnostics["native_first"]["N"] = (native_spectra["f"][:, 0] + native_spectra["q"][:, 0]).tolist()
     return data, orbitals, diagnostics
@@ -274,12 +299,15 @@ class _GridFile:
             raise
 
     def _validate_axes(self):
-        """Check stored coordinates, not just the manifest, before resuming."""
+        """Validate stored coordinates and metadata before resuming."""
         cfg = self.config
         symbols, counts = cfg.composition()
-        for name, values, unit in (("T_e", cfg.temperature_ev, "eV"),
+        axes = [("T_e", cfg.temperature_ev, "eV"),
                                    ("rho", cfg.rho_g_cc, "g/cm^3"),
-                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0")):
+                                   ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0")]
+        if cfg.r is not None:
+            axes.append(("r", cfg.r, "a0"))
+        for name, values, unit in axes:
             ds = self.file.get(f"axis/{name}")
             if (ds is None or not np.array_equal(ds[:], values)
                     or _stored_unit(ds) != unit):
@@ -293,13 +321,23 @@ class _GridFile:
         if not np.array_equal(fractions, np.asarray(counts) / np.sum(counts)):
             raise ValueError("Cannot resume: number_fraction differs from the composition.")
         for key in cfg.outputs:
+            if key == "v_ei_r" and cfg.r is None:
+                continue
             name = {"Sii": "S_ii", "Zbar": "Z_bar", "Zstar": "Z_star"}.get(key, key)
             ds = self.file.get(name)
-            if ds is None or _stored_unit(ds) != ("hartree" if key == "E_nl" else "1"):
+            if ds is None or _stored_unit(ds) != FIELD_UNITS.get(key, "1"):
                 raise ValueError(f"Cannot resume: missing {name} or incompatible unit.")
-        for name in ("S_ii", "q", "f", "f_nl"):
+        for name in ("S_ii", "q", "f", "f_nl", "v_ei_k"):
             if name in self.file and self.file[name].attrs.get("k_path") != "/axis/k":
                 raise ValueError(f"Cannot resume: {name} does not reference the common /axis/k grid.")
+        for name, coordinate, values in (("v_ei_k", "k", cfg.k), ("v_ei_r", "r", cfg.r)):
+            if name not in cfg.outputs or values is None:
+                continue
+            ds = self.file[name]
+            if (ds.shape != (len(symbols), len(values), *cfg.shape)
+                    or list(ds.attrs.get("axis", [])) != ["i", coordinate, "T_e", "rho", "alpha"]
+                    or ds.attrs.get(f"{coordinate}_path") != f"/axis/{coordinate}"):
+                raise ValueError(f"Cannot resume: invalid {name} dimensions or coordinates.")
         for name in ("status", "error", "elapsed_s", "attempts", "convergence"):
             ds = self.file.get(f"diagnostics/{name}")
             if (ds is None or ds.shape != cfg.shape
@@ -308,6 +346,23 @@ class _GridFile:
         status = self.file["diagnostics/status"]
         if status.dtype.kind not in "iu" or not np.isin(status[:], [PENDING, RUNNING, COMPLETE, FAILED]).all():
             raise ValueError("Cannot resume: invalid diagnostics/status values.")
+        native_fields = []
+        if cfg.save_native_spectra and "v_ei_k" in cfg.outputs:
+            native_fields.append(("v_ei_k", "k"))
+        if "v_ei_r" in cfg.outputs and (cfg.r is None or cfg.save_native_spectra):
+            native_fields.append(("v_ei_r", "r"))
+        for index in np.argwhere(status[:] == COMPLETE) if native_fields else ():
+            path = "native/" + "_".join(map(str, index))
+            for name, coordinate in native_fields:
+                axis, ds = self.file.get(f"{path}/{coordinate}"), self.file.get(f"{path}/{name}")
+                if (axis is None or ds is None or axis.ndim != 1 or axis.size < 2
+                        or _stored_unit(axis) != FIELD_UNITS[coordinate]
+                        or _stored_unit(ds) != FIELD_UNITS[name]
+                        or ds.shape != (len(symbols), axis.size)
+                        or list(ds.attrs.get("axis", [])) != ["i", coordinate]
+                        or ds.attrs.get(f"{coordinate}_path") != f"/{path}/{coordinate}"):
+                    raise ValueError(f"Cannot resume: invalid {path}/{name} or its coordinates.")
+                _axis(axis[:], f"{path}/{coordinate}")
         if {"f_nl", "E_nl"} & set(cfg.outputs):
             n = self.file.get("axis/orbitals/n")
             l = self.file.get("axis/orbitals/l")
@@ -336,7 +391,7 @@ class _GridFile:
         symbols, counts = cfg.composition()
         ns, nk, shape, text = len(symbols), len(cfg.k), cfg.shape, h5py.string_dtype("utf-8")
         f.attrs.update(schema=SCHEMA, manifest_json=manifest, complete=False)
-        if cfg.save_native_spectra:
+        if cfg.save_native_spectra or ("v_ei_r" in cfg.outputs and cfg.r is None):
             native = f.create_group("native")
             native.attrs["layout"] = "One group per state, named Te-index_rho-index_alpha-index."
         axes = f.create_group("axis")
@@ -344,6 +399,8 @@ class _GridFile:
         for name, values, unit in (("T_e", cfg.temperature_ev, "eV"), ("rho", cfg.rho_g_cc, "g/cm^3"),
                                    ("alpha", cfg.alpha, "1"), ("k", cfg.k, "1/a0")):
             axes.create_dataset(name, data=values).attrs["unit"] = unit
+        if cfg.r is not None:
+            axes.create_dataset("r", data=cfg.r).attrs["unit"] = "a0"
         axes["alpha"].attrs["definition"] = "Ti/Te"
         axes.create_dataset("elements", data=symbols, dtype=text)
         axes["elements"].attrs["number_fraction"] = np.asarray(counts) / np.sum(counts)
@@ -352,17 +409,24 @@ class _GridFile:
                   "q": ("q", (ns, nk), ["i", "k"]), "f": ("f", (ns, nk), ["i", "k"]),
                   "Zbar": ("Z_bar", (ns,), ["i"]), "Zstar": ("Z_star", (ns,), ["i"]),
                   "f_nl": ("f_nl", (ns, 0, nk), ["i", "orbital", "k"]),
-                  "E_nl": ("E_nl", (ns, 0), ["i", "orbital"])}
+                  "E_nl": ("E_nl", (ns, 0), ["i", "orbital"]),
+                  "v_ei_k": ("v_ei_k", (ns, nk), ["i", "k"])}
+        if cfg.r is not None:
+            fields["v_ei_r"] = ("v_ei_r", (ns, len(cfg.r)), ["i", "r"])
         for output in cfg.outputs:
+            if output == "v_ei_r" and cfg.r is None:
+                continue
             name, prefix, labels = fields[output]
             ds = f.create_dataset(name, shape=prefix + shape,
                                   maxshape=tuple(None if x == 0 else x for x in prefix) + shape,
                                   dtype="f8", chunks=tuple(max(1, x) for x in prefix) + (1, 1, 1),
                                   compression="gzip", shuffle=True, fillvalue=np.nan)
             ds.attrs["axis"] = labels + ["T_e", "rho", "alpha"]
-            ds.attrs["unit"] = "hartree" if output == "E_nl" else "1"
+            ds.attrs["unit"] = FIELD_UNITS.get(output, "1")
             if "k" in labels:
                 ds.attrs["k_path"] = "/axis/k"
+            if "r" in labels:
+                ds.attrs["r_path"] = "/axis/r"
             if "orbital" in labels:
                 ds.attrs["orbital_path"] = "/axis/orbitals"
         if "Z_bar" in f:
@@ -422,7 +486,7 @@ class _GridFile:
                 continue
             name = {"Sii": "S_ii", "Zbar": "Z_bar", "Zstar": "Z_star"}.get(key, key)
             f[name][(..., *index)] = values
-        if self.config.save_native_spectra:
+        if "native" in data:
             group_name = "_".join(map(str, index))
             root = f["native"]
             if group_name in root:
@@ -431,11 +495,12 @@ class _GridFile:
             state.attrs["state_index"] = index
             for name, values in data["native"].items():
                 ds = state.create_dataset(name, data=values, compression="gzip", shuffle=True)
-                ds.attrs["unit"] = "1/a0" if name == "k" else "1"
-                ds.attrs["axis"] = (["k"] if name == "k" else
-                                   ["i", "j", "k"] if name == "S_ii" else ["i", "k"])
-                if name != "k":
-                    ds.attrs["k_path"] = state.name + "/k"
+                coordinate = "r" if name in {"r", "v_ei_r"} else "k"
+                ds.attrs["unit"] = FIELD_UNITS.get(name, "1")
+                ds.attrs["axis"] = ([coordinate] if name in {"k", "r"} else
+                                   ["i", "j", "k"] if name == "S_ii" else ["i", coordinate])
+                if name not in {"k", "r"}:
+                    ds.attrs[f"{coordinate}_path"] = state.name + f"/{coordinate}"
         if orbitals:
             slots = [np.asarray(o["n"] * (o["n"] - 1) // 2 + o["l"], dtype=int) for o in orbitals]
             self._extend_orbitals(max((int(s.max()) + 1 for s in slots if s.size), default=0))
@@ -461,7 +526,7 @@ class _GridFile:
         native_path = "native/" + "_".join(map(str, index))
         if native_path in f:
             del f[native_path]
-        for name in ("S_ii", "q", "f", "Z_bar", "Z_star", "f_nl", "E_nl"):
+        for name in ("S_ii", "q", "f", "Z_bar", "Z_star", "f_nl", "E_nl", "v_ei_k", "v_ei_r"):
             if name in f:
                 f[name][(..., *index)] = np.nan
         if "orbitals_present" in f:
@@ -492,7 +557,7 @@ def run_grid(config: GridConfig, filename, *, workers: int = 1, resume: bool = F
     Parameters
     ----------
     config : GridConfig
-        Composition, state axes, output k grid and requested observables.
+        Composition, state axes, output grids and requested observables.
     filename : str or pathlib.Path
         HDF5 destination. Existing files require resume=True.
     workers : int, optional
@@ -563,18 +628,19 @@ def run_grid(config: GridConfig, filename, *, workers: int = 1, resume: bool = F
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("config", type=Path, help="JSON with workflow, temperature_ev, rho_g_cc, alpha and k.")
+    parser.add_argument("config", type=Path, help="JSON with workflow, state axes, k and optional r.")
     parser.add_argument("output", type=Path, help="HDF5 output file; existing files require --resume.")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent single-CPU states (default: 1).")
     parser.add_argument("--resume", action="store_true", help="Retry unfinished states in a matching file.")
     args = parser.parse_args(argv)
     specification = json.loads(args.config.read_text())
-    if isinstance(specification.get("k"), dict):
-        k = specification["k"]
-        if (set(k) != {"min", "max", "points"} or isinstance(k["points"], bool)
-                or not isinstance(k["points"], int) or k["points"] < 2):
-            parser.error("k requires min, max and an integer points >= 2.")
-        specification["k"] = np.linspace(k["min"], k["max"], k["points"]).tolist()
+    for name in ("k", "r"):
+        if isinstance(specification.get(name), dict):
+            axis = specification[name]
+            if (set(axis) != {"min", "max", "points"} or isinstance(axis["points"], bool)
+                    or not isinstance(axis["points"], int) or axis["points"] < 2):
+                parser.error(f"{name} requires min, max and an integer points >= 2.")
+            specification[name] = np.linspace(axis["min"], axis["max"], axis["points"]).tolist()
     summary = run_grid(GridConfig(**specification), args.output, workers=args.workers, resume=args.resume)
     print(f"Completed {summary['complete']}/{summary['total']}; failed={summary['failed']}", flush=True)
     return 0 if summary["complete"] == summary["total"] else 1

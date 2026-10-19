@@ -1,11 +1,4 @@
-"""
-otter.electronic.solvers.free
-
-Free-state Numerov propagation kernels used by the quantum continuum solver.
-
-The project requires numba, so these are the production kernels rather than
-optional accelerators.
-"""
+"""Numba Numerov propagation kernels for the quantum continuum solver."""
 from __future__ import annotations
 
 import numpy as np

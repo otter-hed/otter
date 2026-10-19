@@ -3,16 +3,14 @@ otter/electronic/mixture.py
 
 General multicomponent AA electronic structure.
 
-This module extends the current binary common-chemical-potential construction
-to an arbitrary number of ionic species. The physical constraints follow
-Starrett et al. (2014):
+The common-chemical-potential calculation supports any number of ionic
+species. Its physical constraints follow Starrett et al. (2014):
 
   (1) all average atoms share one electron chemical potential
   (2) the per-species ion-sphere volumes satisfy the mixture volume sum rule
 
-The implementation keeps the AA work itself unchanged. The outer loop solves
-for positive per-species volume weights and then reuses the existing
-single-species `FullExternalConfig` solver for each component.
+The outer loop solves for positive per-species volume weights and calls
+the single-species `FullExternalConfig` solver for each component.
 
 Reference
 ---------
@@ -20,8 +18,7 @@ C. E. Starrett, D. Saumon, J. Daligault, and S. Hamel, Physical Review E
 90, 033110 (2014), DOI 10.1103/PhysRevE.90.033110.  The shared chemical
 potential and mixture-volume closure are the physical constraints of that
 work.  Softmax coordinates, interpolation-based warm starts, threshold-state
-retries, and the bracketed/surrogate root machinery are Otter numerical
-methods and should not be attributed to the paper.
+retries and bracketed/surrogate root searches are Otter numerical methods.
 """
 from __future__ import annotations
 

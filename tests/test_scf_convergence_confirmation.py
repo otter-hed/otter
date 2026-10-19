@@ -1,4 +1,4 @@
-"""Consecutive SCF gates reset on a failed pass; defaults stay compatible."""
+"""QM SCF requires three consecutive passes; any failed gate resets the count."""
 import numpy as np
 import pytest
 
@@ -41,8 +41,17 @@ def test_reject_invalid_confirmation_count(value):
                            scf_convergence_steps=value)
 
 
-def test_default_is_one_and_tf_does_not_silently_ignore_option():
+def test_qm_defaults_require_three_passes_and_matching_full_external_tolerances():
     cfg = FullExternalConfig(element="C", temperature_ev=10., rho_g_cc=1.)
+    assert cfg.scf_convergence_steps == 3
+    assert cfg.ext_scf_dn_tol == cfg.scf_dn_tol == 1e-5
+    assert cfg.ext_scf_dv_tol == cfg.scf_dv_tol == 1e-5
+    assert ks.KSDTFConfig(Z=1, temperature=.5, mu=0., r_ws=1.).convergence_steps == 3
+
+
+def test_tf_retains_its_separate_stopping_policy():
+    cfg = FullExternalConfig(element="C", temperature_ev=10., rho_g_cc=1.,
+                             electronic_model="tf")
     assert cfg.scf_convergence_steps == 1
     with pytest.raises(ValueError, match="only for QM"):
         FullExternalConfig(element="C", temperature_ev=10., rho_g_cc=1.,
@@ -68,6 +77,38 @@ def test_external_loop_honours_confirmation_count(monkeypatch, steps):
     assert status["history"][-1]["convergence_streak"] == steps
 
 
+@pytest.mark.parametrize("budget,converged", [(6, False), (7, True)])
+def test_external_density_change_resets_three_pass_confirmation(
+    monkeypatch, budget, converged,
+):
+    class PulsedContinuum:
+        def __init__(self):
+            self.calls = 0
+
+        def density(self, r, *args, **kwargs):
+            self.calls += 1
+            return np.full_like(r, .04 if self.calls == 3 else .02)
+
+    continuum = PulsedContinuum()
+    monkeypatch.setattr(ks, "_select_continuum_model", lambda _: continuum)
+    monkeypatch.setattr(
+        fe, "effective_potential_external", lambda r, *a, **kw: np.zeros_like(r),
+    )
+    r = np.linspace(.01, 3., 48)
+    _, _, status = fe._external_fixed_mu_scf(
+        r=r, mu=0., temperature_ha=.5, n0=.02, g_ii=np.ones_like(r),
+        ext_params_base=dict(source_closure=False, match_min_points=3),
+        mix=.2, dn_tol=1e-5, dv_tol=1e-5, max_iter=budget, adaptive_mix=False,
+        mixing_scheme="linear", mixing_m=2, mixing_w0=1e-4, ext_b3_tail_mode="off",
+        verbose=False, print_every=1,
+    )
+    assert status["converged"] is converged
+    expected_streak = [1, 2, 0, 0, 1, 2, 3][:budget]
+    assert [row["convergence_streak"] for row in status["history"]] == expected_streak
+    assert status["history"][2]["dn_rel"] > 1e-5
+    assert all(row["dv_rel"] == row["map_err"] == 0. for row in status["history"])
+
+
 def test_reused_full_cannot_claim_a_confirmation_it_never_performed():
     candidate = {key: 1. for key in ("r", "r_ws", "mu", "n0", "g_ii", "n_full", "n_ion", "v_full")}
     candidate["converged"] = True
@@ -91,7 +132,8 @@ def test_final_refresh_must_still_satisfy_physical_map(monkeypatch, refresh_scal
         r_ws=1., rmax=4., n_points=48, l_list=np.array([0]), n_states=1,
         continuum_model="ideal", compute_external=False, mu_bounds=(-10., 10.),
         mu_max_iter=100, max_iter=2, mix=1., mixing_scheme="linear",
-        tol=1e-6, dn_tol=1e6, dv_tol=1e6, bound_spectrum_check=False)
+        tol=1e-6, dn_tol=1e6, dv_tol=1e6, bound_spectrum_check=False,
+        convergence_steps=1)
     result = ks.solve_ks_dft_is(cfg)
     assert calls == 3  # Two iterations, then the refreshed density's map.
     assert result["history"][-1]["convergence_streak"] == 1

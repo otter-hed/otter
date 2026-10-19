@@ -77,7 +77,6 @@ def main() -> None:
         ion_temperature_ev=TI_EV,
         save_state_npz=SAVE_NPZ,
         save_state_path=OUTPUT_PATH,
-        #electronic_model='tf', # run semiclassical Thomas-Fermi model for the electronic structure; default is ks-dft (QM)
     )
     result = solve_plasma_workflow(cfg)
     ion = result["ion"]
@@ -86,11 +85,11 @@ def main() -> None:
     set_style("docs", palette="deep_science")
     fig, axes = plt.subplots(
         2,
-        2,
-        figsize=grid_figsize(2, 2),
+        3,
+        figsize=grid_figsize(2, 3),
         constrained_layout=True,
     )
-    ax_density, ax_potential, ax_gii, ax_sii = axes.ravel()
+    ax_density, ax_potential, ax_vr, ax_gii, ax_sii, ax_vk = axes.ravel()
 
     r_e = np.asarray(electronic["r"], dtype=float)
     density_names = ("n_full", "n_bound", "n_cont", "n_ion", "n_ext", "n_pa", "n_scr")
@@ -114,8 +113,8 @@ def main() -> None:
             linewidth=1.1,
             label=r"$R_{\mathrm{ws}}$",
         )
-    ax_density.set_xlabel(r"$r\,[a_0]$")
-    ax_density.set_ylabel(r"$4\pi r^2 n(r)\,[a_0^{-1}]$")
+    ax_density.set_xlabel(r"$r\,[a_B]$")
+    ax_density.set_ylabel(r"$4\pi r^2 n(r)\,[a_B^{-1}]$")
     ax_density.legend()
     ax_density.set_ylim(-0.5, 15)
     ax_density.set_xlim(-0.5, 8)
@@ -141,7 +140,7 @@ def main() -> None:
             linewidth=1.1,
             label=r"$R_{\mathrm{ws}}$",
         )
-    ax_potential.set_xlabel(r"$r\,[a_0]$")
+    ax_potential.set_xlabel(r"$r\,[a_B]$")
     ax_potential.set_ylabel(r"$V_{\mathrm{eff}}(r)\,[\mathrm{Ha}]$")
     ax_potential.set_xlim(-0.5, 8.0)
     ax_potential.set_ylim(-1.0, 1.0)
@@ -149,17 +148,31 @@ def main() -> None:
 
     r_ion = np.asarray(ion["r"], dtype=float)
     ax_gii.plot(r_ion, ion["gij_r"][0, 0], label=r"$g_{ii}(r)$")
-    ax_gii.set_xlabel(r"$r\,[a_0]$")
+    ax_gii.set_xlabel(r"$r\,[a_B]$")
     ax_gii.set_ylabel(r"$g_{ii}(r)$")
     ax_gii.set_xlim(-0.5, 20.0)
     ax_gii.legend()
 
     k_ion = np.asarray(ion["k"], dtype=float)
     ax_sii.plot(k_ion, ion["sij_k"][0, 0], label=r"$S_{ii}(k)$")
-    ax_sii.set_xlabel(r"$k\,[a_0^{-1}]$")
+    ax_sii.set_xlabel(r"$k\,[a_B^{-1}]$")
     ax_sii.set_ylabel(r"$S_{ii}(k)$")
     ax_sii.set_xlim(0.0, 20.0)
     ax_sii.legend()
+
+    for ax, coordinate, x, upper, unit, linear_range in (
+        (ax_vr, "r", r_ion, 12.0, r"Ha", 1.0),
+        (ax_vk, "k", k_ion, 8.0, r"Ha $a_B^3$", 10.0),
+    ):
+        mask = x <= upper
+        ax.plot(x[mask], ion[f"vij_{coordinate}"][0, 0, mask], label=r"$V_{ii}$")
+        ax.plot(x[mask], ion[f"v_ei_{coordinate}"][0, mask], ls="--", label=r"$V_{ei}$")
+        ax.axhline(0.0, color="0.5", lw=0.8, ls=":")
+        ax.set_yscale("symlog", linthresh=linear_range)
+        ax.set(xlim=(0.0, upper), ylabel=unit,
+               xlabel=r"$r$ [$a_B$]" if coordinate == "r" else r"$k$ [$a_B^{-1}$]",
+               title=rf"$V_{{ii}}({coordinate}),\ V_{{ei}}({coordinate})$")
+        ax.legend()
     if SAVE_FIGURES:
         paths = save_figure(fig, FIGURE_STEM)
         print(

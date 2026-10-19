@@ -1,10 +1,9 @@
 # Otter
 
 Otter calculates electronic and ionic structure in warm and hot dense matter.
-From composition, mass density, and temperature it can solve a quantum
-average-atom or Thomas–Fermi model, construct neutral
-pseudoatoms, build effective ion–ion potentials, and solve one- or
-multicomponent QOZ/HNC equations.
+From composition, mass density, and temperature, it solves a quantum
+average-atom or Thomas–Fermi model, constructs neutral pseudoatoms and
+effective pair potentials, and solves one- or multicomponent QOZ/HNC equations.
 
 Otter is based primarily on the pseudoatom model of
 [Starrett and Saumon (2014)](https://doi.org/10.1016/j.hedp.2013.12.001).
@@ -13,17 +12,18 @@ Otter is based primarily on the pseudoatom model of
 
 - finite-temperature quantum (KS-DFT, QM) and Thomas–Fermi (TF) electronic structure; the
   QM model provides orbital levels, occupations, and density components;
-- per-level ionic densities and form factors, raw KS radial wavefunctions,
-  and direct access to partition mean ionization and background ionization;
+- orbital densities, form factors and KS radial wavefunctions, with partition
+  ionization `Zbar` and background ionization `Zstar`;
 - pseudoatom densities `n_pa(r)` and screening densities `n_scr(r)`, with form factors
   `f(k)=n_ion(k)` and `q(k)=n_scr(k)`;
-- effective ion–ion potentials `V_ij(r)` and `V_ij(k)`;
+- electron–ion potentials `V_ei(r)`, `V_ei(k)` and effective ion–ion
+  potentials `V_ij(r)`, `V_ij(k)`;
 - one- and multicomponent QOZ/HNC results `g_ij(r)` and `S_ij(k)`.
 
 ## Install
 
-Otter uses a reproducible editable installation from source. It requires
-CPython 3.12 or newer, Git, and Poetry 2.1.3.
+The recommended source installation uses CPython 3.12 or newer, Git,
+and Poetry 2.1.3.
 
 macOS, Linux, or WSL:
 
@@ -53,10 +53,9 @@ poetry install
 
 Dependencies are locked by `poetry.lock`; Otter is installed in editable mode.
 
-Otter's built-in local-density Dirac exchange is the dependency-free default
-used by the validated warm- and hot-dense-matter workflows. Libxc is optional
-and is needed only for additional LDA correlation or GGA functionals such as
-`lda_pw`, `lda_pz`, `lda_vwn`, and `pbe`.
+Dirac exchange is the default XC model and requires no optional package.
+Libxc provides additional LDA and GGA functionals, including `lda_pw`,
+`lda_pz`, `lda_vwn`, and `pbe`.
 
 To enable these additional functionals:
 
@@ -87,31 +86,36 @@ poetry run python examples/single_species_workflow.py
 
 The default state is Al at `rho=8.1 g/cm^3` and `Te=Ti=15 eV`. Edit the input
 block to change the state or output controls. The script plots the electronic
-density, effective potential, `g_ii(r)`, and `S_ii(k)`, and saves PNG, PDF, and
-NPZ files.
+density, effective potential, `g_ii(r)`, `S_ii(k)`, and `V_ii`/`V_ei` in both
+r and k space, and saves PNG, PDF, and NPZ files.
 
 For mixtures, run [mixture_workflow.py](examples/mixture_workflow.py).
 
 ### Saved workflow state
 
-The versioned NPZ schema stores units and convergence metadata together with
-the selected scientific quantities. The default `complete` profile retains
-native electronic profiles and levels, `q/f`, electron response and LFC,
-interaction channels, and `g_ij/S_ij`. The smaller `electronic_summary`
-profile includes compact bound levels; `ion_structure` retains `f/q/g/S`.
-Optional groups add quantities such as `chi_ee_k` without requiring a complete
-export. Existing state schemas remain readable. In a complete archive:
+NPZ files store selected quantities with their units, input parameters and
+convergence records. The default `complete` profile includes electronic
+profiles and levels, electron response, potentials and ionic correlations.
+Smaller profiles retain electronic summaries or ionic structure; optional
+groups add selected quantities. Complete exports include:
 
 - `q_k == n_scr_k` and `f_k == n_ion_k`;
-- `G_ee_k`, `chi0_k`, `chi_ee_k`, `v_ie_k`, `c_ie_k`, `v_ee_k`, and `c_ee_k`;
+- `G_ee_k`, `chi0_k`, `chi_ee_k`, `c_ie_k`, `v_ee_k`, and `c_ee_k`;
+- `v_ei_k` and `v_ei_r`, also available as `v_ie_k` and `v_ie_r`;
 - `gij_r`, `sij_k`, `vij_r`, and `vij_k`.
 
-`gee_k` and `g_ee_k` are temporary compatibility aliases for `G_ee_k`.
+Species axes are retained for both pure elements and mixtures.
+`gee_k` and `g_ee_k` are compatibility aliases for `G_ee_k`.
 
 The default windows are `r < 20 Bohr` and `k < 20 Bohr^-1`. Archives load with
 `allow_pickle=False` and are written atomically. See the
 [state-export guide](docs/source/user_guide/state_exports.rst) for in-memory
 and NPZ access.
+
+Parameter scans export the same electron–ion potentials to HDF5, with units
+and coordinate paths. See the
+[parameter-grid guide](https://otter-hed.github.io/otter/user_guide/parameter_grids.html)
+for common and per-state grids.
 
 Quantum continuum calculations can be slow near pressure ionization.
 `continue_plasma_workflow_from_electronic_result` reuses a validated
@@ -131,10 +135,11 @@ poetry run python docs/examples/plot_al_full_workflow.py
 poetry run python benchmarks/examples/plot_doppner_2023_be_ionization.py
 ```
 
-The current source tree does not include precomputed Otter NPZ files. Scripts
-write new results locally; literature reference data and recorded website
-figures, tables, and terminal output remain included. MD comparisons require
-LAMMPS/MPI and first calculate the Otter pair potentials. See the
+Scripts calculate and save results locally.
+The repository does not include precomputed Otter NPZ files. Literature
+reference data and recorded figures, tables and terminal output are included.
+MD comparisons require LAMMPS/MPI and first calculate the
+Otter pair potentials. See the
 [reproduction guide](https://otter-hed.github.io/otter/user_guide/reproducing_galleries.html)
 for each page's commands, optional dependencies, and download formats.
 
@@ -152,17 +157,11 @@ This build does not run AA or MD calculations. Open
 - [capability example gallery](docs/examples/README.rst);
 - [scientific benchmark gallery](docs/source/benchmarks/index.rst);
 - [validation policy](docs/source/benchmarks/validation_policy.rst);
-- [portable state schema](docs/source/user_guide/state_exports.rst);
-- [development roadmap](docs/source/development/roadmap.rst).
+- [portable state schema](docs/source/user_guide/state_exports.rst).
 
-Digitized publication curves and author-provided numerical data have separate
-provenance and rights manifests; they are not covered by Otter's BSD software
-license unless a dataset explicitly says otherwise.  The current bundled
-reference sets are published by maintainer decision with source attribution
-and license status `NOASSERTION`.  Read the
-[reference-data notice](benchmarks/reference_data/README.md) before reuse.
-The executable gate `poetry run python tools/check_public_release.py` rejects any future
-manifest that reintroduces an unresolved public-release action.
+Reference datasets have separate attribution and reuse conditions; Otter's
+BSD software license does not apply to them unless stated in their manifest.
+Read the [reference-data notice](benchmarks/reference_data/README.md) before reuse.
 
 ## Development
 
@@ -170,6 +169,8 @@ The 0.4.0 development version unifies single-species and mixture result axes.
 See the [migration guide](https://otter-hed.github.io/otter/user_guide/state_exports.html)
 before updating scripts written for 0.3.1. Parameter-grid calculations use
 the optional HDF5 dependency: `poetry install -E grid`.
+The [repository tools](tools/README.md) cover batch recalculation,
+documentation assets and release checks.
 
 ```bash
 poetry install
@@ -200,13 +201,9 @@ If you use Otter in a scientific publication, please cite:
 }
 ```
 
-The same metadata are available in [CITATION.cff](CITATION.cff). Otter is
-also available through GitHub's **Cite this repository** menu. Runtime
-configuration objects provide
-`config.citation(style="plain"|"bibtex"|"cite")` and expose their canonical
-`citation_keys` as scientific provenance for selected physical models; these
-are not additional software-citation requirements. See
-[`CITATIONS.md`](CITATIONS.md).
+The same metadata are available in [CITATION.cff](CITATION.cff) and GitHub's
+**Cite this repository** menu. `config.citation()` returns the references for
+the selected physical models; see [CITATIONS.md](CITATIONS.md).
 
 ## Acknowledgements
 

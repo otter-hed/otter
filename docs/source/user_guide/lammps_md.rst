@@ -459,6 +459,53 @@ automatically a rigorous confidence interval.  Small-:math:`k` bins contain
 few periodic vectors and can have much larger finite-cell uncertainty; inspect
 ``md_vectors_per_k_bin`` before plotting them.
 
+Timestep and physical duration
+----------------------------------------
+
+Choose the timestep and the trajectory duration separately. The timestep
+must resolve the fastest relevant motion, including close encounters of
+light ions. Equilibration and production durations depend on relaxation and
+the uncertainty of the requested observable. Reducing the timestep while
+keeping the step count fixed also shortens the trajectory and confounds
+these two checks.
+
+For an intended duration :math:`t`, set :math:`N=\lceil t/\Delta t\rceil`.
+Keep both NVT and NVE physical durations, the initial state, the potential,
+and the thermostat damping time fixed when comparing :math:`\Delta t` with
+:math:`\Delta t/2`. Check NVE energy conservation and agreement of the
+requested observables within their sampling uncertainty. Report the energy
+span as well as the endpoint change: a small endpoint change can hide a
+large excursion. Use a fixed physical interval for diagnostic output.
+
+As a published reference, :cite:t:`BethkenhagenEtAl2020` used 0.05 fs for
+carbon and 0.01 fs for CH in DFT-MD at 100 eV and densities from 20 to
+400 g/cm\ :sup:`3`, with at least 20,000 steps per simulation. These are
+material- and method-specific settings, rather than universal PAMD defaults.
+The CH composition in that study is 1:1.
+
+Inspecting the active LAMMPS potential
+----------------------------------------
+
+The driver interpolates the Otter radial potential with PCHIP and obtains
+the force from its derivative. LAMMPS then constructs its own internal
+table. Its default ``linear`` style uses equally spaced squared radii;
+increasing the resolution of the input file alone does not ensure adequate
+short-range resolution of the active interaction.
+
+``MDConfig(table_style="bitmap")`` selects LAMMPS's bitmap distribution of
+squared radii. ``table_points`` remains the number of entries and must be a
+power of two; for example, 8192 entries produce ``table bitmap 13``. The
+default remains ``linear``. Both styles retain the same exported potential,
+analytic Coulomb contribution, and shifted-force cutoff.
+
+Use LAMMPS ``pair_write`` to inspect the energy and force that are actually
+evaluated. Verify :math:`F(r)=-dV(r)/dr` and convergence with table size in
+the separation range sampled by MD. For charged species, supply their
+actual charges to ``pair_write``. Table refinement and timestep refinement
+test distinct numerical errors. See the LAMMPS documentation for
+`pair_style table <https://docs.lammps.org/pair_table.html>`_ and
+`pair_write <https://docs.lammps.org/pair_write.html>`_.
+
 Numerical checks before accepting a run
 ---------------------------------------
 

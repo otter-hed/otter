@@ -17,8 +17,7 @@ generalization of Eq. (19),
 Starrett et al. (2014) used the IS approximation for their published mixture
 results, so the multicomponent SC extension remains explicitly experimental.
 The canonical bibliography keys are :cite:`StarrettSaumon2014,StarrettEtAl2014`.
-The outer mixing and convergence controls below are Otter implementation
-choices, not claims about the cited algorithms.
+Outer mixing and convergence controls are Otter numerical choices.
 """
 
 from __future__ import annotations

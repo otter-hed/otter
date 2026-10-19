@@ -9,8 +9,7 @@ Starrett and Saumon, :cite:`StarrettSaumon2014`, High Energy Density Physics
 * fixed-chemical-potential external system: Eqs. (6)--(7);
 * pseudoatom and screening densities: Eqs. (8)--(11).
 
-The output deliberately follows the existing full/external KS payload so the
-same pseudoatom QOZ/HNC code can consume either electronic approximation.
+TF and KS use the same full/external output structure for QOZ/HNC calculations.
 """
 from __future__ import annotations
 

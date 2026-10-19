@@ -204,6 +204,8 @@ def test_al_gallery_uses_portable_orbitals_without_transform(orbital_state, monk
         legacy[key] = np.exp(-transform.k)
     for key in ("vii_r_ha", "gii_r"):
         legacy[key] = np.exp(-transform.r)
+    legacy["vei_k_ha_bohr3"] = -2 * np.exp(-transform.k)
+    legacy["vei_r_ha"] = -2 * np.exp(-transform.r)
     figures = []
     monkeypatch.setattr(module, "calculate_state", lambda: legacy)
     monkeypatch.setattr(module, "load_plasma_state", lambda path: state)
@@ -225,9 +227,14 @@ def test_al_gallery_uses_portable_orbitals_without_transform(orbital_state, monk
         assert "T_i" not in figures[0]._suptitle.get_text()
         assert "T_i=2" in figures[3]._suptitle.get_text()
         assert [ax.get_title() for ax in figures[2].axes + figures[3].axes] == [
-            r"$q(k)=n_{\rm scr}(k)$", r"$V_{ii}(k)$", r"$V_{ii}(r)$",
+            r"$q(k)=n_{\rm scr}(k)$", r"$V_{ii}(k),\ V_{ei}(k)$", r"$V_{ii}(r),\ V_{ei}(r)$",
             r"$g_{ii}(r)$", r"$S_{ii}(k)$", "Rayleigh weight",
         ]
+        for ax, x, key, limit in ((figures[2].axes[1], transform.k, "vei_k_ha_bohr3", 8.0),
+                                  (figures[2].axes[2], transform.r, "vei_r_ha", 12.0)):
+            np.testing.assert_array_equal(ax.lines[1].get_ydata(), legacy[key][x <= limit])
+            assert ax.get_yscale() == "symlog"
+            assert [text.get_text() for text in ax.get_legend().get_texts()] == [r"$V_{ii}$", r"$V_{ei}$"]
         weight = np.abs(legacy["n_ion_k_electrons"] + legacy["n_scr_k_electrons"])**2 * legacy["sii_k"]
         np.testing.assert_array_equal(figures[3].axes[-1].lines[0].get_ydata(), weight[transform.k <= 8.0])
         np.testing.assert_allclose(

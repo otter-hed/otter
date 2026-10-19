@@ -340,7 +340,7 @@ def test_qm_precision_confirmation_is_sc_only_and_preserves_stricter_input(
         max_outer=2, v_corr_mix=1., v_corr_tol=2.))
     assert result["sc_feedback"]["iterations"] == iterations
     assert all(aa.scf_dn_tol == 1e-9 for aa in seen)
-    assert all(aa.ext_scf_dn_tol == 1e-4 for aa in seen)
+    assert all(aa.ext_scf_dn_tol == 1e-5 for aa in seen)
     assert seen[0].scf_dv_tol == 1e-5
     if model == "qm":
         assert seen[1].scf_dv_tol == pytest.approx(1e-7)

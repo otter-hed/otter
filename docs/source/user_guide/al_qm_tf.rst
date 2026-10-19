@@ -35,7 +35,7 @@ The default is ``RECOMPUTE_WITH_OTTER = True``. Results are written under
 What is plotted
 ---------------
 
-The electronic figure contains exactly two quantities:
+The electronic figure compares:
 
 * :math:`4\pi r^2[n_{\rm full}(r)-n_0]` for KS-DFT and TF, shown over
   :math:`-1\leq r\leq8` Bohr; and
@@ -43,9 +43,8 @@ The electronic figure contains exactly two quantities:
   :math:`-1\leq r\leq12` Bohr.
 
 The negative lower limits are visual margins only; the radial grids begin at
-positive :math:`r`.  The ionic-density partition is retained in the portable
-state schema for diagnostics but is intentionally not drawn in this
-comparison.  Separate panels propagate the same electronic results into
+positive :math:`r`. The ionic-density partition is available in the NPZ
+export. Separate panels show the resulting
 :math:`g_{ii}(r)` and :math:`S_{ii}(k)`.
 
 Temperature sequence

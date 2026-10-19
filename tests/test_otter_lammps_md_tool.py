@@ -1,6 +1,7 @@
 """Fast, LAMMPS-free checks for the reusable Otter-to-MD driver."""
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib.util
 from pathlib import Path
 import sys
@@ -120,6 +121,72 @@ def test_charged_species_use_analytic_coulomb_plus_tabulated_remainder(
     assert "pair_coeff      * * coul/cut" in script
     assert "pair_coeff      1 2 table pair_potentials.table V_C_H" in script
     assert max(abs(value) for value in audit["table_endpoint"].values()) < 1.0e-12
+
+
+@pytest.mark.parametrize("charge", [0.0, 1.0])
+def test_bitmap_tables_preserve_input_potential_and_particle_data(
+    tmp_path: Path, charge: float,
+) -> None:
+    species = (md.MDSpecies("H", 1.008, 32, charge),)
+    linear = _config(tmp_path / "linear", species)
+    bitmap = replace(linear, output_dir=tmp_path / "bitmap", table_style="bitmap")
+    potentials = [_potential("H", "H")]
+    md.prepare_lammps_run(linear, potentials)
+    md.prepare_lammps_run(bitmap, potentials)
+
+    for name in ("atoms.data", "pair_potentials.table"):
+        assert (linear.output_dir / name).read_bytes() == (
+            bitmap.output_dir / name
+        ).read_bytes()
+    linear_input = (linear.output_dir / "in.otter_md").read_text()
+    bitmap_input = (bitmap.output_dir / "in.otter_md").read_text()
+    assert bitmap_input == linear_input.replace("table linear 64", "table bitmap 6")
+
+
+@pytest.mark.parametrize("style,points,message", [
+    ("spline", 64, "table_style"),
+    ("bitmap", 63, "power of two"),
+    ("bitmap", 64.5, "power of two"),
+])
+def test_invalid_table_controls_are_rejected(
+    tmp_path: Path, style: str, points: int, message: str,
+) -> None:
+    config = replace(
+        _config(tmp_path, (md.MDSpecies("H", 1.008, 32),)),
+        table_style=style, table_points=points,
+    )
+    with pytest.raises(ValueError, match=message):
+        md.prepare_lammps_run(config, [_potential("H", "H")])
+    assert not (tmp_path / "atoms.data").exists()
+
+
+@pytest.mark.parametrize("style", ["linear", "bitmap"])
+def test_shifted_coulomb_table_matches_analytic_energy_and_force(
+    tmp_path: Path, style: str,
+) -> None:
+    config = replace(
+        _config(tmp_path, (md.MDSpecies("H", 1.008, 32, 1.0),)),
+        table_style=style,
+    )
+    radius = np.linspace(0.05, 20.0, 256)
+    md.prepare_lammps_run(config, [
+        md.PairPotential("H", "H", radius, 1.0 / radius - 0.2),
+    ])
+    # Add the analytic Coulomb part back to the exported finite remainder.
+    table = np.loadtxt(tmp_path / "pair_potentials.table", skiprows=5)
+    r, energy, force = table[:, 1:].T
+    coefficient = md.HA_TO_EV * md.BOHR_TO_ANGSTROM
+    cutoff = r[-1]
+    np.testing.assert_allclose(
+        energy + coefficient / r,
+        coefficient * (1.0 / r - 1.0 / cutoff + (r - cutoff) / cutoff**2),
+        rtol=1e-11, atol=1e-11,
+    )
+    np.testing.assert_allclose(
+        force + coefficient / r**2,
+        coefficient * (1.0 / r**2 - 1.0 / cutoff**2),
+        rtol=1e-11, atol=1e-11,
+    )
 
 
 def test_otter_potential_matrix_conversion() -> None:
