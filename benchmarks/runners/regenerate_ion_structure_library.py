@@ -73,6 +73,7 @@ MPI_LAUNCHER = "mpirun"
 MPI_PROCESSES_PER_MD_CASE = 10
 MD_ATOMS = 2048
 MD_TIMESTEP_OMEGA_P_INV = 0.005
+MD_MIN_TIMESTEP_FS = 0.01
 MD_EQUILIBRATION_OMEGA_P_INV = 50.0
 MD_PRODUCTION_OMEGA_P_INV = 500.0
 WUNSCH_MD_K_MAX_ANGSTROM_INV = 10.2
@@ -331,21 +332,24 @@ def _wunsch_md_config(
     n_i = np.asarray(ion["n_i"]).item()
     zbar = np.asarray(ion["zbar_partition"]).item()
     omega_p = np.sqrt(4.0 * np.pi * n_i * zbar**2 / (mass_u * mass_ratio))
+    dt_omega = max(MD_TIMESTEP_OMEGA_P_INV,
+                   MD_MIN_TIMESTEP_FS * 1e-3 / atomic_time_ps * omega_p)
+    production_steps = round(MD_PRODUCTION_OMEGA_P_INV / dt_omega)
     return MDConfig(
         output_dir=output_dir,
         species=(MDSpecies("Be", mass_u, MD_ATOMS),),
         ion_density_bohr3=n_i,
         ion_temperature_ev=float(state["ti_ev"]),
-        timestep_ps=MD_TIMESTEP_OMEGA_P_INV / omega_p * atomic_time_ps,
+        timestep_ps=dt_omega / omega_p * atomic_time_ps,
         thermostat_damp_ps=0.5 / omega_p * atomic_time_ps,
         equilibration_steps=round(
-            MD_EQUILIBRATION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
+            MD_EQUILIBRATION_OMEGA_P_INV / dt_omega
         ),
-        production_steps=round(MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV),
+        production_steps=production_steps,
         rdf_bins=500,
-        rdf_every=100,
+        rdf_every=max(1, production_steps // 1000),
         rdf_repeat=50,
-        trajectory_every=5_000,
+        trajectory_every=max(1, production_steps // 20),
         table_points=8_192,
         k_max_angstrom_inv=WUNSCH_MD_K_MAX_ANGSTROM_INV,
         random_seed=20_260_825,

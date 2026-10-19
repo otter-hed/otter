@@ -22,8 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Keep NumPy/SciPy from multiplying the 16 explicit LAMMPS MPI ranks by hidden
-# BLAS threads.  Change these values here only if the hardware allocation changes.
+# Keep NumPy/SciPy from multiplying explicit LAMMPS MPI ranks by BLAS threads.
 for variable in (
     "OMP_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -66,22 +65,18 @@ OUTPUT_DIR = Path(os.environ.get("OTTER_CH2_OUTPUT_DIR", ROOT / "benchmarks/outp
 if not OUTPUT_DIR.is_absolute():
     OUTPUT_DIR = ROOT / OUTPUT_DIR
 
-# 1024 C + 2048 H gives exact CH2 stoichiometry.  Cases run sequentially and
-# LAMMPS uses only 16 MPI ranks so the workstation remains responsive.
+# 1024 C + 2048 H gives exact CH2 stoichiometry. Cases run sequentially;
+# each MD uses the stated MPI allocation.
 CH2_FORMULA_UNITS = 1024
-LAMMPS_MPI_PROCESSES = 16
-STRUCTURE_FACTOR_WORKERS = 8
+LAMMPS_MPI_PROCESSES = int(os.environ.get("OTTER_MD_MPI_PROCESSES", "8"))
+STRUCTURE_FACTOR_WORKERS = LAMMPS_MPI_PROCESSES
 
-# These reproduce the benchmark NVT -> NVE protocol in units of the fastest
-# species plasma period.  The 0.005 step gives 10,000 + 100,000 MD steps.
-TIMESTEP_OMEGA_P_INV = 5.0e-3
+# Fixed physical timestep. Retain the plasma-period equilibration and sampling
+# durations so changing dt does not silently shorten the trajectory.
+MD_TIMESTEP_FS = 0.01
 EQUILIBRATION_OMEGA_P_INV = 50.0
 PRODUCTION_OMEGA_P_INV = 500.0
-# The plasma-frequency step alone does not shrink as Ti raises the hydrogen
-# thermal speed. Limit the one-step H RMS displacement at hot states; the
-# number of steps is increased below so the sampled physical time is unchanged.
-MAX_THERMAL_STEP_BOHR = 3.0e-3
-THERMAL_GUARD_MIN_TI_EV = 40.0
+CLOSE_ENCOUNTER_MIN_TI_EV = 40.0
 DEFAULT_MD_R_MIN_BOHR = 0.1
 HOT_MD_R_MIN_BOHR = 1.0e-5
 MAX_NVE_RELATIVE_ENERGY_DRIFT = 2.0e-3
@@ -175,14 +170,14 @@ def plasma_clock(prepared: Any) -> tuple[float, float, float]:
     atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
     return (
         omega_max,
-        TIMESTEP_OMEGA_P_INV / omega_max * atomic_time_ps,
+        MD_TIMESTEP_FS * 1.0e-3,
         0.5 / omega_max * atomic_time_ps,
     )
 
 
 def md_controls(prepared: Any, ti_ev: float) -> dict[str, float | bool]:
-    """Add a thermal-motion guard to the plasma-frequency MD clock."""
-    omega_max, base_timestep_ps, thermostat_damp_ps = plasma_clock(prepared)
+    """Use a fixed physical timestep and resolve the hot Coulomb core."""
+    omega_max, timestep_ps, thermostat_damp_ps = plasma_clock(prepared)
     mass_ratio = (
         physical_constants["atomic mass constant"][0]
         / physical_constants["electron mass"][0]
@@ -192,24 +187,17 @@ def md_controls(prepared: Any, ti_ev: float) -> dict[str, float | bool]:
     fastest_rms_speed_au = float(
         np.max(np.sqrt(3.0 * temperature_ha / (mass_u * mass_ratio)))
     )
-    base_timestep_au = TIMESTEP_OMEGA_P_INV / omega_max
-    base_thermal_step_bohr = fastest_rms_speed_au * base_timestep_au
-    scale = (
-        min(1.0, MAX_THERMAL_STEP_BOHR / base_thermal_step_bohr)
-        if ti_ev >= THERMAL_GUARD_MIN_TI_EV
-        else 1.0
-    )
-    timestep_omega_p_inv = TIMESTEP_OMEGA_P_INV * scale
-    thermal_limited = scale < 1.0 - 1.0e-12
-    r_min_bohr = HOT_MD_R_MIN_BOHR if thermal_limited else DEFAULT_MD_R_MIN_BOHR
+    atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
+    timestep_au = timestep_ps / atomic_time_ps
+    resolve_core = ti_ev >= CLOSE_ENCOUNTER_MIN_TI_EV
     return {
         "omega_max_au": omega_max,
-        "timestep_ps": base_timestep_ps * scale,
+        "timestep_ps": timestep_ps,
         "thermostat_damp_ps": thermostat_damp_ps,
-        "timestep_omega_p_inv": timestep_omega_p_inv,
-        "thermal_step_bohr": base_thermal_step_bohr * scale,
-        "thermal_limited": thermal_limited,
-        "r_min_bohr": r_min_bohr,
+        "timestep_omega_p_inv": timestep_au * omega_max,
+        "thermal_step_bohr": fastest_rms_speed_au * timestep_au,
+        "resolve_coulomb_core": resolve_core,
+        "r_min_bohr": HOT_MD_R_MIN_BOHR if resolve_core else DEFAULT_MD_R_MIN_BOHR,
     }
 
 
@@ -268,7 +256,7 @@ def _case_signature(
         "ti_ev": ti_ev,
         "formula_units": CH2_FORMULA_UNITS,
         "mpi_processes": LAMMPS_MPI_PROCESSES,
-        "dt_omega_p_inv": TIMESTEP_OMEGA_P_INV,
+        "timestep_fs": MD_TIMESTEP_FS,
         "equilibration_omega_p_inv": EQUILIBRATION_OMEGA_P_INV,
         "production_omega_p_inv": PRODUCTION_OMEGA_P_INV,
         "table_points": MD_TABLE_POINTS,
@@ -276,12 +264,10 @@ def _case_signature(
         "k_max_angstrom_inv": MD_K_MAX_ANGSTROM_INV,
         "k_bin_width_angstrom_inv": MD_K_BIN_WIDTH_ANGSTROM_INV,
     }
-    # Preserve the signatures of accepted cooler runs. Only states requiring
-    # the high-T guard are invalidated and recomputed.
-    if bool(controls["thermal_limited"]):
-        payload["high_temperature_md_guard"] = {
-            "max_thermal_step_bohr": MAX_THERMAL_STEP_BOHR,
-            "minimum_ti_ev": THERMAL_GUARD_MIN_TI_EV,
+    # Include the close-encounter treatment independently of the timestep.
+    if bool(controls["resolve_coulomb_core"]):
+        payload["coulomb_core"] = {
+            "minimum_ti_ev": CLOSE_ENCOUNTER_MIN_TI_EV,
             "timestep_omega_p_inv": controls["timestep_omega_p_inv"],
             "r_min_bohr": controls["r_min_bohr"],
             "coulomb_core_bohr": COULOMB_CORE_BOHR,
@@ -532,9 +518,9 @@ def main() -> None:
                 f"[{completed}/{total_cases}] Te={te_ev:g} eV, "
                 f"Ti={ti_ev:g} eV (alpha={alpha:g})"
             )
-            if RUN_MD and bool(controls["thermal_limited"]):
+            if RUN_MD and bool(controls["resolve_coulomb_core"]):
                 print(
-                    "    high-T MD guard: "
+                    "    hot Coulomb core: "
                     f"dt*omega_p={controls['timestep_omega_p_inv']:.3e}, "
                     f"thermal step={controls['thermal_step_bohr']:.3e} Bohr, "
                     f"table r_min={controls['r_min_bohr']:.3e} Bohr"
@@ -653,7 +639,7 @@ def main() -> None:
                         prepared.qoz.vij_r,
                         prepared.zbar,
                     )
-                    if bool(controls["thermal_limited"])
+                    if bool(controls["resolve_coulomb_core"])
                     else np.asarray(prepared.qoz.vij_r, dtype=float)
                 )
                 potentials = md.pair_potentials_from_otter(
@@ -694,11 +680,11 @@ def main() -> None:
                     timestep_ps=float(controls["timestep_ps"]),
                     timestep_omega_p_inv=float(controls["timestep_omega_p_inv"]),
                     thermal_step_bohr=float(controls["thermal_step_bohr"]),
-                    thermal_limited=bool(controls["thermal_limited"]),
+                    resolve_coulomb_core=bool(controls["resolve_coulomb_core"]),
                     md_r_min_bohr=float(controls["r_min_bohr"]),
                     md_rdf_every=rdf_every,
                     md_trajectory_every=trajectory_every,
-                    md_coulomb_core_regularized=bool(controls["thermal_limited"]),
+                    md_coulomb_core_regularized=bool(controls["resolve_coulomb_core"]),
                 )
                 drift = abs(float(record["md_nve_relative_energy_drift"]))
                 record["md_energy_quality"] = (

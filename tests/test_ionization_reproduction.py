@@ -77,7 +77,7 @@ def test_reproduction_audits_both_scan_schemas_and_list_failures(tmp_path, monke
 
 
 def test_default_carbon_scan_is_serial(monkeypatch):
-    module = load_script("docs/examples/plot_carbon_ionization_levels.py", monkeypatch)
+    module = load_script("benchmarks/runners/regenerate_carbon_ionization_levels.py", monkeypatch)
     assert module.MAX_STATE_WORKERS == 1
     assert module._configuration(1.0).cont_n_jobs == 1
     assert module._configuration(1.0).run_mode == "full"

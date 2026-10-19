@@ -10,8 +10,8 @@ calculates from physical inputs, including MD where shown; no bundled Otter
 NPZ is required. Documentation builds use recorded figures and terminal
 output and do not launch expensive calculations.
 
-For the current data refresh and the scope of archived MD comparisons, see
-:doc:`validation_20260908`.
+For the 0.4.1 recalculation and its numerical limits, see
+:doc:`validation_0_4_1`.
 
 The categories below are only a reading aid.  Every benchmark appears exactly
 once, and the left navigation links directly to the individual reports rather
@@ -33,6 +33,7 @@ than passing through separate ``detailed`` and ``gallery`` index levels.
    gen_benchmarks/plot_ch2_hnc_md
    gen_benchmarks/plot_ion_structure_library
    validation_policy
+   validation_0_4_1
 
 Electronic structure and ionization
 ------------------------------------

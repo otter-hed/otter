@@ -2,8 +2,8 @@
 
 .. note::
 
-   HNC and VMHNC use the September 2026 recalculation. MD is historical,
-   using the earlier potentials; see :doc:`validation_20260908`.
+   HNC, VMHNC and MD share the recalculated IS-QOZ potentials.
+   See :doc:`validation_0_4_1`.
 
 Schörner et al. (2022) aluminium structure factors
 ===================================================
@@ -18,8 +18,8 @@ two aluminium curves digitized from Figure 2 of :cite:t:`SchornerEtAl2022`:
 
 For each state, LDA-PW92 and PBE electronic calculations produce separate
 IS-QOZ ion--ion potentials. Ordinary HNC and Rosenfeld--Ashcroft VMHNC reuse
-the same current electronic result and potential. The retained 2048-ion MD
-used earlier potentials, so comparison with it no longer isolates closure error.
+the same electronic result and potential. The 2048-ion MD uses the
+corresponding tabulated potential for each state and XC model.
 
 Models and terminology
 ----------------------
@@ -53,8 +53,8 @@ unchanged and applies exactly
 to ``Al_T_1p0_rho_4p712gcc`` while loading it.  No correction is applied to
 the 5 eV curve.  The reference manifest records and tests this operation.
 
-Historical molecular dynamics
----------------------------------
+Molecular dynamics
+-------------------
 
 The MD curves use LAMMPS :cite:p:`ThompsonEtAl2022`, 2048 ions, a shifted-
 force table ending at 20 Bohr, and an ``NVT -> NVE`` sequence.  In plasma-
@@ -87,8 +87,8 @@ The :doc:`runnable gallery <gen_benchmarks/plot_schorner_et_al_2022_al_sii>`
 interpolates each current curve onto the corrected DFT-MD points and prints
 RMSE, mean absolute error and maximum error directly from the loaded NPZ.
 Those generated values are authoritative; a separate hand-copied table is
-not maintained here. The historical MD data are unchanged. They cannot certify
-the current closure at a fixed potential without a matching new MD run.
+not maintained here. The MD comparison uses the same electronic potential,
+subject to tabulation, finite-size and sampling errors.
 
 At 1 eV, however, the spherical pseudoatom construction cannot represent
 directional chemical bonding or transient molecular structure.  A bridge

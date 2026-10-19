@@ -13,7 +13,6 @@ FIXED_PAGES = (
     "docs/examples/plot_al_full_workflow.py",
     "docs/examples/plot_al_is_sc_comparison.py",
     "docs/examples/plot_al_qm_tf.py",
-    "docs/examples/plot_carbon_ionization_levels.py",
     "docs/examples/plot_carbon_lfc_sensitivity.py",
     "docs/examples/plot_ch136_mixture_workflow.py",
     "benchmarks/examples/plot_argha_roy_carbon_sii.py",

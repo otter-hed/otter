@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "docs" / "examples" / "plot_carbon_ionization_levels.py"
+SCRIPT = ROOT / "benchmarks" / "runners" / "regenerate_carbon_ionization_levels.py"
 
 
 def _load_example_module():

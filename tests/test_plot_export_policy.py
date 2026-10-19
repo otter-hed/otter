@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,8 +62,14 @@ def test_public_galleries_use_thesis_bing_without_grids() -> None:
         (ROOT / "docs" / "examples").glob("plot_*.py")
     ) + sorted((ROOT / "benchmarks" / "examples").glob("plot_*.py"))
     assert gallery_paths
+    manifest = json.loads((ROOT / "docs/source/_static/gallery_results/manifest.json").read_text())
     for path in gallery_paths:
         source = path.read_text(encoding="utf-8")
+        shared = manifest[path.relative_to(ROOT).as_posix()].get("shared_presentation_source")
+        if shared:
+            assert "matplotlib" not in source
+            assert (ROOT / shared).is_file()
+            source = (ROOT / shared).read_text(encoding="utf-8")
         if path.name == "plot_starrett_saumon_2013_electronic.py":
             # This sparse numerical benchmark is intentionally table-only;
             # the shared Matplotlib style does not apply when no figure exists.

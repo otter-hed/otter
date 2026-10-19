@@ -2,8 +2,8 @@
 
 .. note::
 
-   HNC and VMHNC use the September 2026 recalculation. MD retains the earlier
-   potential and is labelled historical. See :doc:`validation_20260908`.
+   HNC, VMHNC and MD share the recalculated IS-QOZ potentials.
+   See :doc:`validation_0_4_1`.
 
 Johnson et al. 2025 two-temperature aluminium
 ===============================================
@@ -23,10 +23,9 @@ ion--ion potential.  VMHNC uses the bridge-universality ansatz of
 :cite:t:`RosenfeldAshcroft1979`, the exact Percus--Yevick hard-sphere
 reference of :cite:t:`Wertheim1963,Thiele1963`, and the variational packing-
 fraction condition of :cite:t:`Faussurier2004`.  Its packing fraction is not
-fitted to the DFT-MD curves. Historical classical MD from LAMMPS
-:cite:p:`ThompsonEtAl2022` is included in every panel. Matching of its earlier
-potential to the current one has not been verified, so the refreshed overlay
-does not separate closure error from changes to the electronic potential.
+fitted to the DFT-MD curves. Classical MD from LAMMPS
+:cite:p:`ThompsonEtAl2022` uses the same IS-QOZ potential in every panel.
+Closure differences remain subject to MD sampling and numerical errors.
 
 Bridge and plasma-model terminology
 -----------------------------------
@@ -68,8 +67,8 @@ curve with Otter's VMHNC implementation, so the benchmark keeps the labels
 separate.  Their Figure 2 also contains an OCP curve and their own pair-
 potential MD (PPMD).  The current digitized reference package contains only
 2TTCP HNC+bridge, DFT-MD, and YOCP HNC+bridge; it does not relabel the YOCP
-data as OCP. The historical MD curve was calculated with an earlier Otter
-pair potential and is not Johnson's PPMD data.
+data as OCP. The Otter MD curve uses its IS-QOZ pair potential and is not
+Johnson's PPMD data.
 
 The previous panel-(d) diagnostic used a long-wavelength Yukawa fit to map
 Otter's non-Yukawa QOZ potential onto an effective IEMHNC state.  That result

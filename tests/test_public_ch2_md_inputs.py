@@ -16,16 +16,21 @@ class Prepared:
     r = np.linspace(.01, 20., 256)
 
 
-def test_composition_clock_and_hot_step_limit():
+def test_composition_clock_and_fixed_physical_step():
     omega, timestep, damping = driver.plasma_clock(Prepared())
     assert omega > 0 and 0 < timestep < damping
     assert driver.CH2_FORMULA_UNITS*3 == 3072
     cold = driver.md_controls(Prepared(), 5.)
     hot = driver.md_controls(Prepared(), 100.)
-    assert not cold["thermal_limited"] and hot["thermal_limited"]
-    assert hot["thermal_step_bohr"] <= driver.MAX_THERMAL_STEP_BOHR
-    assert hot["timestep_omega_p_inv"] < driver.TIMESTEP_OMEGA_P_INV
+    assert cold["timestep_ps"] == hot["timestep_ps"] == 0.01e-3
+    assert not cold["resolve_coulomb_core"] and hot["resolve_coulomb_core"]
     assert hot["r_min_bohr"] == driver.HOT_MD_R_MIN_BOHR
+    assert hot["thermal_step_bohr"] > cold["thermal_step_bohr"]
+    duration = driver.PRODUCTION_OMEGA_P_INV / omega
+    atomic_time_ps = driver.physical_constants["atomic unit of time"][0] * 1e12
+    steps = round(driver.PRODUCTION_OMEGA_P_INV / hot["timestep_omega_p_inv"])
+    np.testing.assert_allclose(steps * timestep, duration * atomic_time_ps,
+                               atol=timestep/2, rtol=0)
 
 
 def test_core_regularization_leaves_outer_potential_unchanged():
@@ -39,6 +44,14 @@ def test_core_regularization_leaves_outer_potential_unchanged():
     remainder = regularized[..., inner]-coefficients/r[inner]
     np.testing.assert_allclose(remainder, np.broadcast_to(remainder[..., :1], remainder.shape), atol=1e-12)
     np.testing.assert_array_equal(regularized[..., outer], potential[..., outer])
+
+
+def test_timestep_change_invalidates_completed_case_signature(monkeypatch):
+    controls = driver.md_controls(Prepared(), 99.)
+    before = driver._case_signature(99., 99., controls)
+    monkeypatch.setattr(driver, "MD_TIMESTEP_FS", .025)
+    after = driver._case_signature(99., 99., driver.md_controls(Prepared(), 99.))
+    assert len(before) == 64 and before != after
 
 
 def test_no_one_component_bridge_is_claimed_for_ch2():

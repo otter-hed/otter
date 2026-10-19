@@ -96,9 +96,26 @@ def test_docs_never_execute_expensive_gallery_code():
 
 
 def test_carbon_fresh_default_does_not_reuse_old_points(monkeypatch):
-    module = load(ROOT / "docs/examples/plot_carbon_ionization_levels.py", monkeypatch)
+    module = load(ROOT / "benchmarks/runners/regenerate_carbon_ionization_levels.py", monkeypatch)
     assert not module.RESUME_LOCAL_RESULTS
     assert not module.REUSE_ACCEPTED_POINTS_WHEN_RECOMPUTING
+
+
+def test_carbon_example_shares_the_benchmark_without_solving(monkeypatch, tmp_path):
+    module = load(ROOT / "docs/examples/plot_carbon_ionization_levels.py", monkeypatch)
+    monkeypatch.setattr(module, "__file__", str(tmp_path / "docs/examples/carbon.py"))
+    import otter.electronic
+    monkeypatch.setattr(otter.electronic, "solve_full_only",
+                        lambda *args: pytest.fail("Example repeated the benchmark"))
+    with pytest.raises(FileNotFoundError, match="plot_bethkenhagen"):
+        module.main()
+    figure = (tmp_path / "benchmarks/outputs/bethkenhagen_et_al_2020_carbon_ionization"
+              / "figures/bethkenhagen_2020_carbon_ionization.png")
+    figure.parent.mkdir(parents=True)
+    figure.touch()
+    module.main()
+    result = ROOT / "docs/source/_static/gallery_results/plot_carbon_ionization_levels/results.rst"
+    assert "/plot_bethkenhagen_et_al_2020_carbon_ionization/figure_001.svg" in result.read_text()
 
 
 def test_be_starts_producer_before_reading_its_new_output(monkeypatch):
@@ -165,6 +182,43 @@ def test_producers_do_not_hardcode_a_historical_otter_version():
                     if (isinstance(key, ast.Constant) and key.value in {"version", "project_version"}
                             and isinstance(value, ast.Constant) and isinstance(value.value, str)):
                         assert not value.value.startswith("0.2."), (path, value.lineno)
+
+
+def test_schorner_completed_md_returns_fresh_run_metadata(tmp_path, monkeypatch):
+    module = load(
+        ROOT / "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py",
+        monkeypatch,
+    )
+    monkeypatch.setattr(module, "CANDIDATE_DIR", tmp_path)
+    monkeypatch.setattr(module.shutil, "which", lambda value: value)
+    monkeypatch.setattr(module, "_write_lammps_pair_table", lambda *args: (100, 2.))
+    launches = []
+    monkeypatch.setattr(
+        module.subprocess, "run", lambda command, **kwargs: launches.append(command)
+    )
+    radius = np.array([1., 2., 3.])
+    blocks = np.ones((2, 3))
+    monkeypatch.setattr(module, "_read_lammps_rdf", lambda path: (radius, blocks))
+    monkeypatch.setattr(
+        module, "_read_lammps_trajectory", lambda path: (np.zeros((2, 4, 3)), 10.)
+    )
+    monkeypatch.setattr(
+        module, "_direct_structure_factor",
+        lambda *args: (radius, np.ones(3), np.zeros(3), np.full(3, 12)),
+    )
+    monkeypatch.setattr(
+        module, "_read_lammps_nve_audit", lambda path: (1.e-6, 11604.5, "LAMMPS")
+    )
+    result = module.run_same_potential_md({
+        "state_id": np.asarray("new_state"), "r_bohr": radius,
+        "vii_r_ha": radius, "ion_density_bohr3": .05,
+        "zbar_partition": 3., "ti_ev": 1., "k_bohr_inv": radius,
+    })
+    assert len(launches) == 1
+    assert not result["md_reused_existing_run"].item()
+    assert result["md_trajectory_frames"].item() == 2
+    assert result["md_nve_relative_energy_drift"].item() == 1.e-6
+    np.testing.assert_array_equal(result["md_sii_k"], np.ones(3))
 
 
 def test_ch2_rdf_transform_of_uncorrelated_particles(monkeypatch):

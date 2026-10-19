@@ -4,17 +4,15 @@ Equilibrium aluminium structure factors: Schörner et al. (2022)
 
 .. note::
 
-   HNC and VMHNC use the September 2026 Otter recalculation. MD is retained
-   from earlier potentials and labelled accordingly; it has not been rerun.
-   This overlay does not isolate closure error at a fixed potential.
-   See :doc:`/benchmarks/validation_20260908`.
+   HNC, VMHNC and MD use the recalculated IS-QOZ potentials.
+   See :doc:`/benchmarks/validation_0_4_1` for verification and scope.
 
 This benchmark compares Otter :math:`S_{ii}(k)` with two curves
 digitized from Figure 2 of :cite:t:`SchornerEtAl2022`. Each state is calculated
 with LDA-PW92 and PBE.  For each XC model, ordinary HNC and
 Rosenfeld--Ashcroft VMHNC reuse exactly the same IS electronic state and QOZ
-pair potential. Historical classical LAMMPS MD is also shown, separately
-labelled as using the earlier potential. Both states have :math:`T_e=T_i`: 1 eV at
+pair potential. Classical LAMMPS MD uses the potential from that same
+electronic state. Both states have :math:`T_e=T_i`: 1 eV at
 :math:`\rho=4.712` g cm\ :sup:`-3` and 5 eV at
 :math:`\rho=8.1` g cm\ :sup:`-3`.
 
@@ -116,6 +114,7 @@ MAX_PARALLEL_MD_CASES = 1
 MPI_PROCESSES_PER_MD_CASE = 10
 MD_CELLS_PER_AXIS = 8  # 4 * 8**3 = 2048 Al ions.
 MD_TIMESTEP_OMEGA_P_INV = 5.0e-3
+MD_MIN_TIMESTEP_FS = 0.01
 MD_EQUILIBRATION_OMEGA_P_INV = 50.0
 MD_PRODUCTION_OMEGA_P_INV = 500.0
 MD_RDF_BINS = 500
@@ -695,15 +694,17 @@ def run_same_potential_md(payload: dict[str, np.ndarray]) -> dict[str, np.ndarra
     )
     atomic_time_ps = physical_constants["atomic unit of time"][0] * 1.0e12
     omega_p_au = np.sqrt(4.0 * np.pi * n_i * zbar**2 / (mass_u * mass_ratio))
-    timestep_ps = MD_TIMESTEP_OMEGA_P_INV / omega_p_au * atomic_time_ps
+    dt_omega = max(MD_TIMESTEP_OMEGA_P_INV,
+                   MD_MIN_TIMESTEP_FS * 1e-3 / atomic_time_ps * omega_p_au)
+    timestep_ps = dt_omega / omega_p_au * atomic_time_ps
     thermostat_damp_ps = 0.5 / omega_p_au * atomic_time_ps
     equilibration_steps = round(
-        MD_EQUILIBRATION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
+        MD_EQUILIBRATION_OMEGA_P_INV / dt_omega
     )
     production_steps = round(
-        MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV
+        MD_PRODUCTION_OMEGA_P_INV / dt_omega
     )
-    rdf_every, rdf_repeat = 100, 50
+    rdf_every, rdf_repeat = max(1, production_steps // 1000), 50
     rdf_block_steps = rdf_every * rdf_repeat
     lattice_angstrom = (4.0 / (n_i / BOHR_TO_ANGSTROM**3)) ** (1.0 / 3.0)
     seed = 20260825 + sum((i + 1) * ord(char) for i, char in enumerate(identifier))
@@ -785,7 +786,10 @@ run             {production_steps}
         "md_box_length_bohr": np.asarray(box_length_bohr),
         "md_atoms": np.asarray(4 * MD_CELLS_PER_AXIS**3),
         "md_rdf_blocks": np.asarray(g_blocks.shape[0]),
-        "md_timestep_omega_p_inv": np.asarray(MD_TIMESTEP_OMEGA_P_INV),
+        "md_timestep_omega_p_inv": np.asarray(dt_omega),
+        "md_timestep_ps": np.asarray(timestep_ps),
+        "md_equilibration_steps": np.asarray(equilibration_steps),
+        "md_production_steps": np.asarray(production_steps),
         "md_equilibration_omega_p_inv": np.asarray(
             MD_EQUILIBRATION_OMEGA_P_INV
         ),
@@ -801,7 +805,7 @@ run             {production_steps}
         "md_nve_relative_energy_drift": np.asarray(drift),
         "md_nve_mean_temperature_k": np.asarray(mean_temperature),
         "md_lammps_version": np.asarray(version),
-        "md_reused_existing_run": np.asarray(completed_run),
+        "md_reused_existing_run": np.asarray(False),
         "md_elapsed_s": np.asarray(time.perf_counter() - started),
     }
 
@@ -1095,7 +1099,10 @@ def main() -> None:
                     k_otter,
                     sii_otter,
                     color=color,
-                    linestyle=linestyle,
+                    linestyle="--" if method == "MD" else linestyle,
+                    marker="o" if method == "MD" else None,
+                    markersize=2.5,
+                    markevery=3,
                     linewidth=linewidth,
                     alpha=0.72 if method != "MD" else 0.60,
                     label=(

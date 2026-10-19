@@ -165,7 +165,7 @@ Read the [reference-data notice](benchmarks/reference_data/README.md) before reu
 
 ## Development
 
-The 0.4.0 development version unifies single-species and mixture result axes.
+Otter 0.4.1 uses a uniform species-axis layout for single-species and mixture results.
 See the [migration guide](https://otter-hed.github.io/otter/user_guide/state_exports.html)
 before updating scripts written for 0.3.1. Parameter-grid calculations use
 the optional HDF5 dependency: `poetry install -E grid`.
@@ -188,7 +188,7 @@ requirements and [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 If you use Otter in a scientific publication, please cite:
 
-> Chongbing Qu, Julian Lütgert, and Dominik Kraus, *Otter*, version 0.4.0, computer software (2026),
+> Chongbing Qu, Julian Lütgert, and Dominik Kraus, *Otter*, version 0.4.1, computer software (2026),
 > [https://github.com/otter-hed/otter](https://github.com/otter-hed/otter).
 
 ```bibtex
@@ -196,7 +196,7 @@ If you use Otter in a scientific publication, please cite:
   author  = {Qu, Chongbing and Lütgert, Julian and Kraus, Dominik},
   title   = {Otter},
   year    = {2026},
-  note    = {Computer software, version 0.4.0},
+  note    = {Computer software, version 0.4.1},
   url     = {https://github.com/otter-hed/otter}
 }
 ```

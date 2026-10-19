@@ -2,8 +2,8 @@
 
 .. note::
 
-   All seven Otter states and Be VMHNC use the September 2026 recalculation.
-   Be MD retains its earlier potential. See :doc:`validation_20260908`.
+   Electronic and ionic states use default AA controls. Be HNC, VMHNC and
+   MD share one IS-QOZ potential. See :doc:`validation_0_4_1`.
 
 Ion-structure literature library
 ================================
@@ -48,14 +48,13 @@ Reproduction uses the default AA radial resolution and SCF tolerances,
 without element-specific precision overrides. The native screening-charge
 integral is checked before accepting a calculated state.
 
-The Wünsch Be panels contain two current integral-equation results and an
-explicitly historical MD overlay:
+The Wünsch Be panels compare three methods using one IS-QOZ potential:
 
 * **Otter-HNC** uses the bridge-free hypernetted-chain closure.
 * **Otter-VMHNC** uses the variational Rosenfeld--Ashcroft hard-sphere bridge
   :cite:p:`RosenfeldAshcroft1979,Faussurier2004`.
-* **Otter-MD (old potential)** is a 2048-ion LAMMPS
-  :cite:p:`ThompsonEtAl2022` calculation with the earlier tabulated potential.
+* **Otter-MD** is a 2048-ion LAMMPS
+  :cite:p:`ThompsonEtAl2022` calculation with the same tabulated potential.
   Shaded bands are twice the standard
   error across RDF blocks or saved-frame reciprocal-shell averages.
 
@@ -66,8 +65,8 @@ MD :math:`S_{ii}(k)` starts at the second shell,
 vectors and is therefore excluded from the curve as a direction-starved
 finite-size estimate.  No smoothing or replacement value is applied.
 
-Only current HNC versus VMHNC holds the electronic potential fixed. The
-comparison to historical MD can also include changes to that potential. VMHNC is not
+The common potential allows closure comparisons with MD, subject to
+finite-size, tabulation and sampling errors. VMHNC is not
 IEMHNC: VMHNC uses a variational hard-sphere reference, whereas IEMHNC maps an
 OCP bridge to a YOCP state.
 

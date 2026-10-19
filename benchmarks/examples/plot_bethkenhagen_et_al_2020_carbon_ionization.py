@@ -6,9 +6,9 @@ This benchmark compares Otter's carbon ionization diagnostics at
 :math:`T_e=100` eV with the model-dependent :math:`Z^{\rm free}` curves in
 Figure 3(a) of :cite:t:`BethkenhagenEtAl2020`.
 
-The full-AA density scan uses the same calculation routine as
-:doc:`/gen_examples/plot_carbon_ionization_levels`. Running this benchmark
-calculates the scan directly; no earlier gallery run is required.
+This benchmark owns the full-AA density scan.
+:doc:`/gen_examples/plot_carbon_ionization_levels` shares the resulting figure
+without repeating the calculation.
 
 Otter reports :math:`\bar Z=Z-Q_{\rm ion}(R_{\rm WS})` and
 :math:`Z^*=n_e^0/n_i`.  The published curves use several different electron
@@ -116,7 +116,7 @@ def load_otter_scan(*, accepted: bool) -> dict[str, np.ndarray]:
             raise FileNotFoundError("The accepted carbon-ionization scan is missing.")
         raise FileNotFoundError(
             "The carbon-ionization candidate is missing. Run "
-            "docs/examples/plot_carbon_ionization_levels.py with "
+            "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py with "
             "RECOMPUTE_WITH_OTTER=True first."
         )
 
@@ -258,7 +258,7 @@ def plot_comparison(
 def main() -> None:
     """Calculate the shared scan and render the literature comparison."""
     if RECOMPUTE_WITH_OTTER:
-        path = ROOT / "docs/examples/plot_carbon_ionization_levels.py"
+        path = ROOT / "benchmarks/runners/regenerate_carbon_ionization_levels.py"
         spec = importlib.util.spec_from_file_location("otter_carbon_scan", path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module

@@ -4,9 +4,9 @@ Ion-structure literature library
 
 .. note::
 
-   All seven Otter HNC states and the Be VMHNC curve use the September 2026
-   recalculation. Be MD is historical and uses the earlier potential.
-   See :doc:`/benchmarks/validation_20260908`.
+   The electronic and ionic states have been recalculated with default AA
+   controls. Be MD uses the same IS-QOZ potential as HNC and VMHNC.
+   See :doc:`/benchmarks/validation_0_4_1`.
 
 This benchmark compares Otter ion-structure results with literature curves for
 aluminium, beryllium, and carbon.
@@ -15,9 +15,8 @@ In the four-panel :math:`S_{ii}(k)` figure, panel 1 uses Gill *et al.*,
 Fig. 3 :cite:p:`GillEtAl2015`; panels 2 and 3 use Clérouin *et al.*, Fig. 1
 :cite:p:`ClerouinEtAl2015`; and panel 4 uses Wünsch *et al.*, Fig. 2
 :cite:p:`WunschEtAl2009`.  For Wünsch Be, ordinary HNC, Rosenfeld--Ashcroft
-VMHNC reuse one current IS-QOZ pair potential; the historical LAMMPS MD
-is not a same-potential test of those refreshed curves. The MD
-error band is twice the standard error across independent RDF blocks or
+VMHNC and LAMMPS MD reuse one IS-QOZ pair potential. The MD
+error band is twice the standard error across RDF blocks or
 saved-frame reciprocal-shell averages.  The real-space comparison uses
 Fig. 1(c).  The carbon PA-HNC data were provided by C. E. Starrett
 (private communication; unpublished).
@@ -528,6 +527,8 @@ def add_wunsch_md(
         * np.asarray(ion["zbar_partition"]).item() ** 2
         / (mass_u * mass_ratio)
     )
+    dt_omega = max(0.005, 0.01e-3 / atomic_time_ps * omega_p)
+    production_steps = round(500.0 / dt_omega)
     state_id = str(payload["state_id"].item())
     result = run_otter_lammps_md(
         MDConfig(
@@ -535,14 +536,14 @@ def add_wunsch_md(
             species=(MDSpecies("Be", mass_u, WUNSCH_MD_ATOMS),),
             ion_density_bohr3=np.asarray(ion["n_i"]).item(),
             ion_temperature_ev=float(payload["ti_ev"]),
-            timestep_ps=0.005 / omega_p * atomic_time_ps,
+            timestep_ps=dt_omega / omega_p * atomic_time_ps,
             thermostat_damp_ps=0.5 / omega_p * atomic_time_ps,
-            equilibration_steps=10_000,
-            production_steps=100_000,
+            equilibration_steps=round(50.0 / dt_omega),
+            production_steps=production_steps,
             rdf_bins=500,
-            rdf_every=100,
+            rdf_every=max(1, production_steps // 1000),
             rdf_repeat=50,
-            trajectory_every=5_000,
+            trajectory_every=max(1, production_steps // 20),
             table_points=8_192,
             k_max_angstrom_inv=WUNSCH_MD_K_MAX_ANGSTROM_INV,
             random_seed=20_260_825,
@@ -761,6 +762,9 @@ def main() -> None:
                     style["color"] = colors[0]
                 elif model_index == 2:
                     style["color"] = colors[1]
+                if prefix == "md_":
+                    style.update(linestyle="--", marker="o", markersize=2.5,
+                                 markevery=10)
                 if prefix == "md_" and bool(states[result_id].get("md_is_historical", False)):
                     label += " (old potential)"
                 axis.plot(x_otter, y_otter, label=label, **style)

@@ -1,6 +1,6 @@
 r"""
-Polypropylene (PP/CH2): HNC and historical MD
-====================================================
+CH₂: HNC and molecular dynamics
+================================
 
 .. raw:: html
 
@@ -15,102 +15,44 @@ Polypropylene (PP/CH2): HNC and historical MD
 .. only:: not html
 
    .. image:: /_static/benchmarks/ch2_hnc_md/ch2_md.png
-      :alt: OVITO rendering of the PP CH2 same-potential MD trajectory
+      :alt: Illustrative OVITO rendering of a 3072-ion CH₂ trajectory
 
-.. note::
+The animation illustrates the ion distribution and is not used in the
+quantitative comparisons.
 
-   The electronic states and HNC curves were recalculated in September 2026.
-   That campaign did not rerun MD. The MD
-   curves and video are historical. Matching of the new QOZ potential to
-   the historical MD tables has not been verified, so this overlay is not
-   presented as a same-potential closure validation.
+The material is polypropylene (PP), represented by its reduced C:H composition,
+CH₂, at :math:`\rho=0.946` g cm\ :sup:`-3`. This comparison uses
+:math:`T_e=9,29,99` eV and :math:`T_i/T_e=0.2,0.5,1.0`: six two-temperature
+states and three equilibrium controls. At each electron temperature, one
+converged IS electronic state supplies the QOZ potential for all three ion
+temperatures. AA uses its default radial resolution and convergence controls.
 
-The material is polypropylene (PP), represented in this ion-structure model
-by its reduced C:H composition, CH2, at :math:`\rho=0.946` g cm\ :sup:`-3`.
-The calculation compares Otter multicomponent QOZ/HNC with classical LAMMPS
-MD :cite:p:`ThompsonEtAl2022` at :math:`T_e=9,29,99` eV and
-:math:`T_i/T_e=0.2,0.5,1.0`.  Six of the nine states are explicitly
-two-temperature states; the three :math:`T_i/T_e=1` cases are equilibrium
-controls.  The animation above is an illustrative OVITO rendering of one
-3072-ion trajectory and is not used in the numerical comparison.
+HNC sets the bridge function to zero, :math:`B_{ab}(r)=0`. LAMMPS MD
+:cite:p:`ThompsonEtAl2022` samples the classical many-ion distribution without
+that closure. Differences can include bridge correlations, finite cell size,
+potential tabulation, integration error and sampling uncertainty. For the two
+hottest MD states, the known Coulomb core is restored below 0.3 Bohr and
+blended back to the native QOZ potential by 0.5 Bohr. HNC retains the native
+QOZ potential; the comparison therefore also includes this numerical core
+treatment. No mixture VMHNC bridge is implemented here.
 
-At each electron temperature, one converged IS electronic result is reused
-for all three ion temperatures and supplies a QOZ-derived pair potential.
-Ordinary HNC imposes the
-closure :math:`B_{ab}(r)=0` and therefore omits bridge diagrams, whereas MD
-samples the classical many-ion distribution without imposing that closure.
-At a fixed pair potential, systematic HNC--MD differences primarily test
-the neglected bridge correlations. In this refreshed overlay, a change in
-the QOZ potential can also contribute, along with finite cell size, timestep
-error and MD sampling uncertainty. For the two hottest historical MD
-runs only, the analytically known Coulomb core is restored below 0.3 Bohr and
-blended back to the unchanged QOZ potential by 0.5 Bohr; the resolved
-first-shell potential is not refitted.
+MD protocol
+-----------
 
-Across the tested window, the pairwise HNC--MD RMSE is
-:math:`0.00183\text{--}0.0123` for :math:`g_{ab}(r)` and
-:math:`0.00630\text{--}0.0168` for :math:`S_{ab}(k)`. HNC takes
-:math:`0.359\text{--}0.547` s per state; the historical MD took
-:math:`8.6\text{--}224` min. The numerical curves remain close in this
-window, but isolating the current HNC closure error requires MD using the
-current potential. No conclusion is drawn for other mixtures or states.
+Each state contains 1024 C and 2048 H ions. The fixed timestep is 0.01 fs.
+NVT equilibration and NVE production last :math:`50\,\omega_p^{-1}` and
+:math:`500\,\omega_p^{-1}`, respectively; step counts follow from those
+physical durations. NVE energy drift is checked before accepting a trajectory.
+The labelled ion temperatures are NVT targets. Actual NVE mean temperatures
+are saved in the MD results and can differ after removal of the thermostat.
+The cubic cell has a side length of 29.322944 Angstrom and a potential cutoff
+of :math:`0.48L`, below the minimum-image limit :math:`L/2`.
 
-Runtime and MD protocol
------------------------
-
-Both timings start after each calculation's :math:`V_{ab}^{\mathrm{eff}}` has been
-prepared: the HNC column is the closure-solver time, while the MD column is
-the LAMMPS run plus RDF and direct :math:`S_{ab}(k)` analysis.  Every MD case
-uses 1024 C and 2048 H ions, NVT equilibration followed by NVE production,
-and fixed physical durations of :math:`50\,\omega_p^{-1}` and
-:math:`500\,\omega_p^{-1}`.  The thermal timestep guard reduces the two
-hottest timesteps and increases their step counts accordingly.  LAMMPS used
-16 MPI ranks with one OpenMP thread per rank (16 concurrent CPU execution
-threads, reported as a :math:`2\times2\times4` processor grid).  Direct
-:math:`S_{ab}(k)` post-processing used eight workers.  The HNC driver and its
-BLAS backends were limited to one thread.  All states use the same cubic
-periodic cell with side length 29.322944 Angstrom (55.4123 Bohr) and volume
-25,212.895 Angstrom\ :sup:`3`.  The pair-potential cutoff is 14.075013
-Angstrom, or :math:`0.48L`, below the minimum-image limit :math:`L/2`.
-
-.. list-table:: Measured protocol and wall time
-   :header-rows: 1
-   :widths: 22 14 15 14 15 14 16
-
-   * - States (eV)
-     - :math:`\Delta t\,\omega_p`
-     - :math:`\Delta t` (ps)
-     - NVT steps
-     - NVE steps
-     - HNC
-     - Historical MD + analysis
-   * - First seven: all :math:`T_e=9,29`; :math:`(T_e,T_i)=(99,19.8)`
-     - 0.005
-     - :math:`1.3330\times10^{-5}`
-     - 10,000
-     - 100,000
-     - 0.369--0.547 s
-     - 8.57--9.38 min
-   * - :math:`(99,49.5)`
-     - :math:`4.9945\times10^{-4}`
-     - :math:`1.3316\times10^{-6}`
-     - 100,110
-     - 1,001,098
-     - 0.385 s
-     - 179.55 min
-   * - :math:`(99,99)`
-     - :math:`3.5317\times10^{-4}`
-     - :math:`9.4155\times10^{-7}`
-     - 141,577
-     - 1,415,766
-     - 0.359 s
-     - 224.29 min
-
-Summed over the nine independent states, the measured HNC closure time is
-3.90 s and the historical MD-plus-analysis time is 7.76 h. This comparison
-reports costs from separate runs, after their electronic
-potential is available; it does not include electronic/QOZ
-preparation in either column.
+The recorded calculation used four MPI ranks per MD and one internal thread
+per rank. The input block defaults to eight ranks; it can be adjusted to the
+available processors. HNC times exclude electronic/QOZ preparation. MD times
+include LAMMPS, RDF analysis and direct structure-factor evaluation. The
+recorded output below reports measured times and residuals for every state.
 
 How the MD structure factors are estimated
 ------------------------------------------
@@ -161,15 +103,9 @@ corresponding :math:`h_{ab}=g_{ab}-1` is linearly interpolated to the strict
 beyond the final RDF centre.  Its shaded band is :math:`\pm2` SEM across the
 20 independently transformed RDF blocks.
 
-Over the common plotted :math:`k` points, the RDF-transform and density-mode
-estimators have pairwise RMSE :math:`0.00629\text{--}0.0162` and an aggregate
-signed mean difference of :math:`-6.07\times10^{-5}`.  Their main peak shapes
-therefore agree without a systematic offset.  The RDF-transform SEM is about
-17--22% of the density-mode SEM because the RDF is sampled much more densely.
-This smaller statistical band does not include the systematic effect of the
-finite :math:`0.48L` RDF cutoff or the imposed :math:`h_{ab}=0` tail; the
-largest estimator differences remain at the smallest resolved :math:`k`,
-especially for :math:`S_{HH}`.
+The recorded results report the difference between the two estimators. Their
+sampling bands omit autocorrelation and finite-range systematic errors; a
+smaller band alone does not establish a more accurate estimator.
 
 Reproduction
 ------------
@@ -189,14 +125,12 @@ locally; literature reference tables remain inputs to the comparison.
 electronic states and all nine HNC/MD cases using those new pair potentials.
 It also calculates both structure-factor estimators and their residuals.
 The two hot-state MD cases retain the core regularization described above.
-The video is a recorded visualization, not an automatic output of this script;
-the new LAMMPS trajectories can be rendered with OVITO.
+Saved LAMMPS trajectories can be rendered with OVITO.
 
-Reproduction requires LAMMPS and MPI and can take hours. The driver uses
-16 MPI ranks for MD, eight workers for structure-factor analysis and one
-continuum worker per AA. These counts are editable in its input block.
+Reproduction requires LAMMPS and MPI and can take hours. The driver defaults to eight MPI ranks for MD and structure-factor analysis,
+and one continuum worker per AA. These counts are editable in its input block.
 New timings, timestep sizes, energy drift and box lengths are printed and
-saved with the results; the table above describes the recorded run only.
+saved with the results.
 
 Recorded results
 ----------------
@@ -323,7 +257,11 @@ def main() -> None:
         """Return the common method and uncertainty legend."""
         return alpha_handles() + [
             Line2D([], [], color="0.15", lw=2.0, ls="-", label="HNC"),
-            Line2D([], [], color="0.15", lw=1.6, ls="--", label="MD (old potential)" if USE_PRECOMPUTED_DATA else "MD"),
+            Line2D(
+                [], [], color="0.15", lw=1.6, ls="--", marker="o", ms=3.,
+                label=("MD (old potential)"
+                       if bool(data.get("md_is_historical", False)) else "MD"),
+            ),
             Patch(
                 facecolor="0.35", alpha=UNCERTAINTY_ALPHA, edgecolor="none",
                 label=r"MD $\pm2$ SEM",
@@ -382,7 +320,7 @@ def main() -> None:
                 sem = data["md_gij_sem"][state, pair]
                 axes[pair, column].plot(
                     data["md_r_bohr"], g_md, color=color, lw=1.6,
-                    ls="--", alpha=0.76,
+                    ls="--", marker="o", ms=2.5, markevery=10, alpha=0.76,
                 )
                 axes[pair, column].fill_between(
                     data["md_r_bohr"],

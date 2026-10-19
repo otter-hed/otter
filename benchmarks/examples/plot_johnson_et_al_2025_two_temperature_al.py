@@ -4,10 +4,8 @@ Two-temperature aluminium: Johnson et al. (2025)
 
 .. note::
 
-   HNC and VMHNC use the September 2026 Otter recalculation. The MD curves
-   are historical runs on the earlier Otter potential, not new simulations.
-   Their agreement with the new curves is not a same-potential closure test.
-   See :doc:`/benchmarks/validation_20260908`.
+   HNC, VMHNC and MD use the recalculated IS-QOZ potentials.
+   See :doc:`/benchmarks/validation_0_4_1` for verification and scope.
 
 This benchmark compares Otter IS-QOZ :math:`g_{ii}(r)` obtained with ordinary
 HNC and Rosenfeld--Ashcroft VMHNC closures with the three reference curve
@@ -18,9 +16,8 @@ aluminium at :math:`\rho=2.7` g cm\ :sup:`-3`,
 reference methods as 2TTCP HNC+bridge, DFT-MD, and YOCP HNC+bridge.  In every
 panel, the two Otter integral-equation curves reuse exactly the same ion-
 sphere (IS) electronic result and effective ion--ion potential; only the
-ionic closure changes. Historical classical LAMMPS MD
-:cite:p:`ThompsonEtAl2022` is retained as a separately labelled comparison.
-Differences from that MD can include changes to the electronic potential.
+ionic closure changes. Classical LAMMPS MD :cite:p:`ThompsonEtAl2022`
+samples the pair potential from the same electronic state.
 
 The VMHNC bridge is the Percus--Yevick hard-sphere bridge with its packing
 fraction fixed by the variational condition of :cite:t:`Faussurier2004`, not
@@ -49,7 +46,8 @@ The reference abscissa is :math:`r` in atomic units (Bohr), as shown on the
 published Fig. 2 axis.  No coordinate conversion is applied.
 
 When recomputing, ``RUN_SAME_POTENTIAL_MD = True`` follows Johnson's stated
-dimensionless protocol: 2048 ions, :math:`\Delta t=0.005\omega_p^{-1}`;
+dimensionless durations with 2048 ions and
+:math:`\Delta t=\max(0.005\omega_p^{-1},0.01\,\mathrm{fs})`;
 :math:`50\omega_p^{-1}` NVT equilibration followed by
 :math:`500\omega_p^{-1}` NVE production.  It requires ``lmp`` and ``mpirun``.
 
@@ -133,6 +131,7 @@ MPI_PROCESSES_PER_MD_STATE = 10
 MAX_PARALLEL_MD_STATES = 1
 MD_CELLS_PER_AXIS = 8  # FCC: 4 * 8^3 = 2048 Al ions.
 MD_TIMESTEP_OMEGA_P_INV = 5.0e-3
+MD_MIN_TIMESTEP_FS = 0.01
 MD_EQUILIBRATION_OMEGA_P_INV = 50.0
 MD_PRODUCTION_OMEGA_P_INV = 500.0
 MD_RDF_BINS = 500
@@ -580,17 +579,17 @@ def run_same_potential_md(payload: dict[str, np.ndarray]) -> dict[str, np.ndarra
     omega_p_au = np.sqrt(
         4.0 * np.pi * n_i * zbar**2 / (aluminium_mass_u * mass_ratio)
     )
-    timestep_ps = (
-        MD_TIMESTEP_OMEGA_P_INV / omega_p_au * atomic_time_ps
-    )
+    dt_omega = max(MD_TIMESTEP_OMEGA_P_INV,
+                   MD_MIN_TIMESTEP_FS * 1e-3 / atomic_time_ps * omega_p_au)
+    timestep_ps = dt_omega / omega_p_au * atomic_time_ps
     thermostat_damp_ps = 0.5 / omega_p_au * atomic_time_ps
     equilibration_steps = int(
-        round(MD_EQUILIBRATION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV)
+        round(MD_EQUILIBRATION_OMEGA_P_INV / dt_omega)
     )
     production_steps = int(
-        round(MD_PRODUCTION_OMEGA_P_INV / MD_TIMESTEP_OMEGA_P_INV)
+        round(MD_PRODUCTION_OMEGA_P_INV / dt_omega)
     )
-    rdf_every = 100
+    rdf_every = max(1, production_steps // 1000)
     rdf_repeat = 50
     rdf_block_steps = rdf_every * rdf_repeat
     lattice_angstrom = (4.0 / (n_i / BOHR_TO_ANGSTROM**3)) ** (1.0 / 3.0)
@@ -672,7 +671,10 @@ run             {production_steps}
         "md_gii_block_sem": sem,
         "md_atoms": np.asarray(4 * MD_CELLS_PER_AXIS**3),
         "md_rdf_blocks": np.asarray(production_steps // rdf_block_steps),
-        "md_timestep_omega_p_inv": np.asarray(MD_TIMESTEP_OMEGA_P_INV),
+        "md_timestep_omega_p_inv": np.asarray(dt_omega),
+        "md_timestep_ps": np.asarray(timestep_ps),
+        "md_equilibration_steps": np.asarray(equilibration_steps),
+        "md_production_steps": np.asarray(production_steps),
         "md_equilibration_omega_p_inv": np.asarray(
             MD_EQUILIBRATION_OMEGA_P_INV
         ),
@@ -1106,7 +1108,7 @@ def main() -> None:
                     g_md,
                     color=colors[4 % len(colors)],
                     lw=1.9,
-                    ls="-.",
+                    ls="--", marker="o", ms=2.5, markevery=10,
                     label=("Otter MD (old potential)" if bool(payload.get("md_is_historical", False))
                            else "Otter IS-potential MD"),
                     zorder=2,

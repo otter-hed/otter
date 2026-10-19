@@ -5,6 +5,19 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+### 0.4.1
+
+- Refresh gallery and benchmark presentation assets from default-AA
+  calculations, including ion-structure MD recalculations. Document
+  numerical scope and remaining hot-state charge limitations. Fix the
+  Schörner MD result metadata after a successful trajectory.
+- Compute the carbon ionization scan through its benchmark runner. The example
+  gallery shares that benchmark figure and links to the full comparison.
+- Use a fixed 0.01 fs CH2 MD timestep instead of the thermal-displacement cap.
+  Other maintained MD comparisons enforce a 0.01 fs minimum while preserving
+  their physical equilibration and sampling durations. Validate each trajectory
+  before accepting its results.
+
 - Separate the external Hartree and ion--electron correlation potentials in
   QM SC result reporting. Use the resampled correlation potential applied by
   the solver, including when reusing a full result. Total potentials,
@@ -39,6 +52,15 @@ have not yet been released are collected under “Unreleased”.
   changed occupations relative to the full system and biased pseudoatom
   charge. Numerical defaults and charge acceptance thresholds are unchanged.
 
+- Export electron--ion potentials `v_ei_k` and `v_ei_r` in HDF5 parameter
+  grids with species axes, units and coordinate references. Reciprocal-space
+  potentials use the common k grid; radial potentials retain per-state r
+  grids by default, with an optional common r grid. Preserve existing output
+  selections and validate potential coordinates on resume. Add the missing
+  `v_ei_r` unit to portable NPZ metadata.
+
+### 0.4.0
+
 - Guard standalone external SCF potential updates against loss of the
   interacting-continuum matching window. Require valid evaluated and accepted
   windows and an unmixed map residual below the existing potential tolerance,
@@ -51,14 +73,6 @@ have not yet been released are collected under “Unreleased”.
   Energies, wavefunctions, total densities and total spectra are unchanged;
   no orbital renormalization is applied. Legacy gamma fallbacks are retained.
 
-### 0.4.0
-
-- Export electron--ion potentials `v_ei_k` and `v_ei_r` in HDF5 parameter
-  grids with species axes, units and coordinate references. Reciprocal-space
-  potentials use the common k grid; radial potentials retain per-state r
-  grids by default, with an optional common r grid. Preserve existing output
-  selections and validate potential coordinates on resume. Add the missing
-  `v_ei_r` unit to portable NPZ metadata.
 - Adopt Julian Lütgert's HDF5 layout revisions in `otter_grid_v2`: group
   run records under `diagnostics`, store scalar unit strings, attach fixed
   species fractions to `axis/elements`, and group paired orbital quantum

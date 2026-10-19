@@ -60,7 +60,7 @@ TASKS: dict[str, Task] = {
         ("benchmarks/outputs/argha_roy_carbon_sii/gallery_recomputed",),
     ),
     "carbon_ionization_levels": Task(
-        "docs/examples/plot_carbon_ionization_levels.py",
+        "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py",
         {
             "OTTER_RECOMPUTE_CARBON_IONIZATION": "1",
             "OTTER_REUSE_ACCEPTED_CARBON_IONIZATION": "0",

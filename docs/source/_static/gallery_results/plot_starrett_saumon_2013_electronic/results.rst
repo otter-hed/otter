@@ -1,11 +1,35 @@
-.. Recorded local validation output; presentation only, not solver input.
+.. Recorded validation output; presentation only, not solver input.
 
 Recorded terminal output
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
-   
+   [IS start] al_rho2p7_te2_qm
+   [IS complete; SC start] al_rho2p7_te2_qm: 36.7 s
+   [IS start] al_rho2p7_te6_qm
+   [accepted] al_rho2p7_te2_qm: 253.0 s, SC outer=8
+   [IS complete; SC start] al_rho2p7_te6_qm: 35.0 s
+   [accepted] al_rho2p7_te6_qm: 198.4 s, SC outer=7
+   [IS start] al_rho2p7_te10_qm
+   [IS complete; SC start] al_rho2p7_te10_qm: 32.4 s
+   [accepted] al_rho2p7_te10_qm: 162.6 s, SC outer=7
+   [IS start] al_rho2p7_te15_qm
+   [IS complete; SC start] al_rho2p7_te15_qm: 27.7 s
+   [accepted] al_rho2p7_te15_qm: 321.4 s, SC outer=7
+   [IS start] fe_rho22.5_te10_tf
+   [IS complete; SC start] fe_rho22.5_te10_tf: 1.1 s
+   [accepted] fe_rho22.5_te10_tf: 10.9 s, SC outer=10
+   [IS start] fe_rho34.5_te100_tf
+   [IS complete; SC start] fe_rho34.5_te100_tf: 1.0 s
+   [accepted] fe_rho34.5_te100_tf: 10.0 s, SC outer=10
+   [IS start] fe_rho39.65_te1000_tf
+   [IS complete; SC start] fe_rho39.65_te1000_tf: 1.0 s
+   [IS start] fe_rho34.37_te5000_tf
+   [accepted] fe_rho39.65_te1000_tf: 12.9 s, SC outer=13
+   [IS complete; SC start] fe_rho34.37_te5000_tf: 1.0 s
+   [accepted] fe_rho34.37_te5000_tf: 12.5 s, SC outer=13
+
    Al bound levels: all energies E are in Hartree
     T[eV] shell  paper E[Ha]    IS E[Ha]    SC E[Ha]   M paper      M IS      M SC
         2    1s        -54.6       -54.6       -54.6      1.00      1.00      1.00
@@ -15,14 +39,14 @@ Recorded terminal output
        15    1s        -54.9       -54.8       -54.8      1.00      1.00      1.00
        15    2s        -3.60       -3.51       -3.57      1.00      1.00      1.00
        15    2p        -2.23       -2.14       -2.21      1.00      1.00      1.00
-       15    3s      -0.0125     unbound    -0.00835     0.134        --    0.0916
+       15    3s      -0.0125     unbound    -0.00837     0.134        --    0.0919
    Eq. (81) formula audit at 15 eV 3s: paper inputs give M=0.134; published M=0.134.
-   
+
    Scattering width gamma: all values are in Hartree
     T[eV]  paper gamma[Ha]  IS gamma[Ha]  SC gamma[Ha]
-        2           0.0698        0.0378        0.0630
+        2           0.0698        0.0379        0.0629
        15            0.174         0.111         0.171
-   
+
    Mean ionization: all values are dimensionless
                       state  Z* paper     Z* IS     Z* SC  Zbar paper    Zbar IS    Zbar SC
            al_rho2p7_te2_qm      1.98      2.06      2.06        3.00       3.00       3.00

@@ -66,7 +66,7 @@ def test_al_recomputation_and_public_page_use_the_same_configuration(monkeypatch
 
 
 def test_carbon_scan_uses_default_numerics_and_changes_cache_fingerprint(monkeypatch):
-    page = load("docs/examples/plot_carbon_ionization_levels.py", monkeypatch)
+    page = load("benchmarks/runners/regenerate_carbon_ionization_levels.py", monkeypatch)
     expected = FullExternalConfig(element="C", temperature_ev=100., rho_g_cc=5.2, run_mode="full")
     assert asdict(page._configuration(5.2)) == asdict(expected)
     before = page._calculation_fingerprint()

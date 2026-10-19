@@ -1,23 +1,23 @@
-.. Recorded local validation output; presentation only, not solver input.
+.. Recorded validation output; presentation only, not solver input.
 
 .. image:: /_static/gallery_results/plot_al_full_workflow/figure_001.svg
-   :alt: Al electronic and ionic structure
+   :alt: Recorded result for plot_al_full_workflow
 
 .. image:: /_static/gallery_results/plot_al_full_workflow/figure_002.svg
-   :alt: Al electronic and ionic structure
+   :alt: Recorded result for plot_al_full_workflow
 
 .. image:: /_static/gallery_results/plot_al_full_workflow/figure_003.svg
-   :alt: Al electronic and ionic structure
+   :alt: Recorded result for plot_al_full_workflow
 
 .. image:: /_static/gallery_results/plot_al_full_workflow/figure_004.svg
-   :alt: Al electronic and ionic structure
+   :alt: Recorded result for plot_al_full_workflow
 
 Recorded terminal output
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
 
-   Otter 0.4.0
+   Otter 0.4.1
    [run] Al | rho=8.1 g/cm^3 | Te=1 eV | Ti=1 eV | QM -> QOZ/HNC
    [AA] Al (Z=13) | Rws=2.073224 a0 | full + external
    [AA/full SCF: stage 1]
@@ -73,7 +73,7 @@ Recorded terminal output
        15 | 8.033e-07 | 2.359e-06
        16 | 5.997e-08 | 7.449e-07
        17 | 1.648e-08 | 4.449e-07
-   [AA] converged=True | mu=1.04477399 Ha | Zbar=3.02589432 | time=31.423 s
+   [AA] converged=True | mu=1.04477399 Ha | Zbar=3.02589432 | time=42.520 s
 
    Bound levels
      level |     E [Ha] |      f_FD
@@ -81,8 +81,9 @@ Recorded terminal output
         1s |  -53.85600 |   1.00000
         2s |   -2.73953 |   1.00000
         2p |   -1.36869 |   1.00000
-   [ion] HNC iterations=33  QOZ=1.707 s  HNC=0.080 s
-   [done] total time=33.213 s
+   [ion] HNC iterations=33  QOZ=1.865 s  HNC=0.088 s
+   [done] total time=44.485 s
+   Saved newly calculated state: benchmarks/outputs/al_full_workflow_1ev/recomputed/Al_rho8p1gcc_Te1eV_Ti1eV.npz
    Al: rho=8.1 g/cc, Te=Ti=1 eV
    mu=1.04477399 Ha, HNC residual=4.455e-06
    Zbar(AA-WS/partition/QOZ)=3.02589432/3.02275441/3.02275441

@@ -2,357 +2,285 @@
   "docs/examples/plot_al_full_workflow.py": {
     "rendering_source_sha256": "caaae622a5c5231524ac0eacc58c5f4ce0489c13b87097a5bae38012d1423459",
     "figures": {
-      "figure_001.svg": "32f51c3efb9c918649ecec098ba611554f03af73677b2936759ea30c4cbb3102",
-      "thumbnail.png": "70488dbd3214acb7986d975e01fc733643d60b4678f39f4786a530655be04f77",
-      "figure_002.svg": "362d0239c7d6551082d9c2e86acdf01d052a3b5e1127fdfed2fb3b7b3f34442a",
-      "figure_003.svg": "5c06257c50090a900defbbd28e63f5ea0a85edd22440ee25339b01249ff5dee2",
-      "figure_004.svg": "cb38884a404eeba9821e2db4a72db4c3dba545381ed8794b81cda0d00ddf4a33"
+      "figure_001.svg": "6c05d5913b5d6b01baedc1a871bfcbc6ac2c70ca53a675062f323224c0869ac8",
+      "figure_002.svg": "5b96149a7e19aa6e3278d5fd24a7fcf72f54c327da2b34a58f7f4b0d6bd9926b",
+      "figure_003.svg": "d610f884a224b79b9322b2ecb523d6e3dca6485fecb831c99fd5e5cacb288e19",
+      "figure_004.svg": "fc05c51cc32b3d8e693b9480d07da133c2250c7aaef310eb4370adb04a2c0087",
+      "thumbnail.png": "6b0fc4250cd4c60c73bd9ca83e3ab08e15dd885ae9546acf8c59280e182a0e90"
     },
-    "results_sha256": "ef16bd4822a1698a38fd3cadf88a585259a0418ed54635828af8d9ec9c134132",
+    "results_sha256": "a714d545558d92f3be9f8053892e710a6085fea1101663de8969837a56d24685",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "calculation_settings": "Default AA and QOZ/HNC controls; Al at 1 eV and 8.1 g/cm^3.",
-    "local_archives": {
-      "benchmarks/outputs/al_full_workflow_1ev/recomputed/Al_rho8p1gcc_Te1eV_Ti1eV.npz": "19fe4767b2e6c882385c5000f229020700ac4ce074d267d91f34656658b4ba07",
-      "benchmarks/outputs/al_full_workflow_1ev/Al_orbitals_state.npz": "f117e9ee8df9c0684f947e30c020960f9a5b7cb52b1c9c581344e8d94324aa69"
-    },
-    "solver_source_sha256": "0d70f03f283ae17acf566074aa471ad3cb36a365861b429e1041d93a2c06fff7"
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "b230b0863a73633fda1af3390f27f82778e532094d5d22c38bfe28b9af2e15ae"
   },
   "docs/examples/plot_al_is_sc_comparison.py": {
     "rendering_source_sha256": "a6aaec4d19cbc29d97d19b3f1fd80858e45d37105e1730e955aa45156829a14c",
     "figures": {
-      "figure_001.svg": "b95a8f23374206c9ae4a9f4ad9390677f3883897c6f182cb514b727babcd27ea",
-      "thumbnail.png": "e9d8aab3992759de9226439176b32468a5b9350e72bacda28580b542b46a91d2",
-      "figure_002.svg": "f98430efdfbfd796ad79e08cd6636047b630e6634b634c4fded17f47c0516bc8",
-      "figure_003.svg": "1432e3b66a386c0aa740c52b7ae729521013a5c7f4af2e78cdcdb670b6470ee0"
+      "figure_001.svg": "10b27f6aff6fb2cdbb4fcdfd19d390bc35b1999aab11da5e7cf1d38a82e80ca9",
+      "figure_002.svg": "5e38951277af503bfa4789de0cc025df6b3bc4f2719a3b9548ca6c410c210c83",
+      "figure_003.svg": "9760999aaae0515f46975361a0f19562fb0f168f832729f22e2c01df36ae4ef0",
+      "thumbnail.png": "1fb7a53c7edb73758c09b9b650822227dbe07aaa5bf80c414c1f89d6b7e235a9"
     },
-    "results_sha256": "f5098e1de853924337d4f8415e2707377fa55e2e642343dc5157ef2adecd1aa5",
+    "results_sha256": "9c0cab926eab22a9f7f381c06b71214c6020c4e4344f405121c248213b3c6410",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "de73e8cc99be290c46b6187924cad2ff1230c3f50c320bcf4f30ecc472d48633",
-      "html_sha256_at_capture": "189e3299b90c50f8e4e6664d771c9334b0654705df25a34f1926e071251c9157"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "9d35730224ac64ea7e72b6457a153bcddc4563cf08f7017770e8978a2d4f8633",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "timing_presentation_update": {
-      "previous_source_sha256": "1edbde08ea9662973bba0cdcd9fb269b0968f99d26f5d6104a956b5577acdcba",
-      "previous_results_sha256": "9df70d07d49d36d08bdd45495e94065f0fbee6a810f2c8176f3a98d0ee2e4757",
-      "previous_timing_figure_sha256": "5e2086d484e48dfa19f7fdf26085f7b87bc4e408b6009f38b7e0e99713b21987",
-      "numerical_archive_sha256": "c11583194e8cc43f3397c02a8bfc91488ab4fa5459d6089a10afc5658a4f3ef7",
-      "change": "Use total wall time for IS and SC in the plot and terminal, with two decimal places. SC includes initial IS plus SC feedback. Re-rendered from the same accepted numerical archive; no AA/MD calculation or solver change."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "577666f37cc7bd1a25561f1c4cddb5c2a2298f78a7d36d56ba1ba34da8c455fa",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "c764e54d3c7037b7315128ecd28fc390b372fbc99fb8a156ecfbd95689e5f4cf"
   },
   "docs/examples/plot_al_qm_tf.py": {
     "rendering_source_sha256": "7a964dd7d33cec57c6db510a67d41e07714992b2fff1b7b6b832b20dbf40466a",
     "figures": {
-      "figure_001.svg": "79e0f8a339a5bbb7d16f9a0ffe9ee8c445078ef2e633689b8e8d46b831b69ffe",
-      "thumbnail.png": "cec397e220621399cda4a1911a6ff51e9704d6200c3eb57d7b38f6091e2692b2",
-      "figure_002.svg": "9e3ead2b582b7b2efeaf5bea6102538a44aaeb8888c21a5f80fec2a7cfea5634"
+      "figure_001.svg": "db0e61dd27edeb2ac18d529fad43c228d9af481fab9d432c5902a22fdd7c40b6",
+      "figure_002.svg": "ac50d2efd85e38518df01db7112ade50371bee875d088c72d3e55d4e0822000d",
+      "thumbnail.png": "3c7fe4a1164c3341f4fbde316ff6f1b7f78c95b45f5fd9ac8270775e87fe2d3d"
     },
-    "results_sha256": "5193f56955afd70220a4b40f8b5edc7948013e4fc84db6e242d0a192715eb2da",
+    "results_sha256": "00965815f4b8e5eae0cdee243d05c188c6c6b56c9359fbed2ddb26c0b96e7826",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "2d20e9328ed537b20febb6e446c2d6a592713056f88ce2094fc3658e17207fc0",
-      "html_sha256_at_capture": "30fdec61083f6576e11675399c6630b71c0d9e2d598204e2815177f927a73ae6"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "7804b83fe97e64204ce1cfabe9fe0abdb3b30d8d1ac9aa8d372a7516a770f142",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "70d5a426e55abb40497109133d2c09ee61cac494a2b8462ec0a3f0015c44ddd3",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "c19640de0cc814d5f90d8a8c384a9ba86619d612160686d58405fbe3aef0dd91"
   },
   "docs/examples/plot_al_rayleigh_weight.py": {
     "rendering_source_sha256": "c71986ce47cc5aa6512792232d58395ae1e6db9be287da502024bb7c4ab28d83",
     "figures": {
-      "figure_001.svg": "51220be964f1486ea39193254e24298ba80f105f2b3475cbdb974de08429762c",
-      "thumbnail.png": "645180386f7d1441f1222eab100b5e6be09ee122799cf86544d71b50cba6a320"
+      "figure_001.svg": "db334f25de25fd9ecffc0a2cc7e42a4710e6d68f5905974e6e68c0d5a63ea62d",
+      "thumbnail.png": "abffa48b3320e154c1157db28c5ecb1e8086bb12927a4189e7317d8ceaa8f7e1"
     },
-    "results_sha256": "0149cc651e4d10cf3904c1b5602e0043839e382c0a88fad8b276edb0591424d3",
+    "results_sha256": "fcefb89b20491c3754153029ffc35007c83ad0491eb3564066ce536b9d323b07",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "9421bf4879698ecaf6870e9c170f270cb059c0aaa4b3db47d696f1e95b58564b",
-      "html_sha256_at_capture": "dbc62687f404b056186dd75381388701bd3fee2fe68d7c6e4662c24faf918f1c"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "species_axis_migration": {
-      "previous_source_sha256": "16d0195239d93ac7a657fbde470b71c609ce3957a370e1aadb91df48a92041d4",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "b7aab91b4152ea335309c525af63bc3ffa61d3de7043176b33431568999b8e37"
   },
   "docs/examples/plot_carbon_ionization_levels.py": {
-    "rendering_source_sha256": "2b691137d2fad408c2df551b63e6ddabdc85c9f6052fd44c72dba9301da27bb3",
-    "figures": {
-      "figure_001.svg": "8a306ad1088ad432c57e03ab7b5c77214417e5508f30b9941deff3f54fba3002",
-      "thumbnail.png": "20a1f51978ed7f35f51c5315053f71ae772ce0990879eb8a4026ab4db901d130",
-      "figure_002.svg": "650c09ee34292d33f1ab91e9e197c9b85733a6d3a9df9a5a72fee3ba4f02dc13"
-    },
-    "results_sha256": "784bbce5733168147a3f1a945db849dde6cbbdd81ddc2b403446d095efbf28f1",
+    "rendering_source_sha256": "59b185a94b76f3e8f1df5074f696324a6f5b7efc9364c7eb17a4d24c49144e01",
+    "figures": {},
+    "results_sha256": "694aa59b31e7cac9f51de3986c0f2fef82591bd201e1ee7470479b8816e3df0d",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "684c297f32b13c717547e481f33bc5f51dfaefb26bf854c27f51e7414afed781",
-      "html_sha256_at_capture": "3d1020bd887bf75ced3f0276887e1ba4d9d7d322611e320a13060f68745e37c5"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "0cc8e3c2ed70fe21c7bf93dd6528b584fca2ed70d97d4ecee22c21a3d6d2b96a",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "shared_presentation_source": "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py"
   },
   "docs/examples/plot_carbon_lfc_sensitivity.py": {
     "rendering_source_sha256": "f15c54d0819a79024cc85894f12f43c6c3971f0311181c88dc6f8d36120f7c37",
     "figures": {
-      "figure_001.svg": "032df6f87884217a4306a6f2e313b2216b38f48030003e3f95bf6357eda2310f",
-      "thumbnail.png": "8805e88d022d2b095d320f0e516037ae81645dcb82caaaa30ef26157e3cecd7f",
-      "figure_002.svg": "2c093285d85fbfc85c0a23c41fe50300fc80ea2d520a426f6a16e20c3e35dbe7",
-      "figure_003.svg": "6d088df6cfac9c00e015da6646e9968bb659a7701ebe567239f3e012a77bd4a4",
-      "figure_004.svg": "3cdd56f50c38e741324fe0d1c6e0ba239f037d0030dd713d65b58faa8ef04298"
+      "figure_001.svg": "e7fc607d6e90fac1dfeb2aef50e8ace10bf4176c519a83c956a42b6cbdd6c30b",
+      "figure_002.svg": "1930c9a04eba53905aabfbd954620a94d3843642cd53daf947caeb8082b0dc17",
+      "figure_003.svg": "4574cfaf688c27647dcf5f648962a1ca4b49cc27029b67c45617a92abbb1b0be",
+      "figure_004.svg": "71cf7c393b8dda91df2e9e5783d5dbce3912fb10bffdcb90efcbb85de607749d",
+      "thumbnail.png": "3b1b3f8f0c36e401efb7a81b9a419819fb8581627f456cc09309c47f1ab9aada"
     },
-    "results_sha256": "10e28eb70ee89149638cbd8544e46e5fde2fd5b3fd61c0c985df923cf4c2ff88",
+    "results_sha256": "43a9f217b63303e5f13e6b16877105e7590ced308e6ba19f56b6c20ce72a1183",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "c38a0248012490249cdb0855ac8e1a1d32dad0fc98e14acff804a53cdc94ce6d",
-      "html_sha256_at_capture": "f0b2c7c4ce7d99b918df8cd313d8d2ea2095d7753f3139237bfd4b0e802faced"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "0d76f339b01e5aac8a15878c7177d5d88d9c87ef2398023e5d219660f1e8b9ae",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "9f0286f65c1c41aa4726c7b3adbcb45967c32fa85f034229b35f177a8ae01935",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "33ae29afea3f04d22282903ff6293ea1bdd49d9c352ca09aea382293f0b96d0e"
   },
   "docs/examples/plot_ch136_mixture_workflow.py": {
     "rendering_source_sha256": "268d472dd2104cbc5835347a7625a92ebf3f6c45e00871cc8eac16e74043c86c",
-    "reader_documentation_update": {
-      "previous_source_sha256": "2643dc33eaa0fe47a666db5c4bc0b345caa7a1a08653ac609e2be38a784b3682",
-      "previous_results_sha256": "2fa267549d35ae7c6f3621e5dea37cb6ef3fd4c6b46b7a3d4d95b4657d409aac",
-      "change": "Clarify reproduction instructions and rename the wall-time label in the script and recorded output. Numerical values, figures and calculation provenance are unchanged."
-    },
-    "interface_documentation_update": {
-      "previous_source_sha256": "269793258f07e2b083833a85284a161edc94cfc010faba492882864ed2ed9623",
-      "change": "Describe the species interface for arbitrary component counts. Executable code, figures, recorded output and calculation provenance are unchanged."
-    },
-    "access_only_update": {
-      "previous_source_sha256": "e70eb31efaea5be199f2622fcdbb0aeb0619c26a8ab344a8b40b5c3263abd95b",
-      "change": "Use and document the unified electronic species access path. Numerical inputs, figure construction and recorded figures/output are unchanged; no new calculation is claimed."
-    },
     "figures": {
-      "figure_001.svg": "dea7957b217ed1fd9d1b79d913a9e82bcf2a632077c3db9a7b894eee1b419dbd",
-      "thumbnail.png": "23a1c492ae586e3aa235186b206dd704f8fd22e8bc629a01e54d28fd5aa0926a"
+      "figure_001.svg": "667d3f2758c93f072a6e8bde9480396ed828539ffa4d4a6df4dc082ff9349ff0",
+      "thumbnail.png": "010998fecdc3d4d3d00ebae06ecac2785560151ed573f3f219c5fb0e43f27209"
     },
-    "results_sha256": "218909c9ac2973bfbce4952a9e78439df31e250993d17096c532b3f742bd8b88",
+    "results_sha256": "1bea70b2da2b17d8eaccf4bc077997f2966f09469cc517872b91c42e499daf47",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "c28eb326d71d4c19f85a9b1c7819b32fe4fbe2a4f8c5096a2f3853ec8a9e5d51",
-      "html_sha256_at_capture": "e885f0890ea6c2c848d89ed6c622b88ed3f0097e6ada094c909b4b937879e915"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "e1dc5f2749093c2883d74a0855cee84a16a0ebf37042fa38c747cf29fc1d88a4",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "12e4cedccd1f256cbeb1047ac4d5c59f61c75d504628aa4ebe290510accb3cb4"
   },
   "benchmarks/examples/plot_argha_roy_carbon_sii.py": {
     "rendering_source_sha256": "7df918341275f48ef526c0c586f8e67e9ff06cef282081df5b955447af2020f8",
     "figures": {
-      "figure_001.svg": "c50f883d1498ae38a473de11cb0cc5efa421c1ea018e7f0bea20dc188bce00c1",
-      "thumbnail.png": "28f8138e7f7e0d2666381925bab586a2aa1d98b72ae16c46af2a69df674d36bc"
+      "figure_001.svg": "a4baa54f29c8edea839f1104a5fb0071b6bccab1aae588350731b3d4194c04e9",
+      "thumbnail.png": "67406291cb9d9b89db1aaf03b77735b88161e4bff17ea4c41a6e4ff22d4da79b"
     },
-    "results_sha256": "777370125330cd1f92aabb87137c4304930941e0c3601edc7111735f0828b104",
+    "results_sha256": "9e910e557df7d20db77140477acc9c67940382b54686ddd2acccd88323ddd1b1",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "7b98eafac6f0bdbe8b04ca7f6adfbb89fc930217beda0098e1e3f4ef53220741",
-      "html_sha256_at_capture": "d2832e8a54ea106d1558b9693e5591b4fecf788467b96803e0f19e62f33bd0d4"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "a92bd2d922277fb2b031bd34e5d60573aebd1af6cba12a8370ef82275122c80c",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "be5de8acadf89dbe558c0e2f5afa85aba979572e91ef8d080f5759c267be0369",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "665f6afb7eabcb25e9962021eb93db05c9ddd3367995ab23fb8bd63ee5e32958"
   },
   "benchmarks/examples/plot_bethkenhagen_et_al_2020_carbon_ionization.py": {
-    "rendering_source_sha256": "b132d133ab48650f5b7d02078e8d2723a20f70a700d1b2fa78244cf066c7bc83",
+    "rendering_source_sha256": "f2aa167bca273b1f9c7c77cd2ccbec90a9b33a8780fcc01680f9644ae6d6ea5c",
     "figures": {
-      "figure_001.svg": "530d26c02c23cfb5f73de5b4f2a99775f9eed4ac7eaff3d4e61932e5d3fe8e00",
-      "thumbnail.png": "4403aa7d50b5e0bcc81498769e395de675d6f5978398c7da9864d238553cfbf5"
+      "figure_001.svg": "e9f9f172fc364f767cf22cd52abfa2f06ece6522c8e1f81b68d7a01a3028ef87",
+      "thumbnail.png": "1e83ab0014ba2ae222a1f90d52a6635b71b4ca08d5ce9e747af87897d5869e67"
     },
-    "results_sha256": "34f96ec8d7ca5879265d60d17f0093b2a4ae8ee71271d892f4531c1219810033",
+    "results_sha256": "ed9177d0c620df51c5024dcb9e847cea60b8fb4e95c59bde4ce5857ca6a41799",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "dbcb4551381a80b10031b987ef3447284ec3de22e6a797b2d2c1412846e42791",
-      "html_sha256_at_capture": "18bac43156936cdbe85f114f180239b5055e65475a25fd803a41afc0dc340e51"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "e46a541657df2ab2af3822ce8b6cea19515facf6ac1ac1b6f7676ccd4de4a87d",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "93cf561fad0fe9ae2955ba671bca2afb60bcfdf582865f136b4d178056f9d11e"
   },
   "benchmarks/examples/plot_ch2_hnc_md.py": {
-    "rendering_source_sha256": "1e0743747671f213f67571c01e9fac51881d53b6b4da95ef1b6e3a1f1b950ee5",
+    "rendering_source_sha256": "99901f21f7a560951e8ee1665eb7207d8a88b6a9c12dcb900681cfb213a33ea9",
     "figures": {
-      "figure_001.svg": "3089d07f5e82860089f696eab48b2d2b08c5bc140842dd398738b61addb04e4d",
-      "thumbnail.png": "6861f3b4e3e14cd5abf79f2c87e28b3d16fc7d325195ae1b3ce9c6f63bb426de",
-      "figure_002.svg": "11f1e7b5374b65a60f878b2047cc0b0c0cd7206a915692343fc1460f3a7047ee",
-      "figure_003.svg": "aad4cd1ae3747131168627dd9402e32ab3dfaef5e7fe4e8050ab7ce24469e8eb",
-      "figure_004.svg": "c4f4486687dab4b9b43d1c7eb29bc266758e6a84e7af4654e2e7c544ff2ddbe9",
-      "figure_005.svg": "8414c0034d640db95c1a76f8e07ae9382bf257e7b7c51eb94c36dffd16041596",
-      "figure_006.svg": "ef727af2c2e0e8136fa400d3e274c35c17c7d027cc7e23a376f939fb10c7397a"
+      "figure_001.svg": "13a7bf14912d345cf703eae07998daab454a91ad030f45cc1ea1acfb216a2a8c",
+      "figure_002.svg": "b758be6a753042c53e1aae25f6740f5d90a6bd1a551dd62df245256b280b62d5",
+      "figure_003.svg": "665d616011f212d81c91a34c097d4926622c2aa56a1464e6e0b7595fcfcecb99",
+      "figure_004.svg": "b50b6f8c5a12e8f15c6a493eb41f8065c2fbc96cf4b5c53652eba765fd7baf01",
+      "figure_005.svg": "2b419200c60fd9543a0e85ef5b765f049b385ebe7c41b9c8f03036416d1c9835",
+      "figure_006.svg": "ed22b9a6f5a028aace4943219e1c5ce8e09270f022591deb4ddacdabd2a21f67",
+      "thumbnail.png": "f73616882ccee2c06f190ced44841a33be98b6966a3f5439eda15a8e47a7535a"
     },
-    "results_sha256": "ac61b95a45d8d81ec7cb384fa0f21fd829f2c43f940f5fd90c94ddc434d6a02e",
+    "results_sha256": "985a619a0736dfba5283697e4ff5b178daf7717d1f7965845492a3e79949b45f",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "d66ca663a64fa4f4429aa541106bc90027f543a948256746df990e4e713dd8b5",
-      "html_sha256_at_capture": "cc7d6e229f29e32de033d76d900dad0b5ce4b3f8972946fded26a2702c489510"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "c2c4e9d609d0673dba55c4e190fd14711c29cd2456563cfa6999650ec09981d5",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "b0188dd717263a119acac621fefeff168a62eefd71c645b2bdae267fed4bb301",
+    "tables": {
+      "md_protocol.rst": "56356e7b35da1c1fb8a142d6ff276b5abf99628afeef3c9b2320e6d94c16bb4d"
     }
   },
   "benchmarks/examples/plot_doppner_2023_be_ionization.py": {
     "rendering_source_sha256": "44230a75f8c5cd49d7123d67edf29f73de1cc02d1651d2ec4d8920e5f842ee7b",
     "figures": {
-      "figure_001.svg": "3bc3e658247d97ff1e8e7c7a3cc277bb7382856f37d9121cff6338dc2f114041",
-      "thumbnail.png": "f784bb757679155f894ee7b0a41a2e31c4d610030d92b743fea4feefcb32e6b2"
+      "figure_001.svg": "144784a8c8feccc64f7fb46f909d0e9b41ab47097006fb763ed4164ca2174b02",
+      "thumbnail.png": "2985bcbdd6f70c257f9786589d8d941d20a5880288b2ad2873fe58dc21aba7df"
     },
-    "results_sha256": "89e05778fd04312ba7059d6ed439c43f7f9850162f24c0b52a5670d32f1085d2",
+    "results_sha256": "9cbf58ff2d2ecca495b5399f21386bce908647ff3f63a844f5701ba744fffc52",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "1536a8db85142217d4fb82abd404de18a9085f55cb02f8ad5a9fbace3e090286",
-      "html_sha256_at_capture": "be462b65754b2bcb5eebc3de4ed7d68d6b4367e2fad79b262a4dbcae13dd646d"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "3af9d298ec057c72e1d28305fd4fb3eb68f702646db9bcc4e07a720ffe279976"
   },
   "benchmarks/examples/plot_ion_structure_library.py": {
-    "rendering_source_sha256": "2e151e48ca6612835d80adb9d2f99729b20a10aae7e6dc0697c830fc16628e5a",
+    "rendering_source_sha256": "a9f04c9d48dfd3b29834ec15d5391909f54d08ca8213f3a069cdf7dd8870b6dd",
     "figures": {
-      "figure_001.svg": "8570a38b14ce93da4a7ee477173a1c918b253d64d475ad7381a9019c3647f711",
-      "thumbnail.png": "b325c2a28fdd0360d57bb7a0cc717a62400ea4669cdb4d38a0abd03834ee0d43",
-      "figure_002.svg": "9a8ad454955c35e0c69235a034bbfbb302b9646294e244350dc5de68ee42a1b5"
+      "figure_001.svg": "b84ff9083daf5c6eaf5117f25ba935b73caa02421bdeb165ef5c2bd9924121cb",
+      "figure_002.svg": "31cc006759eb998ae9ca425034ec69926864c73d81176f5c995a4bb88a6299ac",
+      "thumbnail.png": "74cd58bef2b10e4ada7457e5f89a8f1f03bc7fd8f0738004ee91e188854fee74"
     },
-    "results_sha256": "69227b32ce29d29429e7a360038082da5760d1f88e89a63c36fe26af3835e17a",
+    "results_sha256": "43f7bfff12e296762a3fd2adf400f17de9ac1db7df4901c770b7571f3018e164",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "b193ebd249cb88da251bff2a911ffcef4b8684a48ebe32699ca03cff37a03680",
-      "html_sha256_at_capture": "54162fa1d4edf967b225aad3cd76499d916e1ceaf8d412f5c9e281b4b1bbdf93"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "dba8ff988e3b41fd433cedcf87b91b79ebf74662b86111e871deaf3aad33f702",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "c7f54eb5679a6b8cf1dfae78477e5c9da97f8dc0305c033e1a6d3e006664f804",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "f26e49b6633623aec04636488f0b3cacaa5db020d0206a80ef6dd14654bd2d7f"
   },
   "benchmarks/examples/plot_johnson_et_al_2025_two_temperature_al.py": {
-    "rendering_source_sha256": "0d93c8002aa2b6a55555d0f1f0b5fb342db6e3218dab0a56740849aaf1043acb",
+    "rendering_source_sha256": "1a85dff116c6095275f05498abd988c723cedb1e256fa9b33255c7c03689f03d",
     "figures": {
-      "figure_001.svg": "a40e4a97a5ceb7182c874786af3469b90e24a849266ec6d7d1dd5881f61519b7",
-      "thumbnail.png": "8e0e1769eb6951481648f6570eee295d6d46ae23b8dd2c0e39fc6e8ac98eacb5"
+      "figure_001.svg": "778aa93a0ecd1b9fd373ee4903c1d33de2515d11d1e56a2b0247cb9c620f207f",
+      "thumbnail.png": "783928007f5570978dd96fd658fcd684de07f9e02044ea5718ceca101041798a"
     },
-    "results_sha256": "c8307a6fdd5358d1d2522c70f5f0d8d260395e6e9c3640d5d804b9051a8be53a",
+    "results_sha256": "36425fe9d9cc11e5b1caa7573a560d059a66bd75c9785f445e8626f6d9bb4463",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "c25c3d92aff6a910c39cc2c2b092e5c5cb04980fc7aedd52bcbadad06f5cbaf5",
-      "html_sha256_at_capture": "da17d51fd6571ad38cbe4b07c04ae3eccaa6a87c4a2ee21f44fbfa666eb41cb4"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "d13294763c8fdf09ceb1b4f5feec0f24592fc75778d352cf97d2bec7f21eecce",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "b2e6aeb39155c44d6daf709da61d3a558a56f542fff29857e470c18f43913f87",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "56221dab5b6ebff072badf88a04f44082af37db16f44355d8d40fffd8044a61a"
   },
   "benchmarks/examples/plot_schorner_et_al_2022_al_sii.py": {
-    "rendering_source_sha256": "2fc7d4a2f60213b913b4366ca631c60bda54634e45435df6b00a817459fe9442",
+    "rendering_source_sha256": "cd10f805512f5d04edc453ef4ecf87705a72c834b488ef9987373f246157383f",
     "figures": {
-      "figure_001.svg": "a2ace576bac37bcabc41cd6871d3b6d5aee06c53e501ab5faf5ab6795479cb1b",
-      "thumbnail.png": "2208698e3c4cf11a383f408895c8b1e9d9994d22ee5c44a8e16420c6ecbc23ce"
+      "figure_001.svg": "202c1a868abf892f76941518bb901542021d6ed6cae4f02f4e14053b126a8226",
+      "thumbnail.png": "a596a1fa402d706474703e9fbf2f9474e8283d7d36e35801933f3ea45fd18366"
     },
-    "results_sha256": "2baeca13c0f6f0836115e4299f1a3700edf8f570efad776dcdce0371d014c7cb",
+    "results_sha256": "2e84ab15e6f0d3c6b8af7b7c895542a8ffd882cffc6bf32dfdeccf3db5b92418",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "bbc512814e49142e3bb05dd8e3bddcb8989c2f5e1fe493b895ea510ff9cc91ca",
-      "html_sha256_at_capture": "49f01793e5bf38a933bae0ffcd8c03c9cd0fd441e7dba31d679de621e405a31c"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "84bd241ee79870d766d0ee99f46aa2a9b292ecb6ae9b72b55076e69269669b2b",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    },
-    "species_axis_migration": {
-      "previous_source_sha256": "62de015624d34a8b2f6c129b4913daf9af823460ae53ea835d36e68dcafceb0a",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "4d1c3c2a918f67ea2ecbac1760f517051cd9bb90f3e82d43fe24190a49cd4965"
   },
   "benchmarks/examples/plot_starrett_et_al_2014_mixtures_fig3.py": {
     "rendering_source_sha256": "5fba0aa77fd2299247f3cde2a343621b0dd2015197cfa850c96e1adc7e8bb4b1",
     "figures": {
-      "figure_001.svg": "ef11034df5ba4ed2f8ceb9e74417394f3757a2168655dfd039f61a70731c2ac1",
-      "thumbnail.png": "f7c05819c916a4fbc19d5ee9495d14e02483b3b0f93d753a4da9e0baa20ceb05"
+      "figure_001.svg": "3d598a6b5415ee7e3a356e111603eb469c52cbbb0537447c5615a225b99689f7",
+      "thumbnail.png": "08cbfda735303f5ab52957e3ee4eb6c382feffaac2e7925fdc7ba06eb382ae01"
     },
-    "results_sha256": "527e39341fdcb4d603e6441b42d9a6e805f579d7ee360b242a8813c75f553546",
+    "results_sha256": "194ae2b2046cfae35f38835df3495b957b129285042a969b3f9291f2ccdbd995",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "a78f893e500b7e0e5c63ee85f2108bccc6909250fcd79c8a4ca9f578796589ff",
-      "html_sha256_at_capture": "dfe7e4aa2c292fb7e37b9ba7cbe38b3577461d9372a441179666e46dc529e77a"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "display_only_update": {
-      "previous_source_sha256": "f292c787036e4d72263da91dafcc8db201a47193e61504ea26129663999439c8",
-      "change": "Delegate window display to Matplotlib; calculation and figure construction unchanged. Recorded figures and numerical output retained."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "5aaae06fb9d2c64daa0a264b40b76eb88a8b6a23e5249e0e617bfc20d5b4aebc"
   },
   "benchmarks/examples/plot_starrett_saumon_2013_electronic.py": {
     "rendering_source_sha256": "b887e7dc2794f487b917391b083218921b08125a73f3c169661148030c8f1d6d",
     "figures": {},
-    "results_sha256": "8919a7563e2af09c200fe9fb1c20d80dbffc1d16b4bc2790d7fe99608716d966",
+    "results_sha256": "efa5280e58135f9f0e064de7710ccfb0696f1018945644bf74511d4522ece076",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "b333c8aa33ff43f33c8d44c095c4304bec9283e3c749e8e2965053e2023a1efb",
-      "html_sha256_at_capture": "f2ec981c901742178ec1a457c6e1bf1d3ca8768b6005423a4a89ab9d2d3fcdd6"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387"
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "762f99c2090406af93baf2ce0fe38ecfc5e4fdf9342c73be87e256ed4323bd80"
   },
   "benchmarks/examples/plot_starrett_single_species_2013_2014.py": {
     "rendering_source_sha256": "5b86173d1a2f3b041b459948d79eba9647d3d47203ea099927a9f59c35b7addb",
     "figures": {
-      "figure_001.svg": "9640d1f86be98b977cb5020863dbfa5275bbc5198e27fc8bdda35e9892055446",
-      "thumbnail.png": "331396b73389b5f896111bf592d3d1b17fdef6ceab0e9971e8727a5e6bb9fc77"
+      "figure_001.svg": "c69ce1b12dc56c139a6dbdd71f90120650aa81ae91877523078b4e1b790bebc8",
+      "thumbnail.png": "2a86601300a9e2cd5ec9eaa19290e81a337fc309f7096736e19d9260f097677d"
     },
-    "results_sha256": "2165727f860e4cc0affc1fa3f129664a083e3566738f667da87d8fddc8b50083",
+    "results_sha256": "821ae978967db8911b1d48ac0346c61abaa3fea0a76480750e7610ca17743ea6",
     "role": "recorded_presentation_only_not_a_solver_input",
-    "initial_html_capture": {
-      "source_sha256_at_capture": "e40e78307c864fd9db3e96e75a7f10dd612e8992c5d6dc3dcac6c83808bdd3af",
-      "html_sha256_at_capture": "f847ba7a7c764342908b9a54a06d4cf81dac4b9f0391149ebefa02088cbfd949"
-    },
-    "local_archive_inventory_sha256": "14be5bbaa9521df5e88e95a9a4c78116be80ea32702327564b3d3b6a3bce9387",
-    "species_axis_migration": {
-      "previous_source_sha256": "8192313915935facac9fdb0012453b232cc6207675a33b508eb86e554e55c8b2",
-      "change": "Update species/pair indexing for uniform workflow arrays. Numerical settings, plotted values, recorded output and generation provenance are retained; no new calculation is claimed."
-    }
+    "calculation_source_sha256": "9bde51a7e66b50c0c91cf2ec8f77fe7c5573de08ae4cd8680c9386dd0bc50bf9",
+    "calculation_source_revision": "b2afffc52c1806adfa6dbeb0c5aedc145a1e74a0",
+    "calculation_source_dirty": true,
+    "solver_source_sha256": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "validation": "0.4.1 full gallery and benchmark recalculation",
+    "aa_controls": "project defaults",
+    "calculation_audit_sha256": "3e12db0e9967375192803b23c4af660903ce00b274bdc25aca22150f17e6daa5"
   }
 }
