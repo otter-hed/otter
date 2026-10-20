@@ -15,3 +15,4 @@ stability guarantees of the main IS workflow.
    :maxdepth: 2
 
    sc_feedback
+   free_channel_completion

@@ -56,6 +56,7 @@ from otter.electronic.continuum.scattering import (
     _prepare_phase_shift_transport_spectrum,
     _gamma_from_transport_spectrum,
     _select_match_window,
+    _validate_free_completion,
 )
 from otter.electronic.continuum.ideal import IdealContinuum, ideal_unbound_density
 from otter.electronic.continuum.hybrid import QuantumContinuumHybrid
@@ -109,6 +110,7 @@ def _adaptive_reuse_spectral_controls(params: dict) -> dict:
         "density_rmax": params.get("density_rmax"),
         "l_max_soft": params.get("l_max_soft"),
         "partial_wave_tol": float(params.get("partial_wave_tol", 1e-7)),
+        "free_completion": params.get("free_completion", False),
         "near_zero_log_grid": bool(params.get("near_zero_log_grid", True)),
         "near_zero_log_points_per_decade": int(
             params.get("near_zero_log_points_per_decade", 4)
@@ -557,6 +559,8 @@ class KSDTFConfig(CitationMixin):
             "PillaiGoglioWalker2012",
             "WilsonEtAl2006",
             "StarrettEtAl2019",
+            *(("NISTDLMF",) if self.continuum_params.get("free_completion", False)
+              or self.continuum_params.get("ext_free_completion", False) else ()),
             *citation_keys_for_xc_model(self.xc_model),
         )
 
@@ -3011,6 +3015,17 @@ def _ion_cutoff(r: np.ndarray,
         return f
     return _ion_cutoff_starrett(r, r_ws, c)
 
+
+def _validate_continuum_completion(config: KSDTFConfig) -> None:
+    """Keep the optional angular correction specific to scattering models."""
+    for key in ("free_completion", "ext_free_completion"):
+        enabled = _validate_free_completion(config.continuum_params.get(key, False))
+        if enabled and str(config.continuum_model).lower().strip() not in (
+            "scattering", "quantum", "hybrid"
+        ):
+            raise ValueError("free_completion requires a scattering continuum model.")
+
+
 def _select_continuum_model(name: str):
     name = name.lower().strip()
     if name in ("scattering", "quantum"):
@@ -3107,6 +3122,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
     v_ext = np.zeros_like(r_cont) if v_ext_init is None else v_ext_init.copy()
 
     # Continuum model selection.
+    _validate_continuum_completion(config)
     continuum = _select_continuum_model(config.continuum_model)
 
     bound_cut_mode = str(config.bound_energy_cut_mode).lower().strip()
@@ -3393,6 +3409,7 @@ def _scf_fixed_mu(config: KSDTFConfig,
                     n_jobs=cont_params.get("n_jobs", None),
                     l_max_soft=cont_params.get("l_max_soft"),
                     partial_wave_tol=float(cont_params.get("partial_wave_tol", 1e-7)),
+                    free_completion=cont_params.get("free_completion", False),
                 )
         if perf_on:
             # fixed-mu path: basis build + continuum integration are the heavy parts.
@@ -4321,6 +4338,9 @@ def _scf_fixed_mu(config: KSDTFConfig,
         "v_ext": v_ext,
         "history": history,
         "cont_e_max_final": float(cont_e_max_iter),
+        "cont_free_completion": bool(
+            config.continuum_params.get("free_completion", False)
+        ),
         "converged": bool(scf_converged),
         "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),
@@ -4428,6 +4448,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
         else np.asarray(config.v_corr_ext, dtype=float)
     )
 
+    _validate_continuum_completion(config)
     continuum = _select_continuum_model(config.continuum_model)
 
     bound_cut_mode = str(config.bound_energy_cut_mode).lower().strip()
@@ -4737,6 +4758,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
                     n_jobs=n_jobs_basis,
                     l_max_soft=cont_params.get("l_max_soft"),
                     partial_wave_tol=float(cont_params.get("partial_wave_tol", 1e-7)),
+                    free_completion=cont_params.get("free_completion", False),
                     return_meta=bool(perf_on),
                 )
                 if perf_on:
@@ -4780,6 +4802,7 @@ def _scf_neutral_inner(config: KSDTFConfig,
                         n_jobs=n_jobs_basis_ext,
                         l_max_soft=cont_params_ext.get("l_max_soft"),
                         partial_wave_tol=float(cont_params_ext.get("partial_wave_tol", 1e-7)),
+                        free_completion=cont_params_ext.get("free_completion", False),
                         return_meta=bool(perf_on),
                     )
                     if perf_on:
@@ -6640,6 +6663,9 @@ def _scf_neutral_inner(config: KSDTFConfig,
         "v_ext": v_ext,
         "history": history,
         "cont_e_max_final": float(cont_e_max_iter),
+        "cont_free_completion": bool(
+            config.continuum_params.get("free_completion", False)
+        ),
         "converged": bool(scf_converged),
         "scf_convergence_steps": int(config.convergence_steps),
         "iters": int(len(history)),

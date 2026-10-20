@@ -60,6 +60,28 @@ from .interface import ContinuumModel
 _FREE_BASIS_CACHE = ContextVar("otter_free_basis_cache", default=None)
 
 
+class _CompletedEnergyResult(tuple):
+    """Mark a completed (density, phases) pair without changing its tuple shape."""
+
+    free_completion = True
+
+
+def _validate_completion_cache(cache, free_completion):
+    """Prevent reuse of densities computed with the other completion setting."""
+    if cache is not None and any(
+        getattr(value, "free_completion", False) != free_completion
+        for value in cache.values()
+    ):
+        raise ValueError(
+            "energy_cache has a different free_completion setting; use a new cache."
+        )
+
+
+def _energy_result(density, phases, free_completion):
+    pair = (density, phases)
+    return _CompletedEnergyResult(pair) if free_completion else pair
+
+
 class _FreeBasisCache:
     """Byte-bounded LRU for potential-independent j_l(kr), y_l(kr) tables.
 
@@ -355,7 +377,8 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                                        n_jobs: int | None = None,
                                        return_meta: bool = False,
                                        l_max_soft: int | None = None,
-                                       partial_wave_tol: float = 1e-7) -> np.ndarray | tuple[np.ndarray, dict[str, Any]]:
+                                       partial_wave_tol: float = 1e-7,
+                                       free_completion: bool = False) -> np.ndarray | tuple[np.ndarray, dict[str, Any]]:
     """
     Continuum scattering density basis (no Fermi-Dirac occupancy applied).
 
@@ -375,12 +398,24 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
         Grid type and step (sqrt only).
     matching params
         Control asymptotic matching and phase-shift extraction.
+    free_completion : bool, optional
+        Add the analytic omitted free angular density after native angular
+        acceptance. Defaults to False. This leaves propagation and matching
+        unchanged and does not supply omitted interacting channels.
 
     Returns
     -------
     ndarray
         Basis array with shape (n_e, n_r); integrate over E with FD weights.
+
+    Notes
+    -----
+    A caller energy cache belongs to one potential, grid and completion
+    setting. Reusing completed entries with completion disabled, or ordinary
+    entries with completion enabled, raises ValueError.
     """
+    free_completion = _validate_free_completion(free_completion)
+    _validate_completion_cache(energy_cache, free_completion)
     r = np.asarray(r)
     v_eff = np.asarray(v_eff)
     e_grid = np.asarray(e_grid)
@@ -435,13 +470,14 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                 None,
                 partial_wave_tol,
                 l_max_soft,
+                free_completion,
             ),
         ) as pool:
             results = pool.map(_scatter_worker, [float(e) for e in e_grid])
         # Collect per-energy densities.
         for i, (e_val, n_e, delta_vec) in enumerate(results):
             n_e_r[i] = n_e
-            cache[e_val] = (n_e, delta_vec)
+            cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
         n_eval_new = int(e_grid.size)
     else:
         # Serial branch with optional cache reuse.
@@ -481,8 +517,9 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
                 perf_accum=perf_accum,
                 l_max_soft=l_max_soft,
                 partial_wave_tol=partial_wave_tol,
+                free_completion=free_completion,
             )
-            cache[e_val] = (n_e, delta_vec)
+            cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
             n_e_r[i] = n_e
             n_eval_new += 1
 
@@ -495,6 +532,7 @@ def continuum_density_scattering_basis(v_eff: np.ndarray,
         "n_cache_hits": int(cache_hits),
         "n_cache_total": int(len(cache)),
         "n_e_basis": int(e_grid.size),
+        "free_completion": free_completion,
         "adaptive_mode": "linear",
     }
     meta.update(_scatter_perf_meta(perf_accum, wall_s))
@@ -2319,6 +2357,34 @@ def _density_domain_l_cap(energy, r, v_eff, density_rmax, ceiling, tol):
     return min(ceiling, _turning_point_l_cap(energy, r, v_eff, density_rmax, tol))
 
 
+def _free_channel_remainder(r: np.ndarray, energy: float, l_cap: int) -> np.ndarray:
+    """Return the omitted free spectral density [a0^-3 Ha^-1], before FD.
+
+    With z=kr, DLMF 10.60.12 and the recurrence 10.51.1 give
+    1-sum_{l=0}^L (2l+1)j_l(z)^2 =
+    z^2(j_L^2+j_{L+1}^2)-2(L+1)z*j_L*j_{L+1}.
+    Multiplication by k/pi^2 uses the energy normalization of
+    Starrett and Saumon (2014), Eq. A3, including spin. No omitted
+    interacting channels or energy intervals are supplied by this identity.
+    Signed roundoff is retained without clipping or charge normalization.
+    """
+    if energy <= 0.0:
+        return np.zeros_like(r, dtype=float)
+    k = np.sqrt(2.0 * energy)
+    z = k * np.asarray(r)
+    j = spherical_jn(l_cap, z)
+    jp = spherical_jn(l_cap + 1, z)
+    remainder = z**2 * (j**2 + jp**2) - 2.0 * (l_cap + 1) * z * j * jp
+    return k / np.pi**2 * remainder
+
+
+def _validate_free_completion(value: bool) -> bool:
+    """Reject ambiguous switches such as the string 'false'."""
+    if not isinstance(value, (bool, np.bool_)):
+        raise ValueError("free_completion must be a boolean.")
+    return bool(value)
+
+
 def _scattering_density_and_phase(v_eff: np.ndarray,
                                   r: np.ndarray,
                                   mu: float,
@@ -2350,7 +2416,8 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
                                   l_max_soft: int | None = None,
                                   _propagated: list[np.ndarray] | None = None,
                                   _matching_l_cap: int | None = None,
-                                  _phase_channel: int | None = None) -> tuple[np.ndarray | None, np.ndarray]:
+                                  _phase_channel: int | None = None,
+                                  free_completion: bool = False) -> tuple[np.ndarray | None, np.ndarray]:
     """
     Continuum density and phase shifts at a single energy.
 
@@ -2379,7 +2446,10 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
       it evaluate one requested phase, using the same full matching plan.
       In that case n_r is None and only that delta_vec entry is meaningful;
       this partial result must never enter a density or transport cache.
+    - free_completion adds the analytic omitted free density only after all
+      native angular checks. It changes neither their acceptance nor phases.
     """
+    free_completion = _validate_free_completion(free_completion)
     numerov_geom = numerov_geom if numerov_geom is not None else _prepare_numerov_geometry(r, v_eff)
     r_eval = np.asarray(numerov_geom["r"], dtype=float)
     v_eval = np.asarray(numerov_geom["v_eff"], dtype=float)
@@ -2622,7 +2692,11 @@ def _scattering_density_and_phase(v_eff: np.ndarray,
                 _propagated=propagated,
                 _matching_l_cap=original_l_cap,
                 _phase_channel=_phase_channel,
+                free_completion=free_completion,
             )
+
+    if free_completion:
+        sum_l += _free_channel_remainder(r_eval, energy, l_cap)
 
     if perf_accum is not None:
         perf_accum["eval_total_s"] = float(perf_accum.get("eval_total_s", 0.0) + (time.perf_counter() - t_eval))
@@ -2781,7 +2855,8 @@ def _scattering_density_at_energy(v_eff: np.ndarray,
                                   prop_rescale_limit: float | None,
                                   apply_occ: bool = True,
                                   l_cap_strategy: str = "match",
-                                  numerov_geom: dict[str, np.ndarray] | None = None) -> np.ndarray:
+                                  numerov_geom: dict[str, np.ndarray] | None = None,
+                                  free_completion: bool = False) -> np.ndarray:
     """
     Continuum density contribution at a single energy.
 
@@ -2813,6 +2888,7 @@ def _scattering_density_at_energy(v_eff: np.ndarray,
         apply_occ=apply_occ,
         l_cap_strategy=l_cap_strategy,
         numerov_geom=numerov_geom,
+        free_completion=free_completion,
     )
     return n_e
 
@@ -2846,7 +2922,8 @@ def _init_scatter_worker(v_eff: np.ndarray,
                          l_cap_strategy: str = "match",
                          density_rmax: float | None = None,
                          partial_wave_tol: float = 1e-7,
-                         l_max_soft: int | None = None) -> None:
+                         l_max_soft: int | None = None,
+                         free_completion: bool = False) -> None:
     numerov_geom = _prepare_numerov_geometry(r, v_eff)
     _SCATTER_MP["v_eff"] = np.asarray(numerov_geom["v_eff"], dtype=float)
     _SCATTER_MP["r"] = np.asarray(numerov_geom["r"], dtype=float)
@@ -2875,6 +2952,7 @@ def _init_scatter_worker(v_eff: np.ndarray,
     _SCATTER_MP["density_rmax"] = density_rmax
     _SCATTER_MP["partial_wave_tol"] = partial_wave_tol
     _SCATTER_MP["l_max_soft"] = l_max_soft
+    _SCATTER_MP["free_completion"] = free_completion
 
 
 def _scatter_worker(e_val: float) -> tuple[float, np.ndarray, np.ndarray]:
@@ -2907,6 +2985,7 @@ def _scatter_worker(e_val: float) -> tuple[float, np.ndarray, np.ndarray]:
         density_rmax=_SCATTER_MP.get("density_rmax"),
         partial_wave_tol=_SCATTER_MP.get("partial_wave_tol", 1e-7),
         l_max_soft=_SCATTER_MP.get("l_max_soft"),
+        free_completion=_SCATTER_MP.get("free_completion", False),
     )
     return float(e_val), n_e, delta_vec
 
@@ -2943,7 +3022,8 @@ def continuum_density_scattering(v_eff: np.ndarray,
                                  n_jobs: int | None = None,
                                  apply_occ: bool = True,
                                  l_max_soft: int | None = None,
-                                 partial_wave_tol: float = 1e-7) -> np.ndarray:
+                                 partial_wave_tol: float = 1e-7,
+                                 free_completion: bool = False) -> np.ndarray:
     """
     Continuum density using Numerov scattering solutions in V_eff(r).
 
@@ -2957,16 +3037,22 @@ def continuum_density_scattering(v_eff: np.ndarray,
         Energy grid for the A3 integral.
     l_max : int
         Partial-wave cutoff (l=0..l_max).
+    free_completion : bool, optional
+        Add the omitted free angular density at the accepted cutoff. The
+        default is False. No interacting high-l or high-energy tail is added.
 
     Notes
     -----
     energy_cache can be supplied to reuse (n_e, delta) evaluations across
-    repeated calls with the same V_eff and energy grid.
+    repeated calls with the same V_eff, energy grid, occupation and completion
+    setting. A different completion setting requires a new cache.
     l_cap_strategy controls the energy-dependent partial-wave cutoff
     ("match" default, see _compute_l_cap).
     l_max_soft is an optional trial limit for automatic angular selection;
     failed density/transport remainder checks restore the original range.
     """
+    free_completion = _validate_free_completion(free_completion)
+    _validate_completion_cache(energy_cache, free_completion)
     r = np.asarray(r)
     v_eff = np.asarray(v_eff)
     e_grid = np.asarray(e_grid)
@@ -3013,13 +3099,14 @@ def continuum_density_scattering(v_eff: np.ndarray,
                 None,
                 partial_wave_tol,
                 l_max_soft,
+                free_completion,
             ),
         ) as pool:
             results = pool.map(_scatter_worker, [float(e) for e in e_grid])
         # Collect per-energy densities.
         for i, (e_val, n_e, delta_vec) in enumerate(results):
             n_e_r[i] = n_e
-            cache[e_val] = (n_e, delta_vec)
+            cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
     else:
         # Serial branch with optional cache reuse.
         numerov_geom = _prepare_numerov_geometry(r, v_eff)
@@ -3057,8 +3144,9 @@ def continuum_density_scattering(v_eff: np.ndarray,
                 numerov_geom=numerov_geom,
                 l_max_soft=l_max_soft,
                 partial_wave_tol=partial_wave_tol,
+                free_completion=free_completion,
             )
-            cache[e_val] = (n_e, delta_vec)
+            cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
             n_e_r[i] = n_e
 
     # Energy integration (A3) to get n_cont(r).
@@ -3128,12 +3216,21 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                                           density_rmax: float | None = None,
                                           partial_wave_tol: float = 1e-7,
                                           l_max_soft: int | None = None,
-                                          _density_only: bool = False) -> tuple[np.ndarray, dict]:
+                                          _density_only: bool = False,
+                                          free_completion: bool = False) -> tuple[np.ndarray, dict]:
     """
     Adaptive energy integration for scattering continuum using Simpson refinement.
 
     Notes
     -----
+    free_completion=False retains the native partial-wave sum. True adds the
+    analytic free remainder after all angular checks, at the same energy
+    nodes and accepted angular range. It preserves phases, matching and B3
+    policy. It supplies neither omitted interacting channels nor an energy
+    tail (Starrett and Saumon 2014, Eq. A3; DLMF 10.60.12 and 10.51.1).
+    Caller caches must retain the same potential, grid, occupation and
+    completion setting; mixed completion settings are rejected.
+
     adaptive_mode selects the refinement strategy:
     - "simpson": recursive Simpson refinement using error + resonance/delta flags.
     - "bisection": use phase-shift bisection to locate resonance windows, then
@@ -3188,6 +3285,8 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     "cost" balances approximate continuum work using l_cap(E). Neither policy
     inserts, moves, or removes energy nodes.
     """
+    free_completion = _validate_free_completion(free_completion)
+    _validate_completion_cache(energy_cache, free_completion)
     r = np.asarray(r)
     v_eff = np.asarray(v_eff)
     if not 0 < partial_wave_tol < 1:
@@ -3443,6 +3542,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             l_max_soft=l_max_soft,
             _matching_l_cap=active_l_cap(e) if reuse_wave_cap else None,
             **({"_phase_channel": phase_channel} if phase_channel is not None else {}),
+            free_completion=free_completion,
         )
         if n_e is None:
             # Only the requested phase is valid. Never make this appear to be
@@ -3450,7 +3550,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
             phase_cache[(e, phase_channel)] = delta_vec
             n_phase_eval += 1
         else:
-            cache[e] = (n_e, delta_vec)
+            cache[e] = _energy_result(n_e, delta_vec, free_completion)
             n_eval_new += 1
         return n_e, delta_vec
 
@@ -3504,8 +3604,9 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                         partial_wave_tol=partial_wave_tol,
                         l_max_soft=l_max_soft,
                         _matching_l_cap=active_l_cap(e_val) if reuse_wave_cap else None,
+                        free_completion=free_completion,
                     )
-                    cache[e_val] = (n_e, delta_vec)
+                    cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
                 n_eval_new += len(missing_unique)
             else:
                 if parallel_mode == "shard":
@@ -3530,7 +3631,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                 else:
                     results = pool.map(_scatter_worker, missing_unique)
                 for e_val, n_e, delta_vec in results:
-                    cache[e_val] = (n_e, delta_vec)
+                    cache[e_val] = _energy_result(n_e, delta_vec, free_completion)
                 n_eval_new += len(missing_unique)
 
         cache_hits += max(len(e_list) - len(missing_unique), 0)
@@ -4429,6 +4530,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
                     density_rmax,
                     partial_wave_tol,
                     l_max_soft,
+                    free_completion,
                 ),
             ) as pool:
                 n_r = _do_integration()
@@ -4443,6 +4545,7 @@ def continuum_density_scattering_adaptive(v_eff: np.ndarray,
     quad_energies = sorted(quadrature_weights)
     meta = {
         "quadrature_energies": quad_energies,
+        "free_completion": free_completion,
         "quadrature_weights": [quadrature_weights[e] for e in quad_energies],
         "quadrature_panels": sorted(quadrature_panels),
         "quadrature_rule": "accepted_simpson_panels",
@@ -4556,6 +4659,9 @@ class QuantumContinuumScattering(ContinuumModel):
 
     Implements Starrett2014 Eq. (A3) by integrating scattering-state
     densities over energy and summing partial waves.
+    ``params['free_completion']=True`` adds the omitted free angular density
+    after native angular acceptance. The default is False; this diagnostic
+    does not change the angular workload, matching domain or tail policy.
     """
 
     def density(self,
@@ -4788,6 +4894,7 @@ class QuantumContinuumScattering(ContinuumModel):
                 e_tol=e_tol,
                 density_rmax=params.get("density_rmax"),
                 partial_wave_tol=float(params.get("partial_wave_tol", 1e-7)),
+                free_completion=params.get("free_completion", False),
                 l_max_soft=params.get("l_max_soft"),
                 e_max_depth=e_max_depth,
                 e_min_width=e_min_width,
@@ -4862,6 +4969,7 @@ class QuantumContinuumScattering(ContinuumModel):
                 n_jobs=n_jobs,
                 l_max_soft=params.get("l_max_soft"),
                 partial_wave_tol=float(params.get("partial_wave_tol", 1e-7)),
+                free_completion=params.get("free_completion", False),
             )
 
         if tail_match and tail_match_target in ("cont", "both"):

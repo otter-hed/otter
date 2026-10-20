@@ -5,6 +5,12 @@ have not yet been released are collected under “Unreleased”.
 
 ## Unreleased
 
+- Add optional free-channel completion for the quantum continuum, disabled
+  by default. Preserve native angular checks, phases, radial geometry and
+  B3 policy; record the setting and reject mixed completion caches or
+  incompatible retained full states. This diagnostic does not reduce
+  angular work or establish source-charge convergence.
+
 ### 0.4.1
 
 - Refresh gallery and benchmark presentation assets from default-AA

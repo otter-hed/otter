@@ -34,6 +34,7 @@ than passing through separate ``detailed`` and ``gallery`` index levels.
    gen_benchmarks/plot_ion_structure_library
    validation_policy
    validation_0_4_1
+   free_channel_completion
 
 Electronic structure and ionization
 ------------------------------------
@@ -264,6 +265,10 @@ Cross-observable literature library
 
 Validation and data governance
 ------------------------------
+
+The :doc:`free-channel completion controls <free_channel_completion>` compare
+the optional continuum correction with an analytic free spectrum and fresh
+full/external electronic states.
 
 The :doc:`validation policy <validation_policy>` defines acceptance metrics,
 reference-data provenance, and public-release rules.

@@ -1,0 +1,111 @@
+{
+  "reference": "k/pi^2; NIST DLMF 10.60.12; StarrettSaumon2014 Eq. A3",
+  "grid": {
+    "points": 2400,
+    "rmax_bohr": 30.0,
+    "rmin_bohr": 1e-05
+  },
+  "comparison_min_radius_bohr": 1.0,
+  "tolerance_over_free": 2e-07,
+  "rows": [
+    {
+      "energy_ha": 0.001,
+      "angular_cutoff": 2,
+      "raw_error_over_free": 0.0031174478561996066,
+      "completed_error_over_free": 1.613640732145427e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.001,
+      "angular_cutoff": 8,
+      "raw_error_over_free": 1.6136407876565784e-08,
+      "completed_error_over_free": 1.6136407876565784e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.001,
+      "angular_cutoff": 32,
+      "raw_error_over_free": 1.6136397995580865e-08,
+      "completed_error_over_free": 1.6136397995580865e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.02,
+      "angular_cutoff": 2,
+      "raw_error_over_free": 0.9103565892269042,
+      "completed_error_over_free": 1.5730407532110746e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.02,
+      "angular_cutoff": 8,
+      "raw_error_over_free": 0.0008433521433225399,
+      "completed_error_over_free": 1.5730408753356073e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.02,
+      "angular_cutoff": 32,
+      "raw_error_over_free": 1.5730408753356073e-08,
+      "completed_error_over_free": 1.5730408753356073e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.2,
+      "angular_cutoff": 2,
+      "raw_error_over_free": 0.9914115215734574,
+      "completed_error_over_free": 1.2652393355239155e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.2,
+      "angular_cutoff": 8,
+      "raw_error_over_free": 0.8774363352235096,
+      "completed_error_over_free": 1.265241567072195e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 0.2,
+      "angular_cutoff": 32,
+      "raw_error_over_free": 1.265241567072195e-08,
+      "completed_error_over_free": 1.265241567072195e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 2.0,
+      "angular_cutoff": 2,
+      "raw_error_over_free": 0.9991564805860598,
+      "completed_error_over_free": 5.252525825394372e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 2.0,
+      "angular_cutoff": 8,
+      "raw_error_over_free": 0.9896356057025081,
+      "completed_error_over_free": 5.614069720216719e-08,
+      "phases_unchanged": true,
+      "passed": true
+    },
+    {
+      "energy_ha": 2.0,
+      "angular_cutoff": 32,
+      "raw_error_over_free": 0.8412508882009355,
+      "completed_error_over_free": 5.6140703752483034e-08,
+      "phases_unchanged": true,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "solver_sha256": "bec0e1a84988839a4da9340cd4b0d00aa5e59756824fb3aede482847cdfe9aed",
+  "producer_sha256": "c9e11a87c491f21590e47aef6d6be90fc60ec7da43ac6603a18d47009d4e965d"
+}

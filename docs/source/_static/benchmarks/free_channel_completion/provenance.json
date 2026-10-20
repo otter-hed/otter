@@ -1,0 +1,67 @@
+{
+  "base_commit": "db6274a4cf71014b70003c9b7c66849f6f4fb40e",
+  "source_sha256": {
+    "main": "71fb814da966a85514dfec6510658208936ba4bbb5b2037445ab2da452099789",
+    "candidate": "e4529a1134f085ac80d178840b678da3a8d6630b88113abc58020b5030058c5b"
+  },
+  "inputs_sha256": {
+    "comparisons.json": "c65666b5c0a537a7bd682bbba87f488f73384807a5e964f031fdd683313f8b40",
+    "manifest.json": "bec9a564737cd07580b226beeb7e777395b99332c60d718583d77e4ac8a112ae"
+  },
+  "cases": {
+    "Be_10eV_10gcc": {
+      "formula": "Be",
+      "temperature_ev": 10.0,
+      "rho_g_cc": 10.0
+    },
+    "C_100eV_400gcc": {
+      "formula": "C",
+      "temperature_ev": 100.0,
+      "rho_g_cc": 400.0
+    },
+    "H_99eV_0p946gcc": {
+      "formula": "H",
+      "temperature_ev": 99.0,
+      "rho_g_cc": 0.946
+    },
+    "Al_1eV_8p1gcc": {
+      "formula": "Al",
+      "temperature_ev": 1.0,
+      "rho_g_cc": 8.1
+    },
+    "CH2_40eV_20gcc": {
+      "formula": "CH2",
+      "temperature_ev": 40.0,
+      "rho_g_cc": 20.0
+    },
+    "CH2_99eV_0p946gcc": {
+      "formula": "CH2",
+      "temperature_ev": 99.0,
+      "rho_g_cc": 0.946
+    },
+    "C_10eV_1gcc": {
+      "formula": "C",
+      "temperature_ev": 10.0,
+      "rho_g_cc": 1.0
+    },
+    "Si_1eV_1gcc": {
+      "formula": "Si",
+      "temperature_ev": 1.0,
+      "rho_g_cc": 1.0
+    }
+  },
+  "acceptance": {
+    "density_over_n0": 1e-05,
+    "source_charge_change_e": 2e-05,
+    "l1_change_per_Z_e": 0.0002,
+    "absolute_charge_diagnostic_e": 0.0002
+  },
+  "producer_sha256": "413c911e0018eb3df636fb57c32c6c9fb035fd8dbfa169be6633fb1da0471418",
+  "analytic_checks_sha256": "97ef0c3bdd108706b4b45238771681aa4281682b750ed253889abe330167acb7",
+  "figure_sha256": {
+    "free_spectrum.png": "f498818497edba7ec405c63d4405b6749289b41ee027cf118e9954fd9c2ee053",
+    "scf_density.png": "99b1141a9e8c2f3366eae4cfc2057c3af980db2ce6838d7388e08c2c667c0ccd",
+    "scf_density.pdf": "85bcfb1f4653a25628a4af83aa49f208054f95775631716e05930b90950137ad",
+    "free_spectrum.pdf": "f60274f3b7ac7c1253e3deb49d835e3247748545c00487904bff73df61a706c1"
+  }
+}

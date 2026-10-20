@@ -13,7 +13,7 @@ pressure-ionization M(E) partition and cutoff are based on
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import time
 from typing import Any
@@ -931,6 +931,9 @@ class FullExternalConfig(CitationMixin):
     # partial-wave remainder check; False retains the propagation-box control.
     cont_b3_density_domain: bool = True
     cont_partial_wave_tol: float = 1.0e-7
+    # Add the omitted free angular density after native truncation checks.
+    # This diagnostic leaves angular selection, radii and B3 unchanged.
+    cont_free_completion: bool = field(default=False, kw_only=True)
     # l-cap policy for continuum partial-wave summation. "match" is the
     # validated default: the actual per-energy l_cap(E) is set by the A3
     # matching window rather than by the full simulation box.
@@ -1453,6 +1456,11 @@ class FullExternalConfig(CitationMixin):
 
         if not 0 < float(self.cont_partial_wave_tol) < 1:
             raise ValueError("cont_partial_wave_tol must be between zero and one.")
+        if not isinstance(self.cont_free_completion, (bool, np.bool_)):
+            raise ValueError("cont_free_completion must be a boolean.")
+        self.cont_free_completion = bool(self.cont_free_completion)
+        if self.cont_free_completion and self.electronic_model != "qm":
+            raise ValueError("cont_free_completion is available only for QM.")
         self.cont_l_max_soft = qmod._validate_l_max_soft(self.cont_l_max_soft)
         use_b3_full = str(self.b3_tail_stage1_mode).strip().lower() in ("post", "in_scf") or str(
             self.b3_tail_stage2_mode
@@ -1622,6 +1630,7 @@ class FullExternalConfig(CitationMixin):
             "PillaiGoglioWalker2012",
             "WilsonEtAl2006",
             "StarrettEtAl2019",
+            *(("NISTDLMF",) if self.cont_free_completion else ()),
             *citation_keys_for_xc_model(self.xc_model),
         )
 
@@ -2596,6 +2605,7 @@ def _build_continuum_params(
         "l_max_ceiling": None,
         "l_max_soft": cfg.cont_l_max_soft,
         "partial_wave_tol": float(cfg.cont_partial_wave_tol),
+        "free_completion": cfg.cont_free_completion,
         "l_pad": int(l_pad),
         "e_min": float(cfg.cont_e_min),
         "near_zero_log_grid": bool(cfg.cont_near_zero_log_grid),
@@ -4184,6 +4194,12 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
                 "full_result_init has incompatible or unrecorded WS charge quadrature; "
                 "recompute full with the requested exact_ws_boundary_quadrature."
             )
+        candidate_completion = candidate_meta.get("cont_free_completion", False)
+        if candidate_completion != cfg.cont_free_completion:
+            raise ValueError(
+                "full_result_init uses a different cont_free_completion setting; "
+                "recompute full with the requested setting."
+            )
         candidate_r = np.asarray(candidate["r"], dtype=float)
         if (
             candidate_r.ndim != 1
@@ -5326,6 +5342,7 @@ def solve_full_then_external(cfg: FullExternalConfig) -> dict[str, Any]:
         "cont_l_max_soft": cfg.cont_l_max_soft,
         "full_cont_density_rmax": cont_stage2.get("density_rmax"),
         "cont_partial_wave_tol": float(cfg.cont_partial_wave_tol),
+        "cont_free_completion": cfg.cont_free_completion,
         "adaptive_basis_quadrature": (
             "panel_quadratic_with_integrated_fd"
             if cfg.cont_energy_mode == "adaptive" and cfg.cont_adaptive_reuse_basis
